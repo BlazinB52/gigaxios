@@ -39,17 +39,7 @@ export default function FuelPage() {
       (shift) => shift.status === "closed" && shift.endingMileage
     );
 
-    const lastClosedShift = closedShifts[closedShifts.length - 1];
 
-    if (
-      lastClosedShift &&
-      Number(odometer) < Number(lastClosedShift.endingMileage)
-    ) {
-      alert(
-        `Fuel odometer cannot be less than the last shift ending mileage of ${lastClosedShift.endingMileage}.`
-      );
-      return;
-    }
 
     const calculatedTotalCost = Number(gallons) * Number(pricePerGallon);
 

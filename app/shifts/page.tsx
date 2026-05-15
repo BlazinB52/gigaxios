@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import BottomNav from "@/app/components/BottomNav";
 import ActiveShiftCard from "@/app/components/ActiveShiftCard";
 import { SavedShift } from "@/app/lib/types";
 import { loadShifts, saveShifts } from "@/app/lib/storage";
@@ -45,18 +44,6 @@ export default function ShiftsPage() {
             (shift) => shift.status === "closed" && shift.endingMileage
         );
 
-
-        const lastClosedShift = closedShifts[closedShifts.length - 1];
-
-        if (
-            lastClosedShift &&
-            Number(beginningMileage) < Number(lastClosedShift.endingMileage)
-        ) {
-            alert(
-                `Beginning mileage cannot be less than the last ending mileage of ${lastClosedShift.endingMileage}.`
-            );
-            return;
-        }
 
         if (openShiftExists) {
             alert("Finish your current shift first.");

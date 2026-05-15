@@ -1,65 +1,377 @@
-import Image from "next/image";
+"use client";
+
+/* =========================================================
+   GIGAXIOS HOME PAGE
+   ---------------------------------------------------------
+   Main dashboard screen for mobile-first gig tracking app.
+   This screen shows:
+   - Net profit
+   - Work miles
+   - Revenue metrics
+   - Active shift status
+   - Quick action buttons
+   ========================================================= */
+
+import { useRouter } from "next/navigation";
+
+import { useEffect, useState } from "react";
+
+/* =========================================================
+   STORAGE IMPORTS
+   ========================================================= */
+
+import { loadShifts } from "./lib/storage";
+import { SavedShift } from "./lib/types";
+
+import { FuelEntry, loadFuelEntries } from "./lib/fuelStorage";
+
+import { PayEntry, loadPayEntries } from "@/app/lib/payStorage";
+
+/* =========================================================
+   HOME COMPONENT
+   ========================================================= */
 
 export default function Home() {
+
+
+
+  /* =========================================================
+     ROUTER
+     Used for page navigation buttons
+     ========================================================= */
+
+  const router = useRouter();
+
+  /* =========================================================
+     STATE VARIABLES
+     ========================================================= */
+
+  const [payEntries, setPayEntries] = useState<PayEntry[]>([]);
+
+  const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
+
+  const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+
+  const activeShift = savedShifts.find((shift) => shift.status === "open");
+
+  /* =========================================================
+     DATA_LOADING
+     Loads all local storage data when app starts
+     ========================================================= */
+
+  useEffect(() => {
+
+    const shifts = loadShifts();
+    setSavedShifts(shifts);
+
+    const fuel = loadFuelEntries();
+    setFuelEntries(fuel);
+
+    const loadedPayEntries = loadPayEntries();
+    setPayEntries(loadedPayEntries);
+
+  }, []);
+
+  /* =========================================================
+     ACTIVE_SHIFT_LOOKUP
+     Finds currently open shift
+     ========================================================= */
+
+  const openShift = savedShifts.find(
+    (shift) => shift.status === "open"
+  );
+
+  /* =========================================================
+     BASIC_SHIFT_METRICS
+     ========================================================= */
+
+  const totalShifts = savedShifts.length;
+
+  const activeShiftCount = savedShifts.filter(
+    (shift) => shift.status === "open"
+  ).length;
+
+  const closedShifts = savedShifts.filter(
+    (shift) => shift.status === "closed"
+  );
+
+  /* =========================================================
+     WORK_MILE_CALCULATIONS
+     SAFE TO EDIT
+     ========================================================= */
+
+  const totalWorkMiles = closedShifts.reduce((total, shift) => {
+
+    const beginning = Number(shift.beginningMileage);
+
+    const ending = Number(shift.endingMileage);
+
+    if (!beginning || !ending || ending < beginning) {
+      return total;
+    }
+
+    return total + (ending - beginning);
+
+  }, 0);
+
+  /* =========================================================
+     FUEL_CALCULATIONS
+     ========================================================= */
+
+  const totalFuelSpend = fuelEntries.reduce((total, entry) => {
+
+    const cost = Number(entry.totalCost);
+
+    if (!cost) {
+      return total;
+    }
+
+    return total + cost;
+
+  }, 0);
+
+  const fuelCostPerMile =
+    totalWorkMiles > 0
+      ? totalFuelSpend / totalWorkMiles
+      : 0;
+
+  /* =========================================================
+     PAY_CALCULATIONS
+     ========================================================= */
+
+  const totalGrossPay = savedShifts.reduce((total, shift) => {
+    return total + Number(shift.grossPay || 0);
+  }, 0);
+
+
+  /* =========================================================
+     NET_PROFIT_CALCULATIONS
+     ========================================================= */
+
+  const netProfit = totalGrossPay - totalFuelSpend;
+
+  /* =========================================================
+     HOURS_WORKED_CALCULATIONS
+     ========================================================= */
+
+  const totalHoursWorked = savedShifts.reduce((total, shift) => {
+    return total + Number(shift.hoursWorked || 0);
+  }, 0);
+
+
+
+  /* =========================================================
+     REVENUE_PER_MILE
+     ========================================================= */
+
+  const revenuePerMile =
+    totalWorkMiles > 0
+      ? totalGrossPay / totalWorkMiles
+      : 0;
+
+  /* =========================================================
+     REAL_HOURLY_RATE
+     ========================================================= */
+
+  const realHourlyRate =
+    totalHoursWorked > 0
+      ? netProfit / totalHoursWorked
+      : 0;
+
+  /* =========================================================
+     DELIVERY_METRICS
+     ========================================================= */
+
+  const totalDeliveries = savedShifts.reduce((total, shift) => {
+    return total + Number(shift.deliveries || 0);
+  }, 0);
+
+  const netPerDelivery =
+    totalDeliveries > 0
+      ? netProfit / totalDeliveries
+      : 0;
+
+  /* =========================================================
+     MAIN_PAGE_RENDER
+     ========================================================= */
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+    <main className="min-h-screen bg-[#020814] text-white">
+
+      <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-4">
+
+        {/* =====================================================
+            HOME_HEADER
+            App title + notification button now handeled in layout.tsx
+           ===================================================== */}
+
+
+        {/* =====================================================
+            GREETING_SECTION
+           ===================================================== */}
+
+
+
+        {/* =====================================================
+            MAIN_METRIC_CARD
+            Main weekly overview card
+           ===================================================== */}
+
+        <section className="rounded-3xl border border-blue-500/30 bg-blue-950/30 p-6 shadow-[0_0_40px_rgba(59,130,246,0.15)]">
+
+          <p className="mb-3 text-sm font-semibold tracking-wide text-blue-400">
+            This Week
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+          {/* NET_PROFIT_DISPLAY */}
+
+          <p className="text-5xl font-bold">
+            ${netProfit.toFixed(2)}
+          </p>
+
+          <p className="mt-2 text-slate-400">
+            Net Profit
+          </p>
+
+          {/* MAIN_CARD_METRICS */}
+
+          <div className="mt-6 grid grid-cols-3 gap-4 border-t border-slate-700/60 pt-5 text-center">
+
+            <div>
+              <p className="text-lg font-semibold">0h 00m</p>
+              <p className="text-xs text-slate-400">Active Time</p>
+            </div>
+
+            <div>
+              <p className="text-lg font-semibold">{totalShifts}</p>
+              <p className="text-xs text-slate-400">Shifts</p>
+            </div>
+
+            <div>
+              <p className="text-lg font-semibold">
+                {totalWorkMiles} mi
+              </p>
+
+              <p className="text-xs text-slate-400">
+                Work Miles
+              </p>
+            </div>
+
+          </div>
+        </section>
+
+        {/* =====================================================
+            ACTIVE_SHIFT_CARD
+            Only shows if a shift is open
+           ===================================================== */}
+
+        {openShift && (
+
+          <section className="mt-5 rounded-3xl border border-emerald-500/20 bg-emerald-950/20 p-5">
+
+            <p className="text-sm font-semibold text-emerald-400">
+              Active Shift
+            </p>
+
+            <div className="mt-3 space-y-1 text-sm text-slate-300">
+
+              <p>Date: {openShift.date}</p>
+
+              <p>
+                Beginning Mileage: {openShift.beginningMileage}
+              </p>
+
+              <p>Status: {openShift.status}</p>
+
+              <p>Open Shifts: {activeShiftCount}</p>
+
+            </div>
+
+          </section>
+        )}
+
+        {/* =====================================================
+            SECONDARY_METRIC_CARDS
+           ===================================================== */}
+
+        <section className="mt-5 grid grid-cols-2 gap-4">
+
+          {/* HOURLY_RATE_CARD */}
+
+          <div className="rounded-3xl border border-emerald-400/20 bg-emerald-950/20 p-5">
+
+            <p className="text-xs font-semibold tracking-wide text-emerald-400">
+              Hourly Rate
+            </p>
+
+            <p className="mt-3 text-3xl font-bold">
+              ${realHourlyRate.toFixed(2)}/hr
+            </p>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Net / Active Hour
+            </p>
+
+          </div>
+
+          {/* DELIVERY_CARD */}
+
+          <div className="rounded-3xl border border-amber-400/20 bg-amber-950/20 p-5">
+
+            <p className="text-xs font-semibold tracking-wide text-amber-400">
+              Per Delivery
+            </p>
+
+            <p className="mt-3 text-3xl font-bold">
+              ${netPerDelivery.toFixed(2)}
+            </p>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Net / Delivery
+            </p>
+
+          </div>
+
+        </section>
+
+        {/* =====================================================
+            WEEK_AT_A_GLANCE
+            Detailed weekly metrics
+           ===================================================== */}
+
+        {/* KEEP YOUR EXISTING SECTION HERE */}
+
+        {/* =====================================================
+            SHIFT_BUTTONS
+            Main action buttons
+           ===================================================== */}
+
+        {/* KEEP YOUR EXISTING SECTION HERE */}
+
+        {/* =====================================================
+            INSIGHT_CARD
+            Future AI/business coaching section
+           ===================================================== */}
+
+        {/* KEEP YOUR EXISTING SECTION HERE */}
+
+      </div>
+
+      {/* =====================================================
+         HOME_ACTION_PANEL
+       ===================================================== */}
+      <section className="fixed bottom-20 left-0 right-0 z-40 mx-auto max-w-md px-5">
+        <div className="rounded-3xl border border-slate-700 bg-slate-950/95 p-3 shadow-2xl">
+          <button
+            onClick={() => router.push("/shifts")}
+            className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {activeShift ? "→ End Shift" : "→ Start Shift"}
+          </button>
         </div>
-      </main>
-    </div>
+      </section>
+
+    </main>
   );
 }

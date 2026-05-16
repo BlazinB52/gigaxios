@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loadShifts } from "@/app/lib/storage";
+import { supabase } from "@/app/lib/supabaseClient";
 
 import {
   FuelEntry,
@@ -27,7 +28,7 @@ export default function FuelPage() {
     setDate(today);
   }, []);
 
-  function handleSaveFuel() {
+  async function handleSaveFuel() {
     if (!date || !odometer || !gallons || !pricePerGallon) {
       alert("Date, odometer, gallons, and price per gallon are required.");
       return;
@@ -57,6 +58,14 @@ export default function FuelPage() {
 
     saveFuelEntries(updatedEntries);
     setFuelEntries(updatedEntries);
+
+    await supabase.from("fuel_entries").insert({
+      date: newEntry.date,
+      odometer: newEntry.odometer,
+      gallons: newEntry.gallons,
+      total_cost: newEntry.totalCost,
+      notes: newEntry.notes ?? null,
+    });
 
     alert("Fuel entry saved.");
     router.push("/");

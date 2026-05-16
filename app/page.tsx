@@ -21,11 +21,9 @@ import { useEffect, useState } from "react";
    STORAGE IMPORTS
    ========================================================= */
 
-import { loadShiftsFromSupabase } from "@/app/lib/storage";import { loadShifts } from "./lib/storage";
+import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "./lib/types";
-
-import { FuelEntry, loadFuelEntries } from "./lib/fuelStorage";
-
+import { FuelEntry, loadFuelEntriesFromSupabase } from "./lib/fuelStorage";
 import { PayEntry, loadPayEntries } from "@/app/lib/payStorage";
 
 /* =========================================================
@@ -62,15 +60,19 @@ export default function Home() {
 
   useEffect(() => {
 
-   async function loadCloudShifts() {
-  const shifts = await loadShiftsFromSupabase();
-  setSavedShifts(shifts);
-}
+    async function loadCloudShifts() {
+      const shifts = await loadShiftsFromSupabase();
+      setSavedShifts(shifts);
+    }
 
-loadCloudShifts();
+    loadCloudShifts();
 
-    const fuel = loadFuelEntries();
-    setFuelEntries(fuel);
+    async function loadCloudFuel() {
+      const fuel = await loadFuelEntriesFromSupabase();
+      setFuelEntries(fuel);
+    }
+
+    loadCloudFuel();
 
     const loadedPayEntries = loadPayEntries();
     setPayEntries(loadedPayEntries);

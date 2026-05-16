@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ActiveShiftCard from "@/app/components/ActiveShiftCard";
 import { SavedShift } from "@/app/lib/types";
-import { loadShifts, saveShifts } from "@/app/lib/storage";
+import { loadShiftsFromSupabase, saveShifts } from "@/app/lib/storage";
 import { supabase } from "@/app/lib/supabaseClient";
 
 
@@ -23,10 +23,14 @@ export default function ShiftsPage() {
     const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
     const router = useRouter();
 
-    useEffect(() => {
-        const shifts = loadShifts();
-        setSavedShifts(shifts);
-    }, []);
+ useEffect(() => {
+  async function loadCloudShifts() {
+    const shifts = await loadShiftsFromSupabase();
+    setSavedShifts(shifts);
+  }
+
+  loadCloudShifts();
+}, []);
 
     const activeShift = savedShifts.find((shift) => shift.status === "open");
 
@@ -36,7 +40,7 @@ export default function ShiftsPage() {
             return;
         }
 
-        const existingShifts = loadShifts();
+        const existingShifts = await loadShiftsFromSupabase();
 
         const openShiftExists = existingShifts.some(
             (shift) => shift.status === "open"

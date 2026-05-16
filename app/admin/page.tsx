@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+
 const GIGAXIOS_KEYS = [
     "savedShifts",
     "gigaxios-fuel",
@@ -103,7 +104,7 @@ export default function AdminPage() {
                 </div>
 
                 <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg">
-                    <h2 className="text-lg font-semibold">Backup</h2>
+                    <h2 className="text-lg font-semibold">Backup & Export</h2>
                     <p className="mt-2 text-sm text-slate-400">
                         Export a backup file of your saved GigAxios data only.
                     </p>
@@ -112,7 +113,7 @@ export default function AdminPage() {
                         onClick={handleExportBackup}
                         className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white hover:bg-blue-400"
                     >
-                        Export Backup
+                        Export Records / Backup
                     </button>
                 </section>
 

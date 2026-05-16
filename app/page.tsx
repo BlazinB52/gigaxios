@@ -158,6 +158,8 @@ export default function Home() {
     return total + Number(shift.hoursWorked || 0);
   }, 0);
 
+  const activeHours = Math.floor(totalHoursWorked);
+  const activeMinutes = Math.round((totalHoursWorked - activeHours) * 60);
 
 
   /* =========================================================
@@ -239,7 +241,9 @@ export default function Home() {
           <div className="mt-6 grid grid-cols-3 gap-4 border-t border-slate-700/60 pt-5 text-center">
 
             <div>
-              <p className="text-lg font-semibold">0h 00m</p>
+              <p className="text-lg font-semibold">
+                {activeHours}h {activeMinutes.toString().padStart(2, "0")}m
+              </p>
               <p className="text-xs text-slate-400">Active Time</p>
             </div>
 

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import BottomNav from "@/app/components/BottomNav";
 import { SavedShift } from "@/app/lib/types";
 import { loadShifts, saveShifts } from "@/app/lib/storage";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/app/lib/supabaseClient";
 
 export default function RecordsPage() {
     const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
@@ -44,7 +44,7 @@ export default function RecordsPage() {
         };
     });
 
-const router = useRouter();
+    const router = useRouter();
 
 
     useEffect(() => {
@@ -54,8 +54,7 @@ const router = useRouter();
     const shiftsForSelectedDate = savedShifts.filter(
         (shift) => shift.date === selectedDate
     );
-
-    function handleDeleteShift(id: string) {
+    async function handleDeleteShift(id: string) {
         const confirmed = confirm("Delete this shift?");
         if (!confirmed) return;
 
@@ -63,6 +62,11 @@ const router = useRouter();
 
         saveShifts(updatedShifts);
         setSavedShifts(updatedShifts);
+
+        await supabase
+            .from("shifts")
+            .delete()
+            .eq("id", id);
     }
 
     return (
@@ -298,7 +302,7 @@ const router = useRouter();
                                                     saveShifts(updatedShifts);
                                                     setSavedShifts(updatedShifts);
                                                     setEditingShiftId(null);
-router.push("/");
+                                                    router.push("/");
                                                 }
                                             }}
                                             className="w-full rounded-xl bg-emerald-500 p-3 font-bold text-white"

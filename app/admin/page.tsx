@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
+import { supabase } from "../lib/supabaseClient";
 
 const GIGAXIOS_KEYS = [
     "savedShifts",
@@ -16,10 +16,28 @@ export default function AdminPage() {
     const [fuelEntries, setFuelEntries] = useState<any[]>([]);
     const [payEntries, setPayEntries] = useState<any[]>([]);
 
+    const [supabaseStatus, setSupabaseStatus] = useState("Checking Supabase...");
+
     useEffect(() => {
+
+        async function checkSupabase() {
+            const { error } = await supabase.from("shifts").select("id").limit(1);
+
+            if (error) {
+                setSupabaseStatus(`Supabase error: ${error.message}`);
+                return;
+            }
+
+            setSupabaseStatus("Supabase connected successfully.");
+        }
+
+        checkSupabase();
+
+
         const shifts = JSON.parse(localStorage.getItem("savedShifts") || "[]");
         const fuel = JSON.parse(localStorage.getItem("gigaxios-fuel") || "[]");
         const pay = JSON.parse(localStorage.getItem("gigaxios-pay") || "[]");
+
 
         setSavedShifts(shifts);
         setFuelEntries(fuel);
@@ -96,8 +114,13 @@ export default function AdminPage() {
     }
 
     return (
-        <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
-            <div className="mx-auto max-w-md space-y-6">
+
+  <main className="min-h-screen bg-slate-950 p-4 text-white">
+    <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-4 text-sm text-emerald-200">
+      {supabaseStatus}
+    </div>
+
+    <div className="mx-auto max-w-md space-y-6">
                 <div>
                     <p className="text-sm text-slate-400">GigAxios maintenance</p>
                     <h1 className="text-2xl font-bold">Admin</h1>
@@ -131,7 +154,7 @@ export default function AdminPage() {
                     </button>
                 </section>
 
-{/* Saved Shift Section */}
+                {/* Saved Shift Section */}
 
                 <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg">
                     <h2 className="text-lg font-semibold">Saved Shifts</h2>
@@ -202,7 +225,7 @@ export default function AdminPage() {
                     </div>
                 </section>
 
-{/* End Saved Shift Section */}
+                {/* End Saved Shift Section */}
 
                 <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg">
                     <h2 className="text-lg font-semibold">Pay Entries</h2>

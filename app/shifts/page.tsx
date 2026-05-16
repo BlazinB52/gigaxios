@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import ActiveShiftCard from "@/app/components/ActiveShiftCard";
 import { SavedShift } from "@/app/lib/types";
 import { loadShifts, saveShifts } from "@/app/lib/storage";
+import { supabase } from "@/app/lib/supabaseClient";
+
 
 export default function ShiftsPage() {
     const [platform, setPlatform] = useState("GoPuff");
@@ -28,7 +30,7 @@ export default function ShiftsPage() {
 
     const activeShift = savedShifts.find((shift) => shift.status === "open");
 
-    function handleStartShift() {
+    async function handleStartShift() {
         if (!shiftDate || !beginningMileage) {
             alert("Enter a date and beginning mileage.");
             return;
@@ -75,10 +77,25 @@ export default function ShiftsPage() {
         setShiftDate("");
         setBeginningMileage("");
 
+        await supabase.from("shifts").insert({
+            date: newShift.date,
+            platform: newShift.platform ?? null,
+            beginning_mileage: newShift.beginningMileage,
+            ending_mileage: newShift.endingMileage,
+            deliveries: newShift.deliveries ?? null,
+            hours_worked: newShift.hoursWorked ?? null,
+            base_pay: newShift.basePay ?? null,
+            tips: newShift.tips ?? null,
+            other_pay: newShift.otherPay ?? null,
+            gross_pay: newShift.grossPay ?? null,
+            status: newShift.status,
+            notes: null,
+        });
+
         router.push("/");
     }
 
-    function handleEndShift() {
+    async function handleEndShift() {
         if (!activeShift) return;
 
         if (!endingMileage) {
@@ -116,6 +133,21 @@ export default function ShiftsPage() {
         setBasePay("");
         setTips("");
         setOtherPay("");
+
+        await supabase
+            .from("shifts")
+            .update({
+                ending_mileage: endingMileage,
+                deliveries,
+                hours_worked: hoursWorked,
+                base_pay: basePay,
+                tips,
+                other_pay: otherPay,
+                gross_pay: calculatedGrossPay.toFixed(2),
+                status: "closed",
+            })
+            .eq("beginning_mileage", activeShift.beginningMileage)
+            .eq("date", activeShift.date);
 
         router.push("/");
     }

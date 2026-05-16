@@ -16,11 +16,12 @@ import { useRouter } from "next/navigation";
 
 import { useEffect, useState } from "react";
 
+
 /* =========================================================
    STORAGE IMPORTS
    ========================================================= */
 
-import { loadShifts } from "./lib/storage";
+import { loadShiftsFromSupabase } from "@/app/lib/storage";import { loadShifts } from "./lib/storage";
 import { SavedShift } from "./lib/types";
 
 import { FuelEntry, loadFuelEntries } from "./lib/fuelStorage";
@@ -61,8 +62,12 @@ export default function Home() {
 
   useEffect(() => {
 
-    const shifts = loadShifts();
-    setSavedShifts(shifts);
+   async function loadCloudShifts() {
+  const shifts = await loadShiftsFromSupabase();
+  setSavedShifts(shifts);
+}
+
+loadCloudShifts();
 
     const fuel = loadFuelEntries();
     setFuelEntries(fuel);

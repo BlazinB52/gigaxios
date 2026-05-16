@@ -23,14 +23,14 @@ export default function ShiftsPage() {
     const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
     const router = useRouter();
 
- useEffect(() => {
-  async function loadCloudShifts() {
-    const shifts = await loadShiftsFromSupabase();
-    setSavedShifts(shifts);
-  }
+    useEffect(() => {
+        async function loadCloudShifts() {
+            const shifts = await loadShiftsFromSupabase();
+            setSavedShifts(shifts);
+        }
 
-  loadCloudShifts();
-}, []);
+        loadCloudShifts();
+    }, []);
 
     const activeShift = savedShifts.find((shift) => shift.status === "open");
 
@@ -82,6 +82,7 @@ export default function ShiftsPage() {
         setBeginningMileage("");
 
         await supabase.from("shifts").insert({
+            id: newShift.id,
             date: newShift.date,
             platform: newShift.platform ?? null,
             beginning_mileage: newShift.beginningMileage,
@@ -95,7 +96,6 @@ export default function ShiftsPage() {
             status: newShift.status,
             notes: null,
         });
-
         router.push("/");
     }
 

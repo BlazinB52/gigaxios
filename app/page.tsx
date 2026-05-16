@@ -155,7 +155,10 @@ export default function Home() {
      NET_PROFIT_CALCULATIONS
      ========================================================= */
 
-  const netProfit = totalGrossPay - totalFuelSpend;
+  const workFuelCost =
+  totalWorkMiles > 0 ? totalWorkMiles * fuelCostPerMile : 0;
+
+const netProfit = totalGrossPay - workFuelCost;
 
   /* =========================================================
      HOURS_WORKED_CALCULATIONS

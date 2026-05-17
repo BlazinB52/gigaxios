@@ -1,20 +1,46 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import BottomNav from "@/app/components/BottomNav";
+import { useRouter } from "next/navigation";
 import { SavedShift } from "@/app/lib/types";
-import { loadShifts } from "@/app/lib/storage";
-import { FuelEntry, loadFuelEntries } from "@/app/lib/fuelStorage";
-
+import { FuelEntry } from "@/app/lib/fuelStorage";
+import { supabase } from "@/app/lib/supabaseClient";
+import { loadShiftsFromSupabase } from "@/app/lib/storage";
+import { loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
 
 export default function MetricsPage() {
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
+  const [isAllowed, setIsAllowed] = useState(false);
+
+  const router = useRouter();
 
   useEffect(() => {
-    setSavedShifts(loadShifts());
-    setFuelEntries(loadFuelEntries());
-  }, []);
+    async function loadCloudMetrics() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const shifts = await loadShiftsFromSupabase(user.id);
+      const fuel = await loadFuelEntriesFromSupabase(user.id);
+
+      setSavedShifts(shifts);
+      setFuelEntries(fuel);
+      setIsAllowed(true);
+    }
+
+    loadCloudMetrics();
+  }, [router]);
+
+  if (!isAllowed) {
+    return null;
+  }
+
   return (
     <main className="min-h-screen bg-[#020814] p-8 text-white">
       <h1 className="text-4xl font-bold">Metrics</h1>
@@ -28,9 +54,6 @@ export default function MetricsPage() {
         Fuel records loaded: {fuelEntries.length}
       </p>
 
-      {/* =========================================================
-     Metrics
-     ========================================================= */}
       <section className="mt-8 grid grid-cols-2 gap-3">
         <MetricCard
           label="Deliveries"
@@ -102,20 +125,12 @@ export default function MetricsPage() {
               : "0.00";
           })()}`}
         />
-
       </section>
     </main>
   );
-
 }
 
-function MetricCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
       <p className="text-xs text-slate-400">{label}</p>

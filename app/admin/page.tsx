@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
+
+import { supabase } from "../lib/supabaseClient";
+import { SavedShift } from "@/app/lib/types";
+import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import { PayEntry, loadPayEntriesFromSupabase } from "@/app/lib/payStorage";
+import { loadShiftsFromSupabase } from "@/app/lib/storage";
 
 const GIGAXIOS_KEYS = [
     "savedShifts",
@@ -33,19 +38,19 @@ export default function AdminPage() {
             const { data: shifts, error: shiftsError } = await supabase
                 .from("shifts")
                 .select("*")
-                .eq("userId", user.id)
+                .eq("user_id", user.id)
                 .order("date", { ascending: false });
 
             const { data: fuel, error: fuelError } = await supabase
                 .from("fuel_entries")
                 .select("*")
-                .eq("userId", user.id)
+                .eq("user_id", user.id)
                 .order("date", { ascending: false });
 
             const { data: pay, error: payError } = await supabase
                 .from("pay_entries")
                 .select("*")
-                .eq("userId", user.id)
+                .eq("user_id", user.id)
                 .order("date", { ascending: false });
 
             if (shiftsError || fuelError || payError) {
@@ -64,17 +69,29 @@ export default function AdminPage() {
     }, [router]);
 
     async function handleExportBackup() {
+        const {
+            data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+            router.push("/login");
+            return;
+        }
+
         const { data: shifts, error: shiftsError } = await supabase
             .from("shifts")
-            .select("*");
+            .select("*")
+            .eq("user_id", user.id);
 
         const { data: fuelEntries, error: fuelError } = await supabase
             .from("fuel_entries")
-            .select("*");
+            .select("*")
+            .eq("user_id", user.id);
 
         const { data: payEntries, error: payError } = await supabase
             .from("pay_entries")
-            .select("*");
+            .select("*")
+            .eq("user_id", user.id);
 
         if (shiftsError || fuelError || payError) {
             alert("Could not export Supabase backup. Check console for details.");
@@ -85,20 +102,11 @@ export default function AdminPage() {
         const backup = {
             exportedAt: new Date().toISOString(),
             source: "supabase",
+            user_id: user.id,
             shifts: shifts ?? [],
             fuel_entries: fuelEntries ?? [],
             pay_entries: payEntries ?? [],
         };
-
-        const hasData =
-            backup.shifts.length > 0 ||
-            backup.fuel_entries.length > 0 ||
-            backup.pay_entries.length > 0;
-
-        if (!hasData) {
-            alert("No GigAxios Supabase data found to export yet.");
-            return;
-        }
 
         const backupFile = new Blob([JSON.stringify(backup, null, 2)], {
             type: "application/json",
@@ -135,17 +143,27 @@ export default function AdminPage() {
         window.location.reload();
     }
 
-    function handleDeletePayEntry(payId: string) {
+    async function handleDeletePayEntry(payId: string) {
         const confirmed = window.confirm(
             "Delete this pay entry? This cannot be undone."
         );
 
         if (!confirmed) return;
 
-        const updatedPayEntries = payEntries.filter((entry) => entry.id !== payId);
+        const { error } = await supabase
+            .from("pay_entries")
+            .delete()
+            .eq("id", payId);
 
-        localStorage.setItem("gigaxios-pay", JSON.stringify(updatedPayEntries));
-        setPayEntries(updatedPayEntries);
+        if (error) {
+            alert("Could not delete pay entry. Check console.");
+            console.error(error);
+            return;
+        }
+
+        setPayEntries((currentEntries) =>
+            currentEntries.filter((entry) => entry.id !== payId)
+        );
 
         alert("Pay entry deleted.");
     }

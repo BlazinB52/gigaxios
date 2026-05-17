@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SavedShift } from "@/app/lib/types";
-import { loadShiftsFromSupabase } from "@/app/lib/supabaseStorage";
+import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 

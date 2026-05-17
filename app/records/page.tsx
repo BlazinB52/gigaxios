@@ -80,29 +80,34 @@ export default function RecordsPage() {
             .eq("id", id);
     }
     async function handleUpdateShift(updatedShift: SavedShift) {
+        const { error } = await supabase
+            .from("shifts")
+            .update({
+                platform: updatedShift.platform,
+                beginning_mileage: updatedShift.beginningMileage,
+                ending_mileage: updatedShift.endingMileage,
+                deliveries: updatedShift.deliveries,
+                hours_worked: updatedShift.hoursWorked,
+                base_pay: updatedShift.basePay,
+                tips: updatedShift.tips,
+                other_pay: updatedShift.otherPay,
+                gross_pay: updatedShift.grossPay,
+                status: updatedShift.status,
+            })
+            .eq("id", updatedShift.id);
+
+        if (error) {
+            console.error("Supabase shift update error:", error.message);
+            alert(error.message);
+            return;
+        }
+
         const updatedShifts = savedShifts.map((shift) =>
             shift.id === updatedShift.id ? updatedShift : shift
         );
 
-
         setSavedShifts(updatedShifts);
         setEditingShiftId(null);
-
-        await supabase
-            .from("shifts")
-            .update({
-                platform: updatedShift.platform,
-                beginningMileage: updatedShift.beginningMileage,
-                endingMileage: updatedShift.endingMileage,
-                deliveries: updatedShift.deliveries,
-                hoursWorked: updatedShift.hoursWorked,
-                basePay: updatedShift.basePay,
-                tips: updatedShift.tips,
-                otherPay: updatedShift.otherPay,
-                grossPay: updatedShift.grossPay,
-                status: updatedShift.status,
-            })
-            .eq("id", updatedShift.id);
     }
     return (
         <main className="min-h-screen bg-[#020814] text-white">

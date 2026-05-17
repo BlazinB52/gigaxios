@@ -204,57 +204,20 @@ export default function AdminPage() {
                                 key={shift.id}
                                 className="rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm"
                             >
-                                {(() => {
-                                    const payForShift = payEntries.find(
-                                        (entry) => entry.date === shift.date
-                                    );
+                                <p>Date: {shift.date}</p>
+                                <p>Status: {shift.status}</p>
+                                <p>Beginning: {shift.beginningMileage}</p>
+                                <p>Ending: {shift.endingMileage || "-"}</p>
 
-                                    return (
-                                        <>
-                                            <p>Date: {shift.date}</p>
-                                            <p>Status: {shift.status}</p>
-                                            <p>Beginning: {shift.beginningMileage}</p>
-                                            <p>Ending: {shift.endingMileage || "-"}</p>
-
-                                            <div className="mt-3 border-t border-slate-700 pt-3">
-                                                <p>
-                                                    Deliveries:{" "}
-                                                    {payForShift?.deliveries || "Not entered"}
-                                                </p>
-
-                                                <p>
-                                                    Base Pay:{" "}
-                                                    {payForShift?.basePay
-                                                        ? `$${payForShift.basePay}`
-                                                        : "Not entered"}
-                                                </p>
-
-                                                <p>
-                                                    Tips:{" "}
-                                                    {payForShift?.tips
-                                                        ? `$${payForShift.tips}`
-                                                        : "Not entered"}
-                                                </p>
-
-                                                <p>
-                                                    Total:{" "}
-                                                    {payForShift?.grossPay
-                                                        ? `$${payForShift.grossPay}`
-                                                        : "Not entered"}
-                                                </p>
-
-                                                {payForShift && (
-                                                    <button
-                                                        onClick={() => handleDeletePayEntry(payForShift.id)}
-                                                        className="mt-3 w-full rounded-xl bg-red-600 p-2 text-sm font-bold text-white"
-                                                    >
-                                                        Delete Pay Entry
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </>
-                                    );
-                                })()}
+                                <div className="mt-3 border-t border-slate-700 pt-3">
+                                    <p>Platform: {shift.platform || "Not entered"}</p>
+                                    <p>Deliveries: {shift.deliveries || "Not entered"}</p>
+                                    <p>Hours: {shift.hoursWorked || "Not entered"}</p>
+                                    <p>Base Pay: {shift.basePay ? `$${shift.basePay}` : "Not entered"}</p>
+                                    <p>Tips: {shift.tips ? `$${shift.tips}` : "Not entered"}</p>
+                                    <p>Other Pay: {shift.otherPay ? `$${shift.otherPay}` : "Not entered"}</p>
+                                    <p>Total: {shift.grossPay ? `$${shift.grossPay}` : "Not entered"}</p>
+                                </div>
                             </div>
                         ))}
                     </div>

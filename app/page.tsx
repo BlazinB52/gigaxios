@@ -22,7 +22,7 @@ import { useEffect, useState } from "react";
    STORAGE IMPORTS
    ========================================================= */
 
-import { loadShiftsFromSupabase } from "@/app/lib/storage";
+import { loadShifts, loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "./lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "./lib/fuelStorage";
 import { PayEntry, loadPayEntries } from "@/app/lib/payStorage";
@@ -66,7 +66,11 @@ export default function Home() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return;
+  if (!user) {
+  const localShifts = loadShifts();
+  setSavedShifts(localShifts);
+  return;
+}
 
   const shifts = await loadShiftsFromSupabase(user.id);
   setSavedShifts(shifts);

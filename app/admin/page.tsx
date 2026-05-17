@@ -44,44 +44,62 @@ export default function AdminPage() {
         setPayEntries(pay);
     }, []);
 
-    function handleExportBackup() {
-        const backup: Record<string, unknown> = {};
+ async function handleExportBackup() {
+  const { data: shifts, error: shiftsError } = await supabase
+    .from("shifts")
+    .select("*");
 
-        GIGAXIOS_KEYS.forEach((key) => {
-            const value = localStorage.getItem(key);
+  const { data: fuelEntries, error: fuelError } = await supabase
+    .from("fuel_entries")
+    .select("*");
 
-            if (!value) return;
+  const { data: payEntries, error: payError } = await supabase
+    .from("pay_entries")
+    .select("*");
 
-            try {
-                backup[key] = JSON.parse(value);
-            } catch {
-                backup[key] = value;
-            }
-        });
+  if (shiftsError || fuelError || payError) {
+    alert("Could not export Supabase backup. Check console for details.");
+    console.error({ shiftsError, fuelError, payError });
+    return;
+  }
 
-        if (Object.keys(backup).length === 0) {
-            alert("No GigAxios data found to export yet.");
-            return;
-        }
+  const backup = {
+    exportedAt: new Date().toISOString(),
+    source: "supabase",
+    shifts: shifts ?? [],
+    fuel_entries: fuelEntries ?? [],
+    pay_entries: payEntries ?? [],
+  };
 
-        const backupFile = new Blob([JSON.stringify(backup, null, 2)], {
-            type: "application/json",
-        });
+  const hasData =
+    backup.shifts.length > 0 ||
+    backup.fuel_entries.length > 0 ||
+    backup.pay_entries.length > 0;
 
-        const downloadUrl = URL.createObjectURL(backupFile);
-        const link = document.createElement("a");
+  if (!hasData) {
+    alert("No GigAxios Supabase data found to export yet.");
+    return;
+  }
 
-        link.href = downloadUrl;
-        link.download = `gigaxios-backup-${new Date()
-            .toISOString()
-            .slice(0, 10)}.json`;
+  const backupFile = new Blob([JSON.stringify(backup, null, 2)], {
+    type: "application/json",
+  });
 
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+  const downloadUrl = URL.createObjectURL(backupFile);
+  const link = document.createElement("a");
 
-        URL.revokeObjectURL(downloadUrl);
-    }
+  link.href = downloadUrl;
+  link.download = `gigaxios-supabase-backup-${new Date()
+    .toISOString()
+    .slice(0, 10)}.json`;
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(downloadUrl);
+}
+
 
     function handlePurgeData() {
         const confirmed = window.confirm(

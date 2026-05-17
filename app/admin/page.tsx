@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 const GIGAXIOS_KEYS = [
     "savedShifts",
@@ -15,90 +16,108 @@ export default function AdminPage() {
     const [savedShifts, setSavedShifts] = useState<any[]>([]);
     const [fuelEntries, setFuelEntries] = useState<any[]>([]);
     const [payEntries, setPayEntries] = useState<any[]>([]);
-
     const [supabaseStatus, setSupabaseStatus] = useState("Checking Supabase...");
+    const router = useRouter();
 
     useEffect(() => {
+        async function loadAdminData() {
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
 
-        async function checkSupabase() {
-            const { error } = await supabase.from("shifts").select("id").limit(1);
-
-            if (error) {
-                setSupabaseStatus(`Supabase error: ${error.message}`);
+            if (!user) {
+                router.push("/login");
                 return;
             }
 
+            const { data: shifts, error: shiftsError } = await supabase
+                .from("shifts")
+                .select("*")
+                .eq("userId", user.id)
+                .order("date", { ascending: false });
+
+            const { data: fuel, error: fuelError } = await supabase
+                .from("fuel_entries")
+                .select("*")
+                .eq("userId", user.id)
+                .order("date", { ascending: false });
+
+            const { data: pay, error: payError } = await supabase
+                .from("pay_entries")
+                .select("*")
+                .eq("userId", user.id)
+                .order("date", { ascending: false });
+
+            if (shiftsError || fuelError || payError) {
+                setSupabaseStatus("Supabase error. Check console.");
+                console.error({ shiftsError, fuelError, payError });
+                return;
+            }
+
+            setSavedShifts(shifts || []);
+            setFuelEntries(fuel || []);
+            setPayEntries(pay || []);
             setSupabaseStatus("Supabase connected successfully.");
         }
 
-        checkSupabase();
+        loadAdminData();
+    }, [router]);
 
+    async function handleExportBackup() {
+        const { data: shifts, error: shiftsError } = await supabase
+            .from("shifts")
+            .select("*");
 
-        const shifts = JSON.parse(localStorage.getItem("savedShifts") || "[]");
-        const fuel = JSON.parse(localStorage.getItem("gigaxios-fuel") || "[]");
-        const pay = JSON.parse(localStorage.getItem("gigaxios-pay") || "[]");
+        const { data: fuelEntries, error: fuelError } = await supabase
+            .from("fuel_entries")
+            .select("*");
 
+        const { data: payEntries, error: payError } = await supabase
+            .from("pay_entries")
+            .select("*");
 
-        setSavedShifts(shifts);
-        setFuelEntries(fuel);
-        setPayEntries(pay);
-    }, []);
+        if (shiftsError || fuelError || payError) {
+            alert("Could not export Supabase backup. Check console for details.");
+            console.error({ shiftsError, fuelError, payError });
+            return;
+        }
 
- async function handleExportBackup() {
-  const { data: shifts, error: shiftsError } = await supabase
-    .from("shifts")
-    .select("*");
+        const backup = {
+            exportedAt: new Date().toISOString(),
+            source: "supabase",
+            shifts: shifts ?? [],
+            fuel_entries: fuelEntries ?? [],
+            pay_entries: payEntries ?? [],
+        };
 
-  const { data: fuelEntries, error: fuelError } = await supabase
-    .from("fuel_entries")
-    .select("*");
+        const hasData =
+            backup.shifts.length > 0 ||
+            backup.fuel_entries.length > 0 ||
+            backup.pay_entries.length > 0;
 
-  const { data: payEntries, error: payError } = await supabase
-    .from("pay_entries")
-    .select("*");
+        if (!hasData) {
+            alert("No GigAxios Supabase data found to export yet.");
+            return;
+        }
 
-  if (shiftsError || fuelError || payError) {
-    alert("Could not export Supabase backup. Check console for details.");
-    console.error({ shiftsError, fuelError, payError });
-    return;
-  }
+        const backupFile = new Blob([JSON.stringify(backup, null, 2)], {
+            type: "application/json",
+        });
 
-  const backup = {
-    exportedAt: new Date().toISOString(),
-    source: "supabase",
-    shifts: shifts ?? [],
-    fuel_entries: fuelEntries ?? [],
-    pay_entries: payEntries ?? [],
-  };
+        const downloadUrl = URL.createObjectURL(backupFile);
+        const link = document.createElement("a");
 
-  const hasData =
-    backup.shifts.length > 0 ||
-    backup.fuel_entries.length > 0 ||
-    backup.pay_entries.length > 0;
+        link.href = downloadUrl;
+        link.download = `gigaxios-supabase-backup-${new Date()
+            .toISOString()
+            .slice(0, 10)}.json`;
 
-  if (!hasData) {
-    alert("No GigAxios Supabase data found to export yet.");
-    return;
-  }
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
 
-  const backupFile = new Blob([JSON.stringify(backup, null, 2)], {
-    type: "application/json",
-  });
-
-  const downloadUrl = URL.createObjectURL(backupFile);
-  const link = document.createElement("a");
-
-  link.href = downloadUrl;
-  link.download = `gigaxios-supabase-backup-${new Date()
-    .toISOString()
-    .slice(0, 10)}.json`;
-
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(downloadUrl);
-}
+        URL.revokeObjectURL(downloadUrl);
+    }
 
 
     function handlePurgeData() {
@@ -133,12 +152,12 @@ export default function AdminPage() {
 
     return (
 
-  <main className="min-h-screen bg-slate-950 p-4 text-white">
-    <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-4 text-sm text-emerald-200">
-      {supabaseStatus}
-    </div>
+        <main className="min-h-screen bg-slate-950 p-4 text-white">
+            <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-4 text-sm text-emerald-200">
+                {supabaseStatus}
+            </div>
 
-    <div className="mx-auto max-w-md space-y-6">
+            <div className="mx-auto max-w-md space-y-6">
                 <div>
                     <p className="text-sm text-slate-400">GigAxios maintenance</p>
                     <h1 className="text-2xl font-bold">Admin</h1>

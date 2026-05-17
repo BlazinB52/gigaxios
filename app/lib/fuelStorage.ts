@@ -43,10 +43,11 @@ export function saveFuelEntries(entries: FuelEntry[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
 }
 
-export async function loadFuelEntriesFromSupabase() {
+export async function loadFuelEntriesFromSupabase(userId: string) {
   const { data, error } = await supabase
     .from("fuel_entries")
     .select("*")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
   if (error) {

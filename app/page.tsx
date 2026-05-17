@@ -22,9 +22,9 @@ import { useEffect, useState } from "react";
    STORAGE IMPORTS
    ========================================================= */
 
-import { loadShifts, loadShiftsFromSupabase } from "@/app/lib/storage";
+import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "./lib/types";
-import { FuelEntry, loadFuelEntriesFromSupabase } from "./lib/fuelStorage";
+import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
 import { PayEntry, loadPayEntries } from "@/app/lib/payStorage";
 
 /* =========================================================
@@ -67,19 +67,27 @@ export default function Home() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        const localShifts = loadShifts();
-        setSavedShifts(localShifts);
+        router.push("/login");
         return;
       }
 
-      const shifts = await loadShiftsFromSupabase(user?.id);
+      const shifts = await loadShiftsFromSupabase(user.id);
       setSavedShifts(shifts);
     }
 
     loadCloudShifts();
 
     async function loadCloudFuel() {
-      const fuel = await loadFuelEntriesFromSupabase();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const fuel = await loadFuelEntriesFromSupabase(user.id);
       setFuelEntries(fuel);
     }
 
@@ -88,7 +96,7 @@ export default function Home() {
     const loadedPayEntries = loadPayEntries();
     setPayEntries(loadedPayEntries);
 
-  }, []);
+  }, [router]);
 
   /* =========================================================
      ACTIVE_SHIFT_LOOKUP

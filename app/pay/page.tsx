@@ -1,19 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { supabase } from "@/app/lib/supabaseClient";
 import { useEffect, useState } from "react";
 import BottomNav from "@/app/components/BottomNav";
 import {
   PayEntry,
-  loadPayEntries,
-  savePayEntries,
+  loadPayEntriesFromSupabase,
+  savePayEntryToSupabase,
 } from "@/app/lib/payStorage";
 import { SavedShift } from "@/app/lib/types";
-import { loadShifts, saveShifts } from "@/app/lib/storage";
+import { loadShiftsFromSupabase } from "@/app/lib/storage";
 
 
 export default function PayPage() {
-  const router = useRouter();
 
   const [date, setDate] = useState("");
   const [platform, setPlatform] = useState("GoPuff");
@@ -25,23 +25,44 @@ export default function PayPage() {
   const [notes, setNotes] = useState("");
   const [payEntries, setPayEntries] = useState<PayEntry[]>([]);
   const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
-
+  const router = useRouter();
 
   /* This gives the Pay page access to completed shift records */
 
   useEffect(() => {
-    const entries = loadPayEntries();
-    setPayEntries(entries);
+    async function loadCloudData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    const shifts = loadShifts();
-    setSavedShifts(shifts);
-  }, []);
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const entries = await loadPayEntriesFromSupabase(user.id);
+      setPayEntries(entries);
+
+      const shifts = await loadShiftsFromSupabase(user.id);
+      setSavedShifts(shifts);
+    }
+
+    loadCloudData();
+  }, [router]);
 
 
 
-  function handleSavePay() {
+  async function handleSavePay() {
     if (!date) {
       alert("Enter a date.");
+      return;
+    }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push("/login");
       return;
     }
 
@@ -50,6 +71,7 @@ export default function PayPage() {
 
     const newEntry: PayEntry = {
       id: crypto.randomUUID(),
+      userId: user.id,
       date,
       platform,
       deliveries,
@@ -95,11 +117,26 @@ export default function PayPage() {
 
       return shift;
     });
-    
-    savePayEntries(updatedEntries);
-    saveShifts(updatedShifts);
-    setSavedShifts(updatedShifts);
-    setPayEntries(updatedEntries);
+
+  await savePayEntryToSupabase(newEntry);
+
+if (matchingShift) {
+  await supabase
+    .from("shifts")
+    .update({
+      platform,
+      deliveries,
+      hours_worked: hours,
+      base_pay: basePay,
+      tips,
+      other_pay: adjustments,
+      gross_pay: calculatedGrossPay.toFixed(2),
+    })
+    .eq("id", matchingShift.id);
+}
+
+setSavedShifts(updatedShifts);
+setPayEntries(updatedEntries);
 
     router.push("/");
   }

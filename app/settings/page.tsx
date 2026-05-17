@@ -1,6 +1,27 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
+import { supabase } from "@/app/lib/supabaseClient";
 
 export default function SettingsPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    async function checkUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+      }
+    }
+
+    checkUser();
+  }, [router]);
+
   return (
     <main className="min-h-screen bg-[#020814] text-white">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">

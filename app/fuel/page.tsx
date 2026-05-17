@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { loadShifts } from "@/app/lib/storage";
 import { supabase } from "@/app/lib/supabaseClient";
 
 import {
@@ -22,25 +21,30 @@ export default function FuelPage() {
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
+    async function checkUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+    }
+
+    checkUser();
+
     setFuelEntries(loadFuelEntries());
 
     const today = new Date().toISOString().slice(0, 10);
     setDate(today);
-  }, []);
+  }, [router]);
 
   async function handleSaveFuel() {
     if (!date || !odometer || !gallons || !pricePerGallon) {
       alert("Date, odometer, gallons, and price per gallon are required.");
       return;
     }
-
-    const shifts = loadShifts();
-
-    const closedShifts = shifts.filter(
-      (shift) => shift.status === "closed" && shift.endingMileage
-    );
-
-
 
     const calculatedTotalCost = Number(gallons) * Number(pricePerGallon);
 

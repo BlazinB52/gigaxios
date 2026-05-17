@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SavedShift } from "@/app/lib/types";
-import { loadShifts, saveShifts } from "@/app/lib/storage";
+import { loadShiftsFromSupabase } from "@/app/lib/supabaseStorage";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 
@@ -14,7 +14,6 @@ export default function RecordsPage() {
     const [editPlatform, setEditPlatform] = useState("");
     const baseDate = new Date("2026-05-11");
 
-    const [editDate, setEditDate] = useState("");
     const [editBeginningMileage, setEditBeginningMileage] = useState("");
     const [editEndingMileage, setEditEndingMileage] = useState("");
     const [editDeliveries, setEditDeliveries] = useState("");
@@ -48,8 +47,22 @@ export default function RecordsPage() {
 
 
     useEffect(() => {
-        setSavedShifts(loadShifts());
-    }, []);
+        async function loadCloudShifts() {
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+
+            if (!user) {
+                router.push("/login");
+                return;
+            }
+
+            const shifts = await loadShiftsFromSupabase(user.id);
+            setSavedShifts(shifts);
+        }
+
+        loadCloudShifts();
+    }, [router]);
 
     const shiftsForSelectedDate = savedShifts.filter(
         (shift) => shift.date === selectedDate
@@ -59,8 +72,6 @@ export default function RecordsPage() {
         if (!confirmed) return;
 
         const updatedShifts = savedShifts.filter((shift) => shift.id !== id);
-
-        saveShifts(updatedShifts);
         setSavedShifts(updatedShifts);
 
         await supabase
@@ -68,7 +79,31 @@ export default function RecordsPage() {
             .delete()
             .eq("id", id);
     }
+    async function handleUpdateShift(updatedShift: SavedShift) {
+        const updatedShifts = savedShifts.map((shift) =>
+            shift.id === updatedShift.id ? updatedShift : shift
+        );
 
+
+        setSavedShifts(updatedShifts);
+        setEditingShiftId(null);
+
+        await supabase
+            .from("shifts")
+            .update({
+                platform: updatedShift.platform,
+                beginningMileage: updatedShift.beginningMileage,
+                endingMileage: updatedShift.endingMileage,
+                deliveries: updatedShift.deliveries,
+                hoursWorked: updatedShift.hoursWorked,
+                basePay: updatedShift.basePay,
+                tips: updatedShift.tips,
+                otherPay: updatedShift.otherPay,
+                grossPay: updatedShift.grossPay,
+                status: updatedShift.status,
+            })
+            .eq("id", updatedShift.id);
+    }
     return (
         <main className="min-h-screen bg-[#020814] text-white">
             <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-28 pt-8">
@@ -284,26 +319,6 @@ export default function RecordsPage() {
                                                     otherPay: editOtherPay,
                                                     grossPay: calculatedGrossPay.toFixed(2),
                                                 });
-                                                function handleDeleteShift(id: string) {
-                                                    const confirmed = confirm("Delete this shift?");
-                                                    if (!confirmed) return;
-
-                                                    const updatedShifts = savedShifts.filter((shift) => shift.id !== id);
-
-                                                    saveShifts(updatedShifts);
-                                                    setSavedShifts(updatedShifts);
-                                                }
-
-                                                function handleUpdateShift(updatedShift: SavedShift) {
-                                                    const updatedShifts = savedShifts.map((shift) =>
-                                                        shift.id === updatedShift.id ? updatedShift : shift
-                                                    );
-
-                                                    saveShifts(updatedShifts);
-                                                    setSavedShifts(updatedShifts);
-                                                    setEditingShiftId(null);
-                                                    router.push("/");
-                                                }
                                             }}
                                             className="w-full rounded-xl bg-emerald-500 p-3 font-bold text-white"
                                         >
@@ -325,7 +340,7 @@ export default function RecordsPage() {
                                             onClick={() => {
                                                 setEditingShiftId(shift.id);
                                                 setEditPlatform(shift.platform);
-                                                setEditDate(shift.date);
+
                                                 setEditBeginningMileage(shift.beginningMileage);
                                                 setEditEndingMileage(shift.endingMileage);
                                                 setEditDeliveries(shift.deliveries);

@@ -137,10 +137,20 @@ export default function Home() {
 
   }, 0);
 
-  const fuelCostPerMile =
-    totalWorkMiles > 0
-      ? totalFuelSpend / totalWorkMiles
-      : 0;
+  const sortedFuelEntries = [...fuelEntries].sort(
+  (a, b) => Number(a.odometer) - Number(b.odometer)
+);
+
+const totalVehicleMiles =
+  sortedFuelEntries.length >= 2
+    ? Number(sortedFuelEntries[sortedFuelEntries.length - 1].odometer) -
+      Number(sortedFuelEntries[0].odometer)
+    : totalWorkMiles;
+
+const fuelCostPerMile =
+  totalVehicleMiles > 0
+    ? totalFuelSpend / totalVehicleMiles
+    : 0;
 
   /* =========================================================
      PAY_CALCULATIONS

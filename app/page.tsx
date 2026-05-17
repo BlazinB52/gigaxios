@@ -13,6 +13,7 @@
    ========================================================= */
 
 import { useRouter } from "next/navigation";
+import { supabase } from "@/app/lib/supabaseClient";
 
 import { useEffect, useState } from "react";
 
@@ -60,10 +61,16 @@ export default function Home() {
 
   useEffect(() => {
 
-    async function loadCloudShifts() {
-      const shifts = await loadShiftsFromSupabase();
-      setSavedShifts(shifts);
-    }
+  async function loadCloudShifts() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  const shifts = await loadShiftsFromSupabase(user.id);
+  setSavedShifts(shifts);
+}
 
     loadCloudShifts();
 

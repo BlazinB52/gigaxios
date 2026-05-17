@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ActiveShiftCard from "@/app/components/ActiveShiftCard";
 import { SavedShift } from "@/app/lib/types";
-import { loadShiftsFromSupabase, saveShifts } from "@/app/lib/storage";
+import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { supabase } from "@/app/lib/supabaseClient";
 
 
@@ -25,12 +25,21 @@ export default function ShiftsPage() {
 
     useEffect(() => {
         async function loadCloudShifts() {
-            const shifts = await loadShiftsFromSupabase();
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+
+            if (!user) {
+                router.push("/login");
+                return;
+            }
+
+            const shifts = await loadShiftsFromSupabase(user.id);
             setSavedShifts(shifts);
         }
 
         loadCloudShifts();
-    }, []);
+    }, [router]);
 
     const activeShift = savedShifts.find((shift) => shift.status === "open");
 
@@ -40,15 +49,22 @@ export default function ShiftsPage() {
             return;
         }
 
-        const existingShifts = await loadShiftsFromSupabase();
+        const {
+            data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+            router.push("/login");
+            return;
+        }
+
+        const existingShifts = await loadShiftsFromSupabase(user.id);
 
         const openShiftExists = existingShifts.some(
             (shift) => shift.status === "open"
         );
 
-        const closedShifts = existingShifts.filter(
-            (shift) => shift.status === "closed" && shift.endingMileage
-        );
+
 
 
         if (openShiftExists) {
@@ -61,6 +77,7 @@ export default function ShiftsPage() {
 
         const newShift: SavedShift = {
             id: crypto.randomUUID(),
+            userId: user.id,
             platform,
             date: shiftDate,
             beginningMileage,
@@ -74,15 +91,13 @@ export default function ShiftsPage() {
             status: "open",
         };
 
-        const updatedShifts = [...existingShifts, newShift];
-
-        saveShifts(updatedShifts);
-        setSavedShifts(updatedShifts);
-        setShiftDate("");
-        setBeginningMileage("");
+        setSavedShifts([...existingShifts, newShift]);
+setShiftDate("");
+setBeginningMileage("");
 
         await supabase.from("shifts").insert({
             id: newShift.id,
+            user_id: user.id,
             date: newShift.date,
             platform: newShift.platform ?? null,
             beginning_mileage: newShift.beginningMileage,
@@ -128,7 +143,7 @@ export default function ShiftsPage() {
             return shift;
         });
 
-        saveShifts(updatedShifts);
+        
         setSavedShifts(updatedShifts);
 
         setEndingMileage("");
@@ -139,19 +154,18 @@ export default function ShiftsPage() {
         setOtherPay("");
 
         await supabase
-            .from("shifts")
-            .update({
-                ending_mileage: endingMileage,
-                deliveries,
-                hours_worked: hoursWorked,
-                base_pay: basePay,
-                tips,
-                other_pay: otherPay,
-                gross_pay: calculatedGrossPay.toFixed(2),
-                status: "closed",
-            })
-            .eq("beginning_mileage", activeShift.beginningMileage)
-            .eq("date", activeShift.date);
+    .from("shifts")
+    .update({
+        ending_mileage: endingMileage,
+        deliveries,
+        hours_worked: hoursWorked,
+        base_pay: basePay,
+        tips,
+        other_pay: otherPay,
+        gross_pay: calculatedGrossPay.toFixed(2),
+        status: "closed",
+    })
+    .eq("id", activeShift.id);
 
         router.push("/");
     }

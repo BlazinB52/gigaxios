@@ -27,10 +27,11 @@ export function loadShifts() {
   return loadRecords<SavedShift>(SHIFTS_STORAGE_KEY);
 }
 
-export async function loadShiftsFromSupabase() {
+export async function loadShiftsFromSupabase(userId: string) {
   const { data, error } = await supabase
     .from("shifts")
     .select("*")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -40,6 +41,7 @@ export async function loadShiftsFromSupabase() {
 
   return data.map((shift) => ({
     id: shift.id,
+    userId: shift.user_id,
     date: shift.date,
     platform: shift.platform,
     beginningMileage: shift.beginning_mileage,
@@ -54,7 +56,6 @@ export async function loadShiftsFromSupabase() {
     notes: shift.notes,
   }));
 }
-
 
 export function saveShifts(shifts: SavedShift[]) {
   saveRecords<SavedShift>(SHIFTS_STORAGE_KEY, shifts);

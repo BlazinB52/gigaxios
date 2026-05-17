@@ -61,20 +61,20 @@ export default function Home() {
 
   useEffect(() => {
 
-  async function loadCloudShifts() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    async function loadCloudShifts() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-  if (!user) {
-  const localShifts = loadShifts();
-  setSavedShifts(localShifts);
-  return;
-}
+      if (!user) {
+        const localShifts = loadShifts();
+        setSavedShifts(localShifts);
+        return;
+      }
 
-  const shifts = await loadShiftsFromSupabase(user.id);
-  setSavedShifts(shifts);
-}
+      const shifts = await loadShiftsFromSupabase(user?.id);
+      setSavedShifts(shifts);
+    }
 
     loadCloudShifts();
 
@@ -149,19 +149,19 @@ export default function Home() {
   }, 0);
 
   const sortedFuelEntries = [...fuelEntries].sort(
-  (a, b) => Number(a.odometer) - Number(b.odometer)
-);
+    (a, b) => Number(a.odometer) - Number(b.odometer)
+  );
 
-const totalVehicleMiles =
-  sortedFuelEntries.length >= 2
-    ? Number(sortedFuelEntries[sortedFuelEntries.length - 1].odometer) -
+  const totalVehicleMiles =
+    sortedFuelEntries.length >= 2
+      ? Number(sortedFuelEntries[sortedFuelEntries.length - 1].odometer) -
       Number(sortedFuelEntries[0].odometer)
-    : totalWorkMiles;
+      : totalWorkMiles;
 
-const fuelCostPerMile =
-  totalVehicleMiles > 0
-    ? totalFuelSpend / totalVehicleMiles
-    : 0;
+  const fuelCostPerMile =
+    totalVehicleMiles > 0
+      ? totalFuelSpend / totalVehicleMiles
+      : 0;
 
   /* =========================================================
      PAY_CALCULATIONS
@@ -177,9 +177,9 @@ const fuelCostPerMile =
      ========================================================= */
 
   const workFuelCost =
-  totalWorkMiles > 0 ? totalWorkMiles * fuelCostPerMile : 0;
+    totalWorkMiles > 0 ? totalWorkMiles * fuelCostPerMile : 0;
 
-const netProfit = totalGrossPay - workFuelCost;
+  const netProfit = totalGrossPay - workFuelCost;
 
   /* =========================================================
      HOURS_WORKED_CALCULATIONS

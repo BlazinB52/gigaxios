@@ -35,33 +35,13 @@ export default function AdminPage() {
                 return;
             }
 
-            const { data: shifts, error: shiftsError } = await supabase
-                .from("shifts")
-                .select("*")
-                .eq("user_id", user.id)
-                .order("date", { ascending: false });
+            const shifts = await loadShiftsFromSupabase(user.id);
+            const fuel = await loadFuelEntriesFromSupabase(user.id);
+            const pay = await loadPayEntriesFromSupabase(user.id);
 
-            const { data: fuel, error: fuelError } = await supabase
-                .from("fuel_entries")
-                .select("*")
-                .eq("user_id", user.id)
-                .order("date", { ascending: false });
-
-            const { data: pay, error: payError } = await supabase
-                .from("pay_entries")
-                .select("*")
-                .eq("user_id", user.id)
-                .order("date", { ascending: false });
-
-            if (shiftsError || fuelError || payError) {
-                setSupabaseStatus("Supabase error. Check console.");
-                console.error({ shiftsError, fuelError, payError });
-                return;
-            }
-
-            setSavedShifts(shifts || []);
-            setFuelEntries(fuel || []);
-            setPayEntries(pay || []);
+            setSavedShifts(shifts);
+            setFuelEntries(fuel);
+            setPayEntries(pay);
             setSupabaseStatus("Supabase connected successfully.");
         }
 

@@ -5,9 +5,11 @@ import { SavedShift } from "@/app/lib/types";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
+import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
 
 export default function RecordsPage() {
     const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
+    const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
     const [selectedDate, setSelectedDate] = useState("2026-05-14");
     const [weekOffset, setWeekOffset] = useState(0);
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
@@ -59,6 +61,9 @@ export default function RecordsPage() {
 
             const shifts = await loadShiftsFromSupabase(user.id);
             setSavedShifts(shifts);
+
+            const fuel = await loadFuelEntriesFromSupabase(user.id);
+            setFuelEntries(fuel);
         }
 
         loadCloudShifts();
@@ -67,6 +72,11 @@ export default function RecordsPage() {
     const shiftsForSelectedDate = savedShifts.filter(
         (shift) => shift.date === selectedDate
     );
+
+    const fuelForSelectedDate = fuelEntries.filter(
+        (fuel) => fuel.date === selectedDate
+    );
+
     async function handleDeleteShift(id: string) {
         const confirmed = confirm("Delete this shift?");
         if (!confirmed) return;
@@ -370,6 +380,27 @@ export default function RecordsPage() {
                             </div>
                         );
                     })}
+
+                    {fuelForSelectedDate.map((fuel) => (
+                        <div
+                            key={fuel.id}
+                            className="rounded-3xl border border-emerald-700 bg-slate-950/70 p-5"
+                        >
+                            <p className="text-lg font-bold text-white">Fuel</p>
+                            <p className="mt-1 text-sm text-slate-400">
+                                Odometer: {fuel.odometer}
+                            </p>
+                            <p className="text-sm text-slate-400">
+                                Gallons: {fuel.gallons}
+                            </p>
+                            <p className="text-sm text-slate-400">
+                                Price/Gal: ${fuel.pricePerGallon || "Not entered"}
+                            </p>
+                            <p className="text-sm text-slate-400">
+                                Total Cost: ${fuel.totalCost || "Not entered"}
+                            </p>
+                        </div>
+                    ))}
                 </section>
             </div>
 

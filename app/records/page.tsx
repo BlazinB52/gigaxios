@@ -424,6 +424,60 @@ export default function RecordsPage() {
                             >
                                 Edit Fuel
                             </button>
+                            {editingFuelId === fuel.id && (
+                                <div className="mt-4 rounded-2xl border border-blue-700/60 bg-slate-900 p-4">
+                                    <h3 className="text-lg font-bold text-blue-300">Edit Fuel</h3>
+
+                                    <div className="mt-4 space-y-4">
+                                        <input
+                                            type="number"
+                                            value={editFuelOdometer}
+                                            onChange={(e) => setEditFuelOdometer(e.target.value)}
+                                            placeholder="Odometer"
+                                            className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                                        />
+
+                                        <input
+                                            type="number"
+                                            value={editFuelGallons}
+                                            onChange={(e) => setEditFuelGallons(e.target.value)}
+                                            placeholder="Gallons"
+                                            className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                                        />
+
+                                        <input
+                                            type="number"
+                                            value={editFuelPricePerGallon}
+                                            onChange={(e) => setEditFuelPricePerGallon(e.target.value)}
+                                            placeholder="Price per gallon"
+                                            className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                                        />
+
+                                        <input
+                                            type="number"
+                                            value={editFuelTotalCost}
+                                            onChange={(e) => setEditFuelTotalCost(e.target.value)}
+                                            placeholder="Total cost"
+                                            className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                                        />
+
+                                        <button className="w-full rounded-xl bg-emerald-500 p-3 font-bold text-white">
+                                            Save Changes
+                                        </button>
+
+                                        <button
+                                            onClick={() => setEditingFuelId(null)}
+                                            className="w-full rounded-xl border border-slate-700 p-3 font-bold text-slate-300"
+                                        >
+                                            Cancel
+                                        </button>
+
+                                        <button className="w-full rounded-xl border border-red-500/70 bg-red-500/10 p-3 font-bold text-red-300">
+                                            Delete Fuel Entry
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </section>

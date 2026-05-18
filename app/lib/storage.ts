@@ -27,12 +27,17 @@ export function loadShifts() {
   return loadRecords<SavedShift>(SHIFTS_STORAGE_KEY);
 }
 
-export async function loadShiftsFromSupabase(userId: string) {
-  const { data, error } = await supabase
+export async function loadShiftsFromSupabase(userId?: string) {
+  let query = supabase
     .from("shifts")
     .select("*")
-    .eq("user_id", userId)
     .order("created_at", { ascending: false });
+
+  if (userId) {
+    query = query.or(`user_id.eq.${userId},user_id.is.null`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Supabase load error:", error.message);
@@ -41,19 +46,19 @@ export async function loadShiftsFromSupabase(userId: string) {
 
   return data.map((shift) => ({
     id: shift.id,
-    userId: shift.user_id,
+    userId: shift.user_id ?? "",
     date: shift.date,
     platform: shift.platform,
     beginningMileage: shift.beginning_mileage,
     endingMileage: shift.ending_mileage,
-    deliveries: shift.deliveries,
-    hoursWorked: shift.hours_worked,
-    basePay: shift.base_pay,
-    tips: shift.tips,
-    otherPay: shift.other_pay,
-    grossPay: shift.gross_pay,
+    deliveries: shift.deliveries ?? "",
+    hoursWorked: shift.hours_worked ?? "",
+    basePay: shift.base_pay ?? "",
+    tips: shift.tips ?? "",
+    otherPay: shift.other_pay ?? "",
+    grossPay: shift.gross_pay ?? "",
     status: shift.status,
-    notes: shift.notes,
+    notes: shift.notes ?? "",
   }));
 }
 

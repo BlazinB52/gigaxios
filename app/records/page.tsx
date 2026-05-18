@@ -24,6 +24,13 @@ export default function RecordsPage() {
     const [editTips, setEditTips] = useState("");
     const [editOtherPay, setEditOtherPay] = useState("");
 
+    const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
+    const [editFuelOdometer, setEditFuelOdometer] = useState("");
+    const [editFuelGallons, setEditFuelGallons] = useState("");
+    const [editFuelPricePerGallon, setEditFuelPricePerGallon] = useState("");
+    const [editFuelTotalCost, setEditFuelTotalCost] = useState("");
+    const [editFuelNotes, setEditFuelNotes] = useState("");
+
 
     baseDate.setDate(baseDate.getDate() + weekOffset * 7);
 
@@ -387,18 +394,36 @@ export default function RecordsPage() {
                             className="rounded-3xl border border-emerald-700 bg-slate-950/70 p-5"
                         >
                             <p className="text-lg font-bold text-white">Fuel</p>
+
                             <p className="mt-1 text-sm text-slate-400">
                                 Odometer: {fuel.odometer}
                             </p>
+
                             <p className="text-sm text-slate-400">
                                 Gallons: {fuel.gallons}
                             </p>
+
                             <p className="text-sm text-slate-400">
                                 Price/Gal: ${fuel.pricePerGallon || "Not entered"}
                             </p>
+
                             <p className="text-sm text-slate-400">
                                 Total Cost: ${fuel.totalCost || "Not entered"}
                             </p>
+
+                            <button
+                                onClick={() => {
+                                    setEditingFuelId(fuel.id);
+                                    setEditFuelOdometer(fuel.odometer);
+                                    setEditFuelGallons(fuel.gallons);
+                                    setEditFuelPricePerGallon(fuel.pricePerGallon || "");
+                                    setEditFuelTotalCost(fuel.totalCost || "");
+                                    setEditFuelNotes(fuel.notes || "");
+                                }}
+                                className="mt-4 w-full rounded-xl border border-blue-500/60 bg-blue-500/10 p-3 font-semibold text-blue-300"
+                            >
+                                Edit Fuel
+                            </button>
                         </div>
                     ))}
                 </section>

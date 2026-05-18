@@ -99,37 +99,54 @@ export default function Home() {
   }, [router]);
 
   /* =========================================================
-     ACTIVE_SHIFT_LOOKUP
-     Finds currently open shift
-     ========================================================= */
+    ACTIVE_SHIFT_LOOKUP
+    Finds currently open shift
+    ========================================================= */
 
   const openShift = savedShifts.find(
     (shift) => shift.status === "open"
   );
 
   /* =========================================================
+     CURRENT_WEEK_FILTER
+     Monday through Sunday current pay cycle
+     ========================================================= */
+
+  const today = new Date();
+
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+  endOfWeek.setHours(23, 59, 59, 999);
+
+  const currentWeekShifts = savedShifts.filter((shift) => {
+    const shiftDate = new Date(shift.date);
+    return shiftDate >= startOfWeek && shiftDate <= endOfWeek;
+  });
+
+  /* =========================================================
      BASIC_SHIFT_METRICS
      ========================================================= */
 
-  const totalShifts = savedShifts.length;
+  const totalShifts = currentWeekShifts.length;
 
-  const activeShiftCount = savedShifts.filter(
+  const activeShiftCount = currentWeekShifts.filter(
     (shift) => shift.status === "open"
   ).length;
 
-  const closedShifts = savedShifts.filter(
+  const closedShifts = currentWeekShifts.filter(
     (shift) => shift.status === "closed"
   );
 
   /* =========================================================
      WORK_MILE_CALCULATIONS
-     SAFE TO EDIT
      ========================================================= */
 
   const totalWorkMiles = closedShifts.reduce((total, shift) => {
-
     const beginning = Number(shift.beginningMileage);
-
     const ending = Number(shift.endingMileage);
 
     if (!beginning || !ending || ending < beginning) {
@@ -137,15 +154,16 @@ export default function Home() {
     }
 
     return total + (ending - beginning);
-
   }, 0);
 
   /* =========================================================
      FUEL_CALCULATIONS
+     Estimated fuel cost by work miles
      ========================================================= */
 
-  const totalFuelSpend = fuelEntries.reduce((total, entry) => {
+  const estimatedMpg = 20;
 
+  const totalFuelSpend = fuelEntries.reduce((total, entry) => {
     const cost = Number(entry.totalCost);
 
     if (!cost) {
@@ -153,32 +171,31 @@ export default function Home() {
     }
 
     return total + cost;
-
   }, 0);
 
-  const sortedFuelEntries = [...fuelEntries].sort(
-    (a, b) => Number(a.odometer) - Number(b.odometer)
-  );
+  const totalGallons = fuelEntries.reduce((total, entry) => {
+    const gallons = Number(entry.gallons);
 
-  const totalVehicleMiles =
-    sortedFuelEntries.length >= 2
-      ? Number(sortedFuelEntries[sortedFuelEntries.length - 1].odometer) -
-      Number(sortedFuelEntries[0].odometer)
-      : totalWorkMiles;
+    if (!gallons) {
+      return total;
+    }
+
+    return total + gallons;
+  }, 0);
+
+  const averagePricePerGallon =
+    totalGallons > 0 ? totalFuelSpend / totalGallons : 0;
 
   const fuelCostPerMile =
-    totalVehicleMiles > 0
-      ? totalFuelSpend / totalVehicleMiles
-      : 0;
+    estimatedMpg > 0 ? averagePricePerGallon / estimatedMpg : 0;
 
   /* =========================================================
      PAY_CALCULATIONS
      ========================================================= */
 
-  const totalGrossPay = savedShifts.reduce((total, shift) => {
+  const totalGrossPay = currentWeekShifts.reduce((total, shift) => {
     return total + Number(shift.grossPay || 0);
   }, 0);
-
 
   /* =========================================================
      NET_PROFIT_CALCULATIONS
@@ -193,45 +210,37 @@ export default function Home() {
      HOURS_WORKED_CALCULATIONS
      ========================================================= */
 
-  const totalHoursWorked = savedShifts.reduce((total, shift) => {
+  const totalHoursWorked = currentWeekShifts.reduce((total, shift) => {
     return total + Number(shift.hoursWorked || 0);
   }, 0);
 
   const activeHours = Math.floor(totalHoursWorked);
   const activeMinutes = Math.round((totalHoursWorked - activeHours) * 60);
 
-
   /* =========================================================
      REVENUE_PER_MILE
      ========================================================= */
 
   const revenuePerMile =
-    totalWorkMiles > 0
-      ? totalGrossPay / totalWorkMiles
-      : 0;
+    totalWorkMiles > 0 ? totalGrossPay / totalWorkMiles : 0;
 
   /* =========================================================
      REAL_HOURLY_RATE
      ========================================================= */
 
   const realHourlyRate =
-    totalHoursWorked > 0
-      ? netProfit / totalHoursWorked
-      : 0;
+    totalHoursWorked > 0 ? netProfit / totalHoursWorked : 0;
 
   /* =========================================================
      DELIVERY_METRICS
      ========================================================= */
 
-  const totalDeliveries = savedShifts.reduce((total, shift) => {
+  const totalDeliveries = currentWeekShifts.reduce((total, shift) => {
     return total + Number(shift.deliveries || 0);
   }, 0);
 
   const netPerDelivery =
-    totalDeliveries > 0
-      ? netProfit / totalDeliveries
-      : 0;
-
+    totalDeliveries > 0 ? netProfit / totalDeliveries : 0;
   /* =========================================================
      MAIN_PAGE_RENDER
      ========================================================= */

@@ -205,12 +205,21 @@ export default function GaragePage() {
                 className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
               />
 
-              <button
-                onClick={handleSaveService}
-                className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950"
-              >
-                Save Service
-              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleSaveService}
+                  className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950"
+                >
+                  Save
+                </button>
+
+                <button
+                  onClick={() => setShowServiceForm(false)}
+                  className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
 

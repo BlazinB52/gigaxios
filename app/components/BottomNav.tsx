@@ -8,7 +8,7 @@ const navItems = [
   { href: "/fuel", label: "Fuel", icon: "⛽", color: "text-emerald-300" },
   { href: "/records", label: "Records", icon: "📅", color: "text-cyan-300" },
   { href: "/metrics", label: "Metrics", icon: "↗", color: "text-blue-300" },
-  { href: "/settings", label: "Garage", icon: "🔧", color: "text-slate-300" },
+  { href: "/garage", label: "Garage", icon: "🔧", color: "text-slate-300" },
 ];
 
 export default function BottomNav() {

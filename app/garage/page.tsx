@@ -29,40 +29,7 @@ export default function GaragePage() {
 
 
   useEffect(() => {
-    async function handleSaveService() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
 
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      const newService: ServiceEntry = {
-        id: crypto.randomUUID(),
-        userId: user.id,
-        date: serviceDate,
-        odometer: serviceOdometer,
-        serviceType,
-        cost: serviceCost,
-        notes: serviceNotes,
-      };
-
-      await saveServiceEntryToSupabase(newService);
-
-      const updatedServices = await loadServiceEntriesFromSupabase(user.id);
-
-      setServiceEntries(updatedServices);
-
-      setServiceDate("");
-      setServiceOdometer("");
-      setServiceType("");
-      setServiceCost("");
-      setServiceNotes("");
-
-      setShowServiceForm(false);
-    }
     async function loadGarageData() {
       const {
         data: { user },
@@ -85,7 +52,42 @@ export default function GaragePage() {
     loadGarageData();
   }, [router]);
 
+  async function handleSaveService() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    const newService: ServiceEntry = {
+      id: crypto.randomUUID(),
+      userId: user.id,
+      date: serviceDate,
+      odometer: serviceOdometer,
+      serviceType,
+      cost: serviceCost,
+      notes: serviceNotes,
+    };
+
+    await saveServiceEntryToSupabase(newService);
+
+    const updatedServices = await loadServiceEntriesFromSupabase(user.id);
+    setServiceEntries(updatedServices);
+
+    setServiceDate("");
+    setServiceOdometer("");
+    setServiceType("");
+    setServiceCost("");
+    setServiceNotes("");
+    setShowServiceForm(false);
+  }
+
   return (
+
+
     <main className="min-h-screen bg-[#020814] text-white">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">
         <h1 className="text-4xl font-bold tracking-tight">Garage</h1>
@@ -138,9 +140,65 @@ export default function GaragePage() {
             </div>
           </div>
 
-          <button className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white">
+          {/* Add Service Button */}
+
+          <button
+            onClick={() => setShowServiceForm(!showServiceForm)}
+            className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white"
+          >
             + Add Service
           </button>
+          {showServiceForm && (
+            <div className="mt-5 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+              <input
+                type="date"
+                value={serviceDate}
+                onChange={(event) => setServiceDate(event.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+              />
+
+              <input
+                type="number"
+                placeholder="Odometer"
+                value={serviceOdometer}
+                onChange={(event) => setServiceOdometer(event.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+              />
+
+              <input
+                type="text"
+                placeholder="Service type"
+                value={serviceType}
+                onChange={(event) => setServiceType(event.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+              />
+
+              <input
+                type="number"
+                placeholder="Cost"
+                value={serviceCost}
+                onChange={(event) => setServiceCost(event.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+              />
+
+              <textarea
+                placeholder="Notes"
+                value={serviceNotes}
+                onChange={(event) => setServiceNotes(event.target.value)}
+                className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+              />
+
+              <button
+                onClick={handleSaveService}
+                className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950"
+              >
+                Save Service
+              </button>
+            </div>
+          )}
+
+          {/* Add Service Button - END */}
+
         </section>
 
         <section className="mt-6 rounded-3xl border border-amber-900/60 bg-slate-950/80 p-5 shadow-lg shadow-amber-950/20">

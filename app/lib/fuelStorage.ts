@@ -59,16 +59,32 @@ export async function loadFuelEntriesFromSupabase(userId: string) {
     return [];
   }
 
-return data.map((entry) => ({
-  id: entry.id,
-  userId: entry.user_id ?? "",
-  date: entry.date,
-  odometer: entry.odometer ?? "",
-  gallons: entry.gallons ?? "",
-  pricePerGallon: entry.price_per_gallon ?? "",
-  totalCost: (
-    Number(entry.gallons || 0) * Number(entry.price_per_gallon || 0)
-  ).toFixed(2),
-  notes: entry.notes ?? "",
-}));
+  return data.map((entry) => ({
+    id: entry.id,
+    userId: entry.user_id ?? "",
+    date: entry.date,
+    odometer: entry.odometer ?? "",
+    gallons: entry.gallons ?? "",
+    pricePerGallon: entry.price_per_gallon ?? "",
+    totalCost: (
+      Number(entry.gallons || 0) * Number(entry.price_per_gallon || 0)
+    ).toFixed(2),
+    notes: entry.notes ?? "",
+  }));
+}
+
+export async function saveFuelEntryToSupabase(entry: FuelEntry) {
+  const { error } = await supabase.from("fuel_entries").insert({
+    user_id: entry.userId,
+    date: entry.date,
+    odometer: entry.odometer,
+    gallons: entry.gallons,
+    price_per_gallon: entry.pricePerGallon,
+    total_cost: entry.totalCost,
+    notes: entry.notes,
+  });
+
+  if (error) {
+    console.error("Supabase fuel save error:", error.message);
+  }
 }

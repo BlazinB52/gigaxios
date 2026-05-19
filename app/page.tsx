@@ -8,7 +8,7 @@
    - Net profit
    - Work miles
    - Revenue metrics
-   - Active shift status
+   - Active shift statussetPayEntries(loadedPayEntries);
    - Quick action buttons
    ========================================================= */
 

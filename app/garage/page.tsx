@@ -154,17 +154,14 @@ export default function GaragePage() {
           {showServiceForm && (
             <div className="mt-5 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
               <div className="relative">
-                
+
                 <input
                   type="date"
                   value={serviceDate}
                   onChange={(event) => setServiceDate(event.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 pr-12 text-white"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
                 />
-
-                <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-lg">
-                  📅
-                </div>
+                
               </div>
 
               <input

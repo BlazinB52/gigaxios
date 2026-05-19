@@ -21,11 +21,14 @@ export default function GaragePage() {
 
   const [showServiceForm, setShowServiceForm] = useState(false);
 
-  const [serviceDate, setServiceDate] = useState("");
+  const [serviceDate, setServiceDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
   const [serviceOdometer, setServiceOdometer] = useState("");
   const [serviceType, setServiceType] = useState("");
   const [serviceCost, setServiceCost] = useState("");
   const [serviceNotes, setServiceNotes] = useState("");
+
 
 
   useEffect(() => {
@@ -165,13 +168,22 @@ export default function GaragePage() {
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
               />
 
-              <input
-                type="text"
-                placeholder="Service type"
+              <select
                 value={serviceType}
                 onChange={(event) => setServiceType(event.target.value)}
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-              />
+              >
+                <option value="">Select service type</option>
+                <option value="Oil Change">Oil Change</option>
+                <option value="Tire Rotation">Tire Rotation</option>
+                <option value="Brake Job">Brake Job</option>
+                <option value="Tires">Tires</option>
+                <option value="Battery">Battery</option>
+                <option value="Wipers">Wipers</option>
+                <option value="Repair">Repair</option>
+                <option value="Inspection">Inspection</option>
+                <option value="Other">Other</option>
+              </select>
 
               <input
                 type="number"

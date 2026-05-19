@@ -66,31 +66,31 @@ export default function RecordsPage() {
     const router = useRouter();
 
 
-useEffect(() => {
-  async function loadCloudShifts() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    useEffect(() => {
+        async function loadCloudShifts() {
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
 
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+            if (!user) {
+                router.push("/login");
+                return;
+            }
 
-    const shifts = await loadShiftsFromSupabase(user.id);
-    setSavedShifts(shifts);
+            const shifts = await loadShiftsFromSupabase(user.id);
+            setSavedShifts(shifts);
 
-    const fuel = await loadFuelEntriesFromSupabase(user.id);
-    setFuelEntries(fuel);
-  }
+            const fuel = await loadFuelEntriesFromSupabase(user.id);
+            setFuelEntries(fuel);
+        }
 
-  loadCloudShifts();
-}, [router]);
+        loadCloudShifts();
+    }, [router]);
 
-useEffect(() => {
-  setWeekOffset(0);
-  setSelectedDate(todayString);
-}, [todayString]);
+    useEffect(() => {
+        setWeekOffset(0);
+        setSelectedDate(todayString);
+    }, [todayString]);
 
     const shiftsForSelectedDate = savedShifts.filter(
         (shift) => shift.date === selectedDate
@@ -266,9 +266,14 @@ useEffect(() => {
                                 key={shift.id}
                                 className="rounded-3xl border border-slate-700 bg-slate-950/70 p-5"
                             >
-                                <p className="text-lg font-bold text-white">
-                                    {shift.platform}
-                                </p>
+                                <div className="flex items-center justify-between">
+                                    <p className="text-lg font-bold text-white">{shift.platform}</p>
+
+                                    <div className="flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-sm font-semibold text-blue-400">
+                                        <span>💼</span>
+                                        <span>Shift</span>
+                                    </div>
+                                </div>
 
                                 <p className="mt-1 text-sm text-slate-400">
                                     {miles} mi • {shift.deliveries || 0} deliveries • $
@@ -443,22 +448,21 @@ useEffect(() => {
                             key={fuel.id}
                             className="rounded-3xl border border-emerald-700 bg-slate-950/70 p-5"
                         >
-                            <p className="text-lg font-bold text-white">Fuel</p>
+                            <div className="flex items-center justify-between">
+                                <p className="text-lg font-bold text-white">GoPuff</p>
 
-                            <p className="mt-1 text-sm text-slate-400">
-                                Odometer: {fuel.odometer}
+                                <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-400">
+                                    <span>⛽</span>
+                                    <span>Fuel</span>
+                                </div>
+                            </div>
+
+                            <p className="mt-2 text-sm text-slate-400">
+                                {fuel.gallons} gal • ${fuel.pricePerGallon || "0.00"}/gal • ${fuel.totalCost || "0.00"} total
                             </p>
 
                             <p className="text-sm text-slate-400">
-                                Gallons: {fuel.gallons}
-                            </p>
-
-                            <p className="text-sm text-slate-400">
-                                Price/Gal: ${fuel.pricePerGallon || "Not entered"}
-                            </p>
-
-                            <p className="text-sm text-slate-400">
-                                Total Cost: ${fuel.totalCost || "Not entered"}
+                                Odometer: {fuel.odometer} mi
                             </p>
 
                             <button
@@ -470,7 +474,7 @@ useEffect(() => {
                                     setEditFuelTotalCost(fuel.totalCost || "");
                                     setEditFuelNotes(fuel.notes || "");
                                 }}
-                                className="mt-4 w-full rounded-xl border border-blue-500/60 bg-blue-500/10 p-3 font-semibold text-blue-300"
+                                className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white"
                             >
                                 Edit Fuel
                             </button>

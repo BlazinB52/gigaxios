@@ -17,6 +17,9 @@ export default function PayPage() {
 
   const [date, setDate] = useState("");
   const [platform, setPlatform] = useState("GoPuff");
+  const [entryType, setEntryType] = useState<PayEntry["entryType"]>("shift");
+  const [payPeriodStart, setPayPeriodStart] = useState("");
+  const [payPeriodEnd, setPayPeriodEnd] = useState("");
   const [deliveries, setDeliveries] = useState("");
   const [hours, setHours] = useState("");
   const [basePay, setBasePay] = useState("");
@@ -66,20 +69,33 @@ export default function PayPage() {
       return;
     }
 
-    const calculatedGrossPay =
-      Number(basePay || 0) + Number(tips || 0) + Number(adjustments || 0);
+    // =========================================================
+    // NEW PAY ENTRY
+    // =========================================================
+
+    const grossPay =
+      entryType === "shift"
+        ? (
+          Number(basePay || 0) +
+          Number(tips || 0) +
+          Number(adjustments || 0)
+        ).toFixed(2)
+        : Number(adjustments || 0).toFixed(2);
 
     const newEntry: PayEntry = {
       id: crypto.randomUUID(),
       userId: user.id,
       date,
       platform,
-      deliveries,
-      hours,
-      basePay,
-      tips,
+      entryType,
+      payPeriodStart,
+      payPeriodEnd,
+      deliveries: entryType === "shift" ? deliveries : "",
+      hours: entryType === "shift" ? hours : "",
+      basePay: entryType === "shift" ? basePay : "",
+      tips: entryType === "shift" ? tips : "",
       adjustments,
-      grossPay: calculatedGrossPay.toFixed(2),
+      grossPay,
       notes,
     };
 
@@ -87,11 +103,14 @@ export default function PayPage() {
     // MATCH CLOSED SHIFT BY DATE
     // =========================================================
 
-    const matchingShift = savedShifts.find(
-      (shift) =>
-        shift.date === date &&
-        shift.status === "closed"
-    );
+    const matchingShift =
+      entryType === "shift"
+        ? savedShifts.find(
+          (shift) =>
+            shift.date === date &&
+            shift.status === "closed"
+        )
+        : undefined;
 
 
 
@@ -111,32 +130,40 @@ export default function PayPage() {
           basePay,
           tips,
           otherPay: adjustments,
-          grossPay: calculatedGrossPay.toFixed(2),
+          gross_pay: (
+            Number(basePay || 0) +
+            Number(tips || 0) +
+            Number(adjustments || 0)
+          ).toFixed(2),
         };
       }
 
       return shift;
     });
 
-  await savePayEntryToSupabase(newEntry);
+    await savePayEntryToSupabase(newEntry);
 
-if (matchingShift) {
-  await supabase
-    .from("shifts")
-    .update({
-      platform,
-      deliveries,
-      hours_worked: hours,
-      base_pay: basePay,
-      tips,
-      other_pay: adjustments,
-      gross_pay: calculatedGrossPay.toFixed(2),
-    })
-    .eq("id", matchingShift.id);
-}
+    if (matchingShift) {
+      await supabase
+        .from("shifts")
+        .update({
+          platform,
+          deliveries,
+          hours_worked: hours,
+          base_pay: basePay,
+          tips,
+          other_pay: adjustments,
+          gross_pay: (
+            Number(basePay || 0) +
+            Number(tips || 0) +
+            Number(adjustments || 0)
+          ).toFixed(2),
+        })
+        .eq("id", matchingShift.id);
+    }
 
-setSavedShifts(updatedShifts);
-setPayEntries(updatedEntries);
+    setSavedShifts(updatedShifts);
+    setPayEntries(updatedEntries);
 
     router.push("/");
   }
@@ -163,52 +190,107 @@ setPayEntries(updatedEntries);
             />
 
             <select
-              value={platform}
-              onChange={(event) => setPlatform(event.target.value)}
+              value={entryType}
+              onChange={(event) =>
+                setEntryType(event.target.value as PayEntry["entryType"])
+              }
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
             >
-              <option value="GoPuff">GoPuff</option>
-              <option value="Amazon Flex">Amazon Flex</option>
-              <option value="Other">Other</option>
+              <option value="shift">Shift Pay</option>
+              <option value="mga">MGA</option>
+              <option value="delayed_tip">Delayed Tip</option>
+              <option value="bonus">Bonus</option>
+              <option value="correction">Correction</option>
             </select>
+            {entryType !== "shift" && (
+              <>
+                <div>
+                  <p className="mb-1 text-sm text-slate-400">
+                    Pay Period Start
+                  </p>
 
-            <input
-              type="number"
-              value={deliveries}
-              onChange={(event) => setDeliveries(event.target.value)}
-              placeholder="Deliveries"
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
-            />
+                  <input
+                    type="date"
+                    value={payPeriodStart}
+                    onChange={(event) => setPayPeriodStart(event.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+                  />
+                </div>
 
-            <input
-              type="number"
-              value={hours}
-              onChange={(event) => setHours(event.target.value)}
-              placeholder="Hours"
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
-            />
+                <div>
+                  <p className="mb-1 text-sm text-slate-400">
+                    Pay Period End
+                  </p>
 
-            <input
-              type="number"
-              value={basePay}
-              onChange={(event) => setBasePay(event.target.value)}
-              placeholder="Base pay"
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
-            />
+                  <input
+                    type="date"
+                    value={payPeriodEnd}
+                    onChange={(event) => setPayPeriodEnd(event.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+                  />
+                </div>
+              </>
+            )}
 
-            <input
-              type="number"
-              value={tips}
-              onChange={(event) => setTips(event.target.value)}
-              placeholder="Tips"
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
-            />
+            {entryType === "shift" && (
+              <>
+
+                <select
+
+                  value={platform}
+                  onChange={(event) => setPlatform(event.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+                >
+                  <option value="GoPuff">GoPuff</option>
+                  <option value="Amazon Flex">Amazon Flex</option>
+                  <option value="Other">Other</option>
+                </select>
+
+                <input
+                  type="number"
+                  value={deliveries}
+                  onChange={(event) => setDeliveries(event.target.value)}
+                  placeholder="Deliveries"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                />
+
+                <input
+                  type="number"
+                  value={hours}
+                  onChange={(event) => setHours(event.target.value)}
+                  placeholder="Hours"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                />
+
+                <input
+                  type="number"
+                  value={basePay}
+                  onChange={(event) => setBasePay(event.target.value)}
+                  placeholder="Base pay"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                />
+
+
+                <input
+                  type="number"
+                  value={tips}
+                  onChange={(event) => setTips(event.target.value)}
+                  placeholder="Tips"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                />
+
+              </>
+            )}
 
             <input
               type="number"
               value={adjustments}
               onChange={(event) => setAdjustments(event.target.value)}
-              placeholder="Adjustments"
+              placeholder={
+                entryType === "shift"
+                  ? "Adjustments"
+                  : "Amount"
+              }
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
             />
 

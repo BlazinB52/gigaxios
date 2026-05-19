@@ -214,7 +214,10 @@ export default function GaragePage() {
                 </button>
 
                 <button
-                  onClick={() => setShowServiceForm(false)}
+                  onClick={() => {
+                    setShowServiceForm(false);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
                   className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300"
                 >
                   Cancel

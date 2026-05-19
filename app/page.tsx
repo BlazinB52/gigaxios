@@ -120,6 +120,12 @@ export default function Home() {
     (shift) => shift.status === "open"
   );
 
+
+  function parseLocalDate(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
   /* =========================================================
      CURRENT_WEEK_FILTER
      Monday through Sunday current pay cycle
@@ -136,7 +142,7 @@ export default function Home() {
   endOfWeek.setHours(23, 59, 59, 999);
 
   const currentWeekShifts = savedShifts.filter((shift) => {
-    const shiftDate = new Date(shift.date);
+    const shiftDate = parseLocalDate(shift.date);
     return shiftDate >= startOfWeek && shiftDate <= endOfWeek;
   });
 

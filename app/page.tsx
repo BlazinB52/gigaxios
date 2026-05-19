@@ -25,7 +25,7 @@ import { useEffect, useState } from "react";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "./lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
-import { PayEntry, loadPayEntries } from "@/app/lib/payStorage";
+import { PayEntry, loadPayEntriesFromSupabase } from "@/app/lib/payStorage";
 
 /* =========================================================
    HOME COMPONENT
@@ -93,8 +93,21 @@ export default function Home() {
 
     loadCloudFuel();
 
-    const loadedPayEntries = loadPayEntries();
-    setPayEntries(loadedPayEntries);
+    async function loadCloudPay() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const pay = await loadPayEntriesFromSupabase(user.id);
+      setPayEntries(pay);
+    }
+
+    loadCloudPay();
 
   }, [router]);
 

@@ -159,9 +159,10 @@ export default function GaragePage() {
                   type="date"
                   value={serviceDate}
                   onChange={(event) => setServiceDate(event.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white [color-scheme:dark]"
+
                 />
-                
+
               </div>
 
               <input

@@ -1,25 +1,88 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
+import {
+  ServiceEntry,
+  MaintenanceReminder,
+  loadServiceEntriesFromSupabase,
+  loadMaintenanceRemindersFromSupabase,
+  saveServiceEntryToSupabase,
+} from "@/app/lib/garageStorage";
 
 export default function GaragePage() {
   const router = useRouter();
 
+  const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
+  const [maintenanceReminders, setMaintenanceReminders] =
+    useState<MaintenanceReminder[]>([]);
+
+  const [showServiceForm, setShowServiceForm] = useState(false);
+
+  const [serviceDate, setServiceDate] = useState("");
+  const [serviceOdometer, setServiceOdometer] = useState("");
+  const [serviceType, setServiceType] = useState("");
+  const [serviceCost, setServiceCost] = useState("");
+  const [serviceNotes, setServiceNotes] = useState("");
+
+
   useEffect(() => {
-    async function checkUser() {
+    async function handleSaveService() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       if (!user) {
         router.push("/login");
+        return;
       }
+
+      const newService: ServiceEntry = {
+        id: crypto.randomUUID(),
+        userId: user.id,
+        date: serviceDate,
+        odometer: serviceOdometer,
+        serviceType,
+        cost: serviceCost,
+        notes: serviceNotes,
+      };
+
+      await saveServiceEntryToSupabase(newService);
+
+      const updatedServices = await loadServiceEntriesFromSupabase(user.id);
+
+      setServiceEntries(updatedServices);
+
+      setServiceDate("");
+      setServiceOdometer("");
+      setServiceType("");
+      setServiceCost("");
+      setServiceNotes("");
+
+      setShowServiceForm(false);
+    }
+    async function loadGarageData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const services = await loadServiceEntriesFromSupabase(user.id);
+
+      const reminders =
+        await loadMaintenanceRemindersFromSupabase(user.id);
+
+      setServiceEntries(services);
+      setMaintenanceReminders(reminders);
     }
 
-    checkUser();
+    loadGarageData();
   }, [router]);
 
   return (
@@ -47,21 +110,29 @@ export default function GaragePage() {
 
           <div className="mt-5 border-t border-slate-800 pt-5">
             <p className="text-sm text-slate-400">Last Major Service</p>
-            <p className="mt-1 text-xl font-bold text-white">Brake Job</p>
+            <p className="mt-1 text-xl font-bold text-white">
+              {serviceEntries[0]?.serviceType || "No services yet"}
+            </p>
 
             <div className="mt-4 grid grid-cols-3 gap-3 text-center">
               <div>
-                <p className="text-lg font-bold text-blue-400">$742.51</p>
+                <p className="text-lg font-bold text-blue-400">
+                  ${serviceEntries[0]?.cost || "0"}
+                </p>
                 <p className="text-xs text-slate-400">Cost</p>
               </div>
 
               <div className="border-x border-slate-800">
-                <p className="text-lg font-bold text-blue-400">124,220</p>
+                <p className="text-lg font-bold text-blue-400">
+                  {serviceEntries[0]?.odometer || "--"}
+                </p>
                 <p className="text-xs text-slate-400">Miles</p>
               </div>
 
               <div>
-                <p className="text-lg font-bold text-blue-400">3</p>
+                <p className="text-lg font-bold text-blue-400">
+                  {serviceEntries.length}
+                </p>
                 <p className="text-xs text-slate-400">Recent</p>
               </div>
             </div>
@@ -89,23 +160,37 @@ export default function GaragePage() {
           <div className="mt-5 space-y-4 border-t border-slate-800 pt-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-bold text-white">Oil Change</p>
-                <p className="text-sm text-slate-400">Due in 412 miles</p>
+                <p className="font-bold text-white">
+                  {maintenanceReminders[0]?.title || "No reminders"}
+                </p>
+                <p className="text-sm text-slate-400">
+                  Due at {maintenanceReminders[0]?.dueOdometer || "--"} mi
+                </p>
               </div>
-              <p className="text-sm font-semibold text-amber-300">May 28</p>
+              <p className="text-sm font-semibold text-amber-300">
+                {maintenanceReminders[0]?.dueDate || "--"}
+              </p>
             </div>
 
-            <div className="border-t border-slate-800 pt-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-white">Tire Rotation</p>
-                  <p className="text-sm text-slate-400">Due in 1,120 miles</p>
+            {maintenanceReminders[1] && (
+              <div className="border-t border-slate-800 pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-white">
+                      {maintenanceReminders[1].title}
+                    </p>
+                    <p className="text-sm text-slate-400">
+                      Due at {maintenanceReminders[1].dueOdometer || "--"} mi
+                    </p>
+                  </div>
+
+                  <p className="text-sm font-semibold text-amber-300">
+                    {maintenanceReminders[1].dueDate || "--"}
+                  </p>
                 </div>
-                <p className="text-sm font-semibold text-amber-300">Jun 25</p>
               </div>
-            </div>
+            )}
           </div>
-
           <button className="mt-5 w-full rounded-2xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950">
             + Add Reminder
           </button>

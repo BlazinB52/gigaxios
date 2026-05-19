@@ -17,7 +17,8 @@ export default function PayPage() {
 
   const [date, setDate] = useState("");
   const [platform, setPlatform] = useState("GoPuff");
-  const [entryType, setEntryType] = useState<PayEntry["entryType"]>("shift");
+  const [entryType, setEntryType] =
+  useState<"shift" | "mga" | "delayed_tip" | "bonus" | "correction">("shift");
   const [payPeriodStart, setPayPeriodStart] = useState("");
   const [payPeriodEnd, setPayPeriodEnd] = useState("");
   const [deliveries, setDeliveries] = useState("");
@@ -82,7 +83,7 @@ export default function PayPage() {
         ).toFixed(2)
         : Number(adjustments || 0).toFixed(2);
 
-    const newEntry: PayEntry = {
+    const newEntry = {
       id: crypto.randomUUID(),
       userId: user.id,
       date,
@@ -192,7 +193,9 @@ export default function PayPage() {
             <select
               value={entryType}
               onChange={(event) =>
-                setEntryType(event.target.value as PayEntry["entryType"])
+                setEntryType(
+  event.target.value as "shift" | "mga" | "delayed_tip" | "bonus" | "correction"
+)
               }
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
             >

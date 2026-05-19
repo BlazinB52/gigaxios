@@ -25,10 +25,10 @@ export default function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center gap-1 text-xs font-semibold ${isActive ? "text-blue-400" : "text-slate-500"
+              className={`flex flex-col items-center justify-center gap-1 text-xs font-semibold ${isActive ? item.color : "text-slate-500"
                 }`}
             >
-              <span className={`text-xl leading-none ${item.color}`}>{item.icon}</span>
+              <span className="text-xl leading-none">{item.icon}</span>
               <span>{item.label}</span>
             </Link>
           );

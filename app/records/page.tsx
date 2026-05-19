@@ -10,11 +10,23 @@ import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
 export default function RecordsPage() {
     const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
     const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
-    const [selectedDate, setSelectedDate] = useState("2026-05-14");
     const [weekOffset, setWeekOffset] = useState(0);
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
     const [editPlatform, setEditPlatform] = useState("");
-    const baseDate = new Date("2026-05-11");
+
+    const today = new Date();
+
+    const todayString = `${today.getFullYear()}-${String(
+        today.getMonth() + 1
+    ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+    const [selectedDate, setSelectedDate] = useState(todayString);
+
+    const baseDate = new Date(today);
+    const dayOfWeek = baseDate.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+    baseDate.setDate(baseDate.getDate() + mondayOffset + weekOffset * 7);
 
     const [editBeginningMileage, setEditBeginningMileage] = useState("");
     const [editEndingMileage, setEditEndingMileage] = useState("");
@@ -32,7 +44,6 @@ export default function RecordsPage() {
     const [editFuelNotes, setEditFuelNotes] = useState("");
 
 
-    baseDate.setDate(baseDate.getDate() + weekOffset * 7);
 
 
 
@@ -55,26 +66,31 @@ export default function RecordsPage() {
     const router = useRouter();
 
 
-    useEffect(() => {
-        async function loadCloudShifts() {
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
+useEffect(() => {
+  async function loadCloudShifts() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-            if (!user) {
-                router.push("/login");
-                return;
-            }
+    if (!user) {
+      router.push("/login");
+      return;
+    }
 
-            const shifts = await loadShiftsFromSupabase(user.id);
-            setSavedShifts(shifts);
+    const shifts = await loadShiftsFromSupabase(user.id);
+    setSavedShifts(shifts);
 
-            const fuel = await loadFuelEntriesFromSupabase(user.id);
-            setFuelEntries(fuel);
-        }
+    const fuel = await loadFuelEntriesFromSupabase(user.id);
+    setFuelEntries(fuel);
+  }
 
-        loadCloudShifts();
-    }, [router]);
+  loadCloudShifts();
+}, [router]);
+
+useEffect(() => {
+  setWeekOffset(0);
+  setSelectedDate(todayString);
+}, [todayString]);
 
     const shiftsForSelectedDate = savedShifts.filter(
         (shift) => shift.date === selectedDate
@@ -126,6 +142,40 @@ export default function RecordsPage() {
         setSavedShifts(updatedShifts);
         setEditingShiftId(null);
     }
+    async function handleUpdateFuel(fuel: FuelEntry) {
+        const calculatedTotalCost =
+            Number(fuel.gallons || 0) * Number(fuel.pricePerGallon || 0);
+
+        const updatedFuel = {
+            ...fuel,
+            totalCost: calculatedTotalCost.toFixed(2),
+        };
+
+        const { error } = await supabase
+            .from("fuel_entries")
+            .update({
+                odometer: updatedFuel.odometer,
+                gallons: updatedFuel.gallons,
+                price_per_gallon: updatedFuel.pricePerGallon,
+                total_cost: updatedFuel.totalCost,
+                notes: updatedFuel.notes,
+            })
+            .eq("id", updatedFuel.id);
+
+        if (error) {
+            alert(error.message);
+            return;
+        }
+
+        setFuelEntries((current) =>
+            current.map((entry) =>
+                entry.id === updatedFuel.id ? updatedFuel : entry
+            )
+        );
+
+        setEditingFuelId(null);
+    }
+
     return (
         <main className="min-h-screen bg-[#020814] text-white">
             <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-28 pt-8">
@@ -461,7 +511,18 @@ export default function RecordsPage() {
                                             className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
                                         />
 
-                                        <button className="w-full rounded-xl bg-emerald-500 p-3 font-bold text-white">
+                                        <button
+                                            onClick={() =>
+                                                handleUpdateFuel({
+                                                    ...fuel,
+                                                    odometer: editFuelOdometer,
+                                                    gallons: editFuelGallons,
+                                                    pricePerGallon: editFuelPricePerGallon,
+                                                    notes: editFuelNotes,
+                                                })
+                                            }
+                                            className="w-full rounded-xl bg-emerald-500 p-3 font-bold text-white"
+                                        >
                                             Save Changes
                                         </button>
 

@@ -40,46 +40,52 @@ export default function FuelPage() {
     setDate(today);
   }, [router]);
 
-  async function handleSaveFuel() {
-    if (!date || !odometer || !gallons || !pricePerGallon) {
-      alert("Date, odometer, gallons, and price per gallon are required.");
-      return;
-    }
-
-    const calculatedTotalCost = Number(gallons) * Number(pricePerGallon);
-
-    const newEntry: FuelEntry = {
-      id: crypto.randomUUID(),
-      date,
-      odometer,
-      gallons,
-      pricePerGallon,
-      totalCost: calculatedTotalCost.toFixed(2),
-      notes,
-    };
-
-    const updatedEntries = [newEntry, ...fuelEntries];
-
-    saveFuelEntries(updatedEntries);
-    setFuelEntries(updatedEntries);
-
-    await supabase.from("fuel_entries").insert({
-      date: newEntry.date,
-      odometer: newEntry.odometer,
-      gallons: newEntry.gallons,
-      total_cost: newEntry.totalCost,
-      notes: newEntry.notes ?? null,
-    });
-
-    alert("Fuel entry saved.");
-    router.push("/");
+async function handleSaveFuel() {
+  if (!date || !odometer || !gallons || !pricePerGallon) {
+    alert("Date, odometer, gallons, and price per gallon are required.");
+    return;
   }
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
+  if (!user) {
+    router.push("/login");
+    return;
+  }
 
+  const calculatedTotalCost = Number(gallons) * Number(pricePerGallon);
 
+  const newEntry: FuelEntry = {
+    id: crypto.randomUUID(),
+    userId: user.id,
+    date,
+    odometer,
+    gallons,
+    pricePerGallon,
+    totalCost: calculatedTotalCost.toFixed(2),
+    notes,
+  };
 
+  const updatedEntries = [newEntry, ...fuelEntries];
 
+  saveFuelEntries(updatedEntries);
+  setFuelEntries(updatedEntries);
+
+  await supabase.from("fuel_entries").insert({
+    user_id: user.id,
+    date: newEntry.date,
+    odometer: newEntry.odometer,
+    gallons: newEntry.gallons,
+    price_per_gallon: newEntry.pricePerGallon,
+    total_cost: newEntry.totalCost,
+    notes: newEntry.notes ?? null,
+  });
+
+  alert("Fuel entry saved.");
+  router.push("/");
+}
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">

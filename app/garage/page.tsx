@@ -31,8 +31,28 @@ export default function GaragePage() {
   const [serviceNotes, setServiceNotes] = useState("");
 
 
-useEffect(() => {
-  async function loadGarageData() {
+  useEffect(() => {
+    async function loadGarageData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const services = await loadServiceEntriesFromSupabase(user.id);
+      const reminders = await loadMaintenanceRemindersFromSupabase(user.id);
+
+      setServiceEntries(services);
+      setMaintenanceReminders(reminders);
+    }
+
+    loadGarageData();
+  }, [router]);
+
+  async function handleSaveService() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -42,71 +62,51 @@ useEffect(() => {
       return;
     }
 
-    const services = await loadServiceEntriesFromSupabase(user.id);
-    const reminders = await loadMaintenanceRemindersFromSupabase(user.id);
+    const newService: ServiceEntry = {
+      id: crypto.randomUUID(),
+      userId: user.id,
+      date: serviceDate,
+      odometer: serviceOdometer,
+      serviceType,
+      cost: serviceCost,
+      notes: serviceNotes,
+    };
 
-    setServiceEntries(services);
-    setMaintenanceReminders(reminders);
+    await saveServiceEntryToSupabase(newService);
+
+    const updatedServices = await loadServiceEntriesFromSupabase(user.id);
+    setServiceEntries(updatedServices);
+
+    setServiceDate(new Date().toISOString().split("T")[0]);
+    setServiceOdometer("");
+    setServiceType("");
+    setServiceCost("");
+    setServiceNotes("");
+
+    setShowServiceForm(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  loadGarageData();
-}, [router]);
+  async function handleDeleteService() {
+    if (!serviceEntries[0]) return;
 
-async function handleSaveService() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    const confirmed = window.confirm("Delete this service entry?");
 
-  if (!user) {
-    router.push("/login");
-    return;
+    if (!confirmed) return;
+
+    await deleteServiceEntryFromSupabase(serviceEntries[0].id);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const updatedServices = await loadServiceEntriesFromSupabase(user.id);
+    setServiceEntries(updatedServices);
   }
 
-  const newService: ServiceEntry = {
-    id: crypto.randomUUID(),
-    userId: user.id,
-    date: serviceDate,
-    odometer: serviceOdometer,
-    serviceType,
-    cost: serviceCost,
-    notes: serviceNotes,
-  };
-
-  await saveServiceEntryToSupabase(newService);
-
-  const updatedServices = await loadServiceEntriesFromSupabase(user.id);
-  setServiceEntries(updatedServices);
-
-  setServiceDate(new Date().toISOString().split("T")[0]);
-  setServiceOdometer("");
-  setServiceType("");
-  setServiceCost("");
-  setServiceNotes("");
-
-  setShowServiceForm(false);
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-async function handleDeleteService() {
-  if (!serviceEntries[0]) return;
-
-  const confirmed = window.confirm("Delete this service entry?");
-
-  if (!confirmed) return;
-
-  await deleteServiceEntryFromSupabase(serviceEntries[0].id);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return;
-
-  const updatedServices = await loadServiceEntriesFromSupabase(user.id);
-  setServiceEntries(updatedServices);
-}
-
-return (
+  return (
 
 
     <main className="min-h-screen bg-[#020814] text-white">
@@ -161,8 +161,18 @@ return (
             </div>
           </div>
 
-          {/* Add Service Button */}
+{/* deletes the currently shown service record */}
 
+          {serviceEntries[0] && (
+            <button
+              onClick={handleDeleteService}
+              className="mt-4 w-full rounded-2xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-300"
+            >
+              Delete Service
+            </button>
+          )}
+
+{/* Add Service Button */}
           <button
             onClick={() => setShowServiceForm(!showServiceForm)}
             className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white"

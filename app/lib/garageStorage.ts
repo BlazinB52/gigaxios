@@ -1,5 +1,17 @@
 import { supabase } from "@/app/lib/supabaseClient";
 
+export type Vehicle = {
+  id: string;
+  userId: string;
+  year: string;
+  make: string;
+  model: string;
+  trim: string;
+  color: string;
+  licensePlate: string;
+  vin: string;
+  notes: string;
+};
 
 export type ServiceEntry = {
     id: string;
@@ -99,6 +111,49 @@ export async function loadMaintenanceRemindersFromSupabase(
         dueDate: entry.due_date ?? "",
         notes: entry.notes ?? "",
     }));
+}
+
+export async function loadVehicleFromSupabase(userId: string): Promise<Vehicle | null> {
+  const { data, error } = await supabase
+    .from("vehicles")
+    .select("*")
+    .eq("user_id", userId)
+    .limit(1)
+    .single();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    year: data.year ?? "",
+    make: data.make ?? "",
+    model: data.model ?? "",
+    trim: data.trim ?? "",
+    color: data.color ?? "",
+    licensePlate: data.license_plate ?? "",
+    vin: data.vin ?? "",
+    notes: data.notes ?? "",
+  };
+}
+
+export async function loadCurrentOdometer(userId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("fuel_entries")
+    .select("odometer")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error || !data || data.length === 0) return 0;
+  return parseFloat(data[0].odometer) || 0;
+}
+
+export function computeServiceStats(entries: ServiceEntry[]) {
+  const totalServices = entries.length;
+  const totalSpent = entries.reduce((sum, e) => sum + (parseFloat(e.cost) || 0), 0);
+  const lastServiceOdometer = entries[0]?.odometer ?? "--";
+  return { totalServices, totalSpent, lastServiceOdometer };
 }
 
 export async function saveMaintenanceReminderToSupabase(

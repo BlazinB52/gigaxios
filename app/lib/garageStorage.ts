@@ -175,5 +175,92 @@ export async function saveMaintenanceReminderToSupabase(
     if (error) {
         console.error("Supabase reminder save error:", error.message);
     }
-   
+
+}
+
+export type ServiceInterval = {
+  id: string;
+  userId: string;
+  serviceType: string;
+  intervalMiles: number | null;
+  intervalMonths: number | null;
+};
+
+export type GeneralSettings = {
+  weekStartsOn: string;
+  notificationsEnabled: boolean;
+};
+
+export async function saveVehicleToSupabase(vehicle: Vehicle): Promise<void> {
+  const existing = await loadVehicleFromSupabase(vehicle.userId);
+
+  if (existing) {
+    const { error } = await supabase
+      .from("vehicles")
+      .update({
+        year: vehicle.year,
+        make: vehicle.make,
+        model: vehicle.model,
+        trim: vehicle.trim,
+        color: vehicle.color,
+        license_plate: vehicle.licensePlate,
+        vin: vehicle.vin,
+        notes: vehicle.notes,
+      })
+      .eq("user_id", vehicle.userId);
+
+    if (error) console.error("Supabase vehicle update error:", error.message);
+  } else {
+    const { error } = await supabase.from("vehicles").insert({
+      user_id: vehicle.userId,
+      year: vehicle.year,
+      make: vehicle.make,
+      model: vehicle.model,
+      trim: vehicle.trim,
+      color: vehicle.color,
+      license_plate: vehicle.licensePlate,
+      vin: vehicle.vin,
+      notes: vehicle.notes,
+    });
+
+    if (error) console.error("Supabase vehicle insert error:", error.message);
+  }
+}
+
+export async function loadServiceIntervalsFromSupabase(userId: string): Promise<ServiceInterval[]> {
+  const { data, error } = await supabase
+    .from("service_intervals")
+    .select("*")
+    .eq("user_id", userId);
+
+  if (error || !data) return [];
+
+  return data.map((entry) => ({
+    id: entry.id,
+    userId: entry.user_id,
+    serviceType: entry.service_type ?? "",
+    intervalMiles: entry.interval_miles ?? null,
+    intervalMonths: entry.interval_months ?? null,
+  }));
+}
+
+export async function saveServiceIntervalsToSupabase(userId: string, intervals: ServiceInterval[]): Promise<void> {
+  await supabase.from("service_intervals").delete().eq("user_id", userId);
+
+  if (intervals.length === 0) return;
+
+  const { error } = await supabase.from("service_intervals").insert(
+    intervals.map((interval) => ({
+      user_id: userId,
+      service_type: interval.serviceType,
+      interval_miles: interval.intervalMiles,
+      interval_months: interval.intervalMonths,
+    }))
+  );
+
+  if (error) console.error("Supabase service intervals save error:", error.message);
+}
+
+export function getIntervalForServiceType(intervals: ServiceInterval[], serviceType: string): ServiceInterval | null {
+  return intervals.find((i) => i.serviceType === serviceType) ?? null;
 }

@@ -3,20 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Settings } from "lucide-react";
 import BottomNav from "../components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
   ServiceEntry,
   MaintenanceReminder,
   Vehicle,
+  ServiceInterval,
   loadServiceEntriesFromSupabase,
   loadMaintenanceRemindersFromSupabase,
   loadVehicleFromSupabase,
   loadCurrentOdometer,
+  loadServiceIntervalsFromSupabase,
   saveServiceEntryToSupabase,
   saveMaintenanceReminderToSupabase,
   computeServiceStats,
+  getIntervalForServiceType,
 } from "@/app/lib/garageStorage";
 
 function getServiceIcon(title: string): string {
@@ -106,6 +109,7 @@ export default function GaragePage() {
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [maintenanceReminders, setMaintenanceReminders] = useState<MaintenanceReminder[]>([]);
   const [currentOdometer, setCurrentOdometer] = useState(0);
+  const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
 
   const [showServiceForm, setShowServiceForm] = useState(false);
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split("T")[0]);
@@ -132,21 +136,31 @@ export default function GaragePage() {
         return;
       }
 
-      const [services, reminders, vehicleData, odo] = await Promise.all([
+      const [services, reminders, vehicleData, odo, intervals] = await Promise.all([
         loadServiceEntriesFromSupabase(user.id),
         loadMaintenanceRemindersFromSupabase(user.id),
         loadVehicleFromSupabase(user.id),
         loadCurrentOdometer(user.id),
+        loadServiceIntervalsFromSupabase(user.id),
       ]);
 
       setServiceEntries(services);
       setMaintenanceReminders(reminders);
       setVehicle(vehicleData);
       setCurrentOdometer(odo);
+      setServiceIntervals(intervals);
     }
 
     loadGarageData();
   }, [router]);
+
+  function handleReminderTypeSelect(type: string) {
+    setReminderTitle(type);
+    const match = getIntervalForServiceType(serviceIntervals, type);
+    if (match?.intervalMiles) {
+      setReminderIntervalMiles(String(match.intervalMiles));
+    }
+  }
 
   async function handleSaveService() {
     const {
@@ -229,23 +243,32 @@ export default function GaragePage() {
             <h1 className="text-4xl font-bold tracking-tight">Garage</h1>
             <p className="mt-2 text-base text-slate-400">Your vehicle. Your business.</p>
           </div>
-          <Link href="/garage/vehicle">
-            <div className="min-w-32 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-right">
-              {vehicle ? (
-                <>
-                  <p className="text-base">🚗</p>
-                  <p className="mt-0.5 text-xs font-bold leading-tight text-white">
-                    {vehicle.year} {vehicle.make} {vehicle.model}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {currentOdometer.toLocaleString()} mi
-                  </p>
-                </>
-              ) : (
-                <p className="py-1 text-sm font-bold text-blue-400">Add Vehicle +</p>
-              )}
-            </div>
-          </Link>
+          {vehicle ? (
+            <button
+              onClick={() => router.push("/settings")}
+              className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-800 text-base">
+                🚗
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-white">
+                  {vehicle.year} {vehicle.make} {vehicle.model}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {currentOdometer.toLocaleString()} mi
+                </p>
+              </div>
+              <Settings className="h-4 w-4 text-slate-400" />
+            </button>
+          ) : (
+            <button
+              onClick={() => router.push("/settings")}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-300"
+            >
+              ⚙️ Settings
+            </button>
+          )}
         </div>
 
         {/* SERVICE CARD */}
@@ -527,13 +550,23 @@ export default function GaragePage() {
 
             {showReminderForm && (
               <div className="mt-5 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-                <input
-                  type="text"
-                  placeholder="Title (e.g. Oil Change)"
+                <select
                   value={reminderTitle}
-                  onChange={(e) => setReminderTitle(e.target.value)}
+                  onChange={(e) => handleReminderTypeSelect(e.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                />
+                >
+                  <option value="">Select service type</option>
+                  <option value="Oil Change">Oil Change</option>
+                  <option value="Tire Rotation">Tire Rotation</option>
+                  <option value="Brake Inspection">Brake Inspection</option>
+                  <option value="Transmission Service">Transmission Service</option>
+                  <option value="Battery Check">Battery Check</option>
+                  <option value="Tires">Tires</option>
+                  <option value="Wipers">Wipers</option>
+                  <option value="Inspection">Inspection</option>
+                  <option value="Registration Renewal">Registration Renewal</option>
+                  <option value="Other">Other</option>
+                </select>
                 <input
                   type="number"
                   placeholder="Last Done Odometer"

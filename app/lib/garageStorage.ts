@@ -94,7 +94,7 @@ export async function loadMaintenanceRemindersFromSupabase(
         .from("maintenance_reminders")
         .select("*")
         .eq("user_id", userId)
-        .order("due_odometer", { ascending: true });
+        .order("due_odometer", { ascending: true, nullsFirst: false });
 
     if (error) {
         console.error("Supabase reminder load error:", error.message);
@@ -139,14 +139,15 @@ export async function loadVehicleFromSupabase(userId: string): Promise<Vehicle |
 
 export async function loadCurrentOdometer(userId: string): Promise<number> {
   const { data, error } = await supabase
-    .from("fuel_entries")
-    .select("odometer")
+    .from("shifts")
+    .select("ending_mileage")
     .eq("user_id", userId)
+    .not("ending_mileage", "is", null)
     .order("created_at", { ascending: false })
     .limit(1);
 
   if (error || !data || data.length === 0) return 0;
-  return parseFloat(data[0].odometer) || 0;
+  return parseFloat(data[0].ending_mileage) || 0;
 }
 
 export function computeServiceStats(entries: ServiceEntry[]) {

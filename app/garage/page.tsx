@@ -16,7 +16,6 @@ import {
   loadVehicleFromSupabase,
   loadCurrentOdometer,
   loadServiceIntervalsFromSupabase,
-  saveServiceEntryToSupabase,
   saveMaintenanceReminderToSupabase,
   computeServiceStats,
   getIntervalForServiceType,
@@ -46,18 +45,13 @@ function formatDate(dateStr: string): string {
 
 function getDueText(reminder: MaintenanceReminder, currentOdometer: number): string {
   const dueOdo = parseFloat(reminder.dueOdometer) || 0;
-  if (dueOdo > 0 && currentOdometer > 0) {
+  if (dueOdo > 0) {
     const miles = Math.round(dueOdo - currentOdometer);
     if (miles < 0) return `${Math.abs(miles).toLocaleString()} mi overdue`;
     return `Due in ${miles.toLocaleString()} mi`;
   }
   if (reminder.dueDate) {
-    const days = Math.ceil(
-      (new Date(reminder.dueDate + "T12:00:00").getTime() - Date.now()) / 86400000
-    );
-    if (days < 0) return `${Math.abs(days)} days overdue`;
-    if (days === 0) return "Due today";
-    return `Due in ${days} day${days !== 1 ? "s" : ""}`;
+    return `Due ${formatDate(reminder.dueDate)}`;
   }
   return "—";
 }
@@ -111,13 +105,6 @@ export default function GaragePage() {
   const [currentOdometer, setCurrentOdometer] = useState(0);
   const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
 
-  const [showServiceForm, setShowServiceForm] = useState(false);
-  const [serviceDate, setServiceDate] = useState(new Date().toISOString().split("T")[0]);
-  const [serviceOdometer, setServiceOdometer] = useState("");
-  const [serviceType, setServiceType] = useState("");
-  const [serviceCost, setServiceCost] = useState("");
-  const [serviceNotes, setServiceNotes] = useState("");
-
   const [showReminderForm, setShowReminderForm] = useState(false);
   const [reminderTitle, setReminderTitle] = useState("");
   const [reminderLastOdometer, setReminderLastOdometer] = useState("");
@@ -160,39 +147,6 @@ export default function GaragePage() {
     if (match?.intervalMiles) {
       setReminderIntervalMiles(String(match.intervalMiles));
     }
-  }
-
-  async function handleSaveService() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    const newService: ServiceEntry = {
-      id: crypto.randomUUID(),
-      userId: user.id,
-      date: serviceDate,
-      odometer: serviceOdometer,
-      serviceType,
-      cost: serviceCost,
-      notes: serviceNotes,
-    };
-
-    await saveServiceEntryToSupabase(newService);
-    const updatedServices = await loadServiceEntriesFromSupabase(user.id);
-    setServiceEntries(updatedServices);
-
-    setServiceDate(new Date().toISOString().split("T")[0]);
-    setServiceOdometer("");
-    setServiceType("");
-    setServiceCost("");
-    setServiceNotes("");
-    setShowServiceForm(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleSaveReminder() {
@@ -238,7 +192,7 @@ export default function GaragePage() {
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">
 
         {/* PAGE HEADER */}
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-4xl font-bold tracking-tight">Garage</h1>
             <p className="mt-2 text-base text-slate-400">Your vehicle. Your business.</p>
@@ -246,20 +200,18 @@ export default function GaragePage() {
           {vehicle ? (
             <button
               onClick={() => router.push("/settings")}
-              className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3"
+              className="flex max-w-[180px] items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-3 py-2"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-800 text-base">
-                🚗
-              </div>
-              <div className="text-left">
-                <p className="text-sm font-semibold text-white">
+              <span className="text-sm">🚗</span>
+              <div className="min-w-0 text-left">
+                <p className="truncate text-sm font-semibold text-white">
                   {vehicle.year} {vehicle.make} {vehicle.model}
                 </p>
                 <p className="text-xs text-slate-400">
                   {currentOdometer.toLocaleString()} mi
                 </p>
               </div>
-              <Settings className="h-4 w-4 text-slate-400" />
+              <Settings className="h-4 w-4 shrink-0 text-slate-400" />
             </button>
           ) : (
             <button
@@ -319,81 +271,6 @@ export default function GaragePage() {
               </div>
             </div>
 
-            <button
-              onClick={() => setShowServiceForm(!showServiceForm)}
-              className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white"
-            >
-              + Add Service
-            </button>
-
-            {showServiceForm && (
-              <div className="mt-5 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-                <input
-                  type="date"
-                  value={serviceDate}
-                  onChange={(e) => setServiceDate(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white [color-scheme:dark]"
-                />
-                <input
-                  type="number"
-                  placeholder="Odometer"
-                  value={serviceOdometer}
-                  onChange={(e) => setServiceOdometer(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                />
-                <select
-                  value={serviceType}
-                  onChange={(e) => setServiceType(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                >
-                  <option value="">Select service type</option>
-                  <option value="Oil Change">Oil Change</option>
-                  <option value="Tire Rotation">Tire Rotation</option>
-                  <option value="Brake Job">Brake Job</option>
-                  <option value="Tires">Tires</option>
-                  <option value="Battery">Battery</option>
-                  <option value="Wipers">Wipers</option>
-                  <option value="Repair">Repair</option>
-                  <option value="Inspection">Inspection</option>
-                  <option value="Other">Other</option>
-                </select>
-                <input
-                  type="number"
-                  placeholder="Cost"
-                  value={serviceCost}
-                  onChange={(e) => setServiceCost(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                />
-                <textarea
-                  placeholder="Notes"
-                  value={serviceNotes}
-                  onChange={(e) => setServiceNotes(e.target.value)}
-                  className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={handleSaveService}
-                    className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => {
-                      setServiceDate(new Date().toISOString().split("T")[0]);
-                      setServiceOdometer("");
-                      setServiceType("");
-                      setServiceCost("");
-                      setServiceNotes("");
-                      setShowServiceForm(false);
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                    className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
           </section>
         </div>
 
@@ -520,7 +397,7 @@ export default function GaragePage() {
                       <span className="text-xl">{getServiceIcon(reminder.title)}</span>
                       <div>
                         <p className="font-bold text-white">{reminder.title}</p>
-                        <p className="text-sm text-slate-400">
+                        <p className={`text-sm ${getReminderUrgencyColor(reminder, currentOdometer)}`}>
                           {getDueText(reminder, currentOdometer)}
                         </p>
                       </div>

@@ -10,6 +10,7 @@ import {
   loadServiceEntriesFromSupabase,
   loadMaintenanceRemindersFromSupabase,
   saveServiceEntryToSupabase,
+  deleteServiceEntryFromSupabase,
 } from "@/app/lib/garageStorage";
 
 export default function GaragePage() {
@@ -30,32 +31,8 @@ export default function GaragePage() {
   const [serviceNotes, setServiceNotes] = useState("");
 
 
-
-  useEffect(() => {
-
-    async function loadGarageData() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      const services = await loadServiceEntriesFromSupabase(user.id);
-
-      const reminders =
-        await loadMaintenanceRemindersFromSupabase(user.id);
-
-      setServiceEntries(services);
-      setMaintenanceReminders(reminders);
-    }
-
-    loadGarageData();
-  }, [router]);
-
-  async function handleSaveService() {
+useEffect(() => {
+  async function loadGarageData() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -65,30 +42,71 @@ export default function GaragePage() {
       return;
     }
 
-    const newService: ServiceEntry = {
-      id: crypto.randomUUID(),
-      userId: user.id,
-      date: serviceDate,
-      odometer: serviceOdometer,
-      serviceType,
-      cost: serviceCost,
-      notes: serviceNotes,
-    };
+    const services = await loadServiceEntriesFromSupabase(user.id);
+    const reminders = await loadMaintenanceRemindersFromSupabase(user.id);
 
-    await saveServiceEntryToSupabase(newService);
-
-    const updatedServices = await loadServiceEntriesFromSupabase(user.id);
-    setServiceEntries(updatedServices);
-
-    setServiceDate("");
-    setServiceOdometer("");
-    setServiceType("");
-    setServiceCost("");
-    setServiceNotes("");
-    setShowServiceForm(false);
+    setServiceEntries(services);
+    setMaintenanceReminders(reminders);
   }
 
-  return (
+  loadGarageData();
+}, [router]);
+
+async function handleSaveService() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    router.push("/login");
+    return;
+  }
+
+  const newService: ServiceEntry = {
+    id: crypto.randomUUID(),
+    userId: user.id,
+    date: serviceDate,
+    odometer: serviceOdometer,
+    serviceType,
+    cost: serviceCost,
+    notes: serviceNotes,
+  };
+
+  await saveServiceEntryToSupabase(newService);
+
+  const updatedServices = await loadServiceEntriesFromSupabase(user.id);
+  setServiceEntries(updatedServices);
+
+  setServiceDate(new Date().toISOString().split("T")[0]);
+  setServiceOdometer("");
+  setServiceType("");
+  setServiceCost("");
+  setServiceNotes("");
+
+  setShowServiceForm(false);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function handleDeleteService() {
+  if (!serviceEntries[0]) return;
+
+  const confirmed = window.confirm("Delete this service entry?");
+
+  if (!confirmed) return;
+
+  await deleteServiceEntryFromSupabase(serviceEntries[0].id);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  const updatedServices = await loadServiceEntriesFromSupabase(user.id);
+  setServiceEntries(updatedServices);
+}
+
+return (
 
 
     <main className="min-h-screen bg-[#020814] text-white">
@@ -114,7 +132,7 @@ export default function GaragePage() {
           </div>
 
           <div className="mt-5 border-t border-slate-800 pt-5">
-            <p className="text-sm text-slate-400">Last Major Service</p>
+            <p className="text-sm text-slate-400">Most Recent Service</p>
             <p className="mt-1 text-xl font-bold text-white">
               {serviceEntries[0]?.serviceType || "No services yet"}
             </p>
@@ -138,7 +156,7 @@ export default function GaragePage() {
                 <p className="text-lg font-bold text-blue-400">
                   {serviceEntries.length}
                 </p>
-                <p className="text-xs text-slate-400">Recent</p>
+                <p className="text-xs text-slate-400">Total</p>
               </div>
             </div>
           </div>
@@ -215,6 +233,12 @@ export default function GaragePage() {
 
                 <button
                   onClick={() => {
+                    setServiceDate(new Date().toISOString().split("T")[0]);
+                    setServiceOdometer("");
+                    setServiceType("");
+                    setServiceCost("");
+                    setServiceNotes("");
+
                     setShowServiceForm(false);
                     window.scrollTo({ top: 0, behavior: "smooth" });
                   }}

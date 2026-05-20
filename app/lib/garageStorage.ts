@@ -96,6 +96,8 @@ export async function loadMaintenanceRemindersFromSupabase(
         .eq("user_id", userId)
         .order("due_odometer", { ascending: true, nullsFirst: false });
 
+    console.log("[reminders] raw data:", data, "error:", error);
+
     if (error) {
         console.error("Supabase reminder load error:", error.message);
         return [];

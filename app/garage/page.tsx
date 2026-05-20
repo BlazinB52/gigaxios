@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ChevronRight, Settings } from "lucide-react";
 import BottomNav from "../components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
@@ -10,15 +9,11 @@ import {
   ServiceEntry,
   MaintenanceReminder,
   Vehicle,
-  ServiceInterval,
   loadServiceEntriesFromSupabase,
   loadMaintenanceRemindersFromSupabase,
   loadVehicleFromSupabase,
   loadCurrentOdometer,
-  loadServiceIntervalsFromSupabase,
-  saveMaintenanceReminderToSupabase,
   computeServiceStats,
-  getIntervalForServiceType,
 } from "@/app/lib/garageStorage";
 
 function getServiceIcon(title: string): string {
@@ -103,14 +98,6 @@ export default function GaragePage() {
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [maintenanceReminders, setMaintenanceReminders] = useState<MaintenanceReminder[]>([]);
   const [currentOdometer, setCurrentOdometer] = useState(0);
-  const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
-
-  const [showReminderForm, setShowReminderForm] = useState(false);
-  const [reminderTitle, setReminderTitle] = useState("");
-  const [reminderLastOdometer, setReminderLastOdometer] = useState("");
-  const [reminderIntervalMiles, setReminderIntervalMiles] = useState("");
-  const [reminderDueDate, setReminderDueDate] = useState("");
-  const [reminderNotes, setReminderNotes] = useState("");
 
   useEffect(() => {
     async function loadGarageData() {
@@ -123,67 +110,22 @@ export default function GaragePage() {
         return;
       }
 
-      const [services, reminders, vehicleData, odo, intervals] = await Promise.all([
+      const [services, reminders, vehicleData, odo] = await Promise.all([
         loadServiceEntriesFromSupabase(user.id),
         loadMaintenanceRemindersFromSupabase(user.id),
         loadVehicleFromSupabase(user.id),
         loadCurrentOdometer(user.id),
-        loadServiceIntervalsFromSupabase(user.id),
       ]);
 
       setServiceEntries(services);
       setMaintenanceReminders(reminders);
       setVehicle(vehicleData);
       setCurrentOdometer(odo);
-      setServiceIntervals(intervals);
+      console.log("[garage] maintenanceReminders set:", reminders);
     }
 
     loadGarageData();
   }, [router]);
-
-  function handleReminderTypeSelect(type: string) {
-    setReminderTitle(type);
-    const match = getIntervalForServiceType(serviceIntervals, type);
-    if (match?.intervalMiles) {
-      setReminderIntervalMiles(String(match.intervalMiles));
-    }
-  }
-
-  async function handleSaveReminder() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    const newReminder: MaintenanceReminder = {
-      id: crypto.randomUUID(),
-      userId: user.id,
-      title: reminderTitle,
-      lastDoneOdometer: reminderLastOdometer,
-      intervalMiles: reminderIntervalMiles,
-      dueOdometer: String(
-        Number(reminderLastOdometer || 0) + Number(reminderIntervalMiles || 0)
-      ),
-      dueDate: reminderDueDate,
-      notes: reminderNotes,
-    };
-
-    await saveMaintenanceReminderToSupabase(newReminder);
-    const updatedReminders = await loadMaintenanceRemindersFromSupabase(user.id);
-    setMaintenanceReminders(updatedReminders);
-
-    setReminderTitle("");
-    setReminderLastOdometer("");
-    setReminderIntervalMiles("");
-    setReminderDueDate("");
-    setReminderNotes("");
-    setShowReminderForm(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
 
   const { totalServices, totalSpent, lastServiceOdometer } = computeServiceStats(serviceEntries);
 
@@ -200,11 +142,11 @@ export default function GaragePage() {
           {vehicle ? (
             <button
               onClick={() => router.push("/settings")}
-              className="flex max-w-[180px] items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-3 py-2"
+              className="flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-3 py-2"
             >
               <span className="text-sm">🚗</span>
               <div className="min-w-0 text-left">
-                <p className="truncate text-sm font-semibold text-white">
+                <p className="text-sm font-semibold text-white">
                   {vehicle.year} {vehicle.make} {vehicle.model}
                 </p>
                 <p className="text-xs text-slate-400">
@@ -234,9 +176,7 @@ export default function GaragePage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold">Service</h2>
-                  <Link href="/garage/service">
-                    <ChevronRight className="h-5 w-5 text-slate-500" />
-                  </Link>
+                  <ChevronRight className="h-5 w-5 text-slate-500" />
                 </div>
                 <p className="mt-1 text-sm leading-6 text-slate-400">
                   Track major maintenance and repairs.
@@ -270,7 +210,6 @@ export default function GaragePage() {
                 </div>
               </div>
             </div>
-
           </section>
         </div>
 
@@ -290,9 +229,7 @@ export default function GaragePage() {
                       Coming soon
                     </span>
                   </div>
-                  <Link href="/garage/overhead">
-                    <ChevronRight className="h-5 w-5 text-slate-500" />
-                  </Link>
+                  <ChevronRight className="h-5 w-5 text-slate-500" />
                 </div>
                 <p className="mt-1 text-sm leading-6 text-slate-400">
                   Recurring costs that affect your bottom line.
@@ -330,9 +267,7 @@ export default function GaragePage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold">Vehicle Health</h2>
-                  <Link href="/garage/health">
-                    <ChevronRight className="h-5 w-5 text-slate-500" />
-                  </Link>
+                  <ChevronRight className="h-5 w-5 text-slate-500" />
                 </div>
                 <p className="mt-1 text-sm leading-6 text-slate-400">
                   Quick overview of your vehicle&apos;s current health.
@@ -372,9 +307,7 @@ export default function GaragePage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold">Upcoming Maintenance</h2>
-                  <Link href="/garage/maintenance">
-                    <ChevronRight className="h-5 w-5 text-slate-500" />
-                  </Link>
+                  <ChevronRight className="h-5 w-5 text-slate-500" />
                 </div>
                 <p className="mt-1 text-sm leading-6 text-slate-400">
                   Stay ahead of what&apos;s due so you can avoid problems.
@@ -417,88 +350,6 @@ export default function GaragePage() {
                 ))
               )}
             </div>
-
-            <button
-              onClick={() => setShowReminderForm(!showReminderForm)}
-              className="mt-5 w-full rounded-2xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950"
-            >
-              + Add Reminder
-            </button>
-
-            {showReminderForm && (
-              <div className="mt-5 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-                <select
-                  value={reminderTitle}
-                  onChange={(e) => handleReminderTypeSelect(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                >
-                  <option value="">Select service type</option>
-                  <option value="Oil Change">Oil Change</option>
-                  <option value="Tire Rotation">Tire Rotation</option>
-                  <option value="Brake Inspection">Brake Inspection</option>
-                  <option value="Transmission Service">Transmission Service</option>
-                  <option value="Battery Check">Battery Check</option>
-                  <option value="Tires">Tires</option>
-                  <option value="Wipers">Wipers</option>
-                  <option value="Inspection">Inspection</option>
-                  <option value="Registration Renewal">Registration Renewal</option>
-                  <option value="Other">Other</option>
-                </select>
-                <input
-                  type="number"
-                  placeholder="Last Done Odometer"
-                  value={reminderLastOdometer}
-                  onChange={(e) => setReminderLastOdometer(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                />
-                <div>
-                  <input
-                    type="number"
-                    placeholder="Interval Miles"
-                    value={reminderIntervalMiles}
-                    onChange={(e) => setReminderIntervalMiles(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                  />
-                  <p className="mt-1 px-1 text-xs text-slate-500">
-                    e.g. 5000 for every 5,000 miles
-                  </p>
-                </div>
-                <input
-                  type="date"
-                  value={reminderDueDate}
-                  onChange={(e) => setReminderDueDate(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white [color-scheme:dark]"
-                />
-                <textarea
-                  placeholder="Notes (optional)"
-                  value={reminderNotes}
-                  onChange={(e) => setReminderNotes(e.target.value)}
-                  className="min-h-20 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={handleSaveReminder}
-                    className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => {
-                      setReminderTitle("");
-                      setReminderLastOdometer("");
-                      setReminderIntervalMiles("");
-                      setReminderDueDate("");
-                      setReminderNotes("");
-                      setShowReminderForm(false);
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                    className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
           </section>
         </div>
 

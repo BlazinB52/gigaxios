@@ -132,41 +132,28 @@ export default function MaintenancePage() {
             ) : (
               maintenanceReminders.map((reminder, index) => {
                 const urgencyColor = getUrgencyColor(reminder, currentOdometer);
-                const dueOdo = parseFloat(reminder.dueOdometer) || 0;
-                const milesLeft = dueOdo > 0 ? Math.round(dueOdo - currentOdometer) : null;
-                const isOverdue = milesLeft !== null && milesLeft < 0;
 
                 return (
                   <div
                     key={reminder.id}
                     className={index > 0 ? "mt-4 border-t border-slate-800 pt-4" : ""}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <span className="mt-0.5 text-xl leading-none">
-                          {getServiceIcon(reminder.title)}
-                        </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{getServiceIcon(reminder.title)}</span>
                         <div>
                           <p className="font-semibold text-white">{reminder.title}</p>
-                          <p className={`text-sm ${isOverdue ? "text-red-400" : "text-slate-400"}`}>
+                          <p className={`text-sm ${urgencyColor}`}>
                             {getDueText(reminder, currentOdometer)}
                           </p>
-                          {reminder.dueDate && (
-                            <p className="text-xs text-slate-500">{formatDate(reminder.dueDate)}</p>
-                          )}
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-3">
-                        <p className={`text-sm font-semibold ${urgencyColor}`}>
-                          {reminder.dueDate ? formatDate(reminder.dueDate) : ""}
-                        </p>
-                        <button
-                          onClick={() => handleDeleteReminder(reminder.id)}
-                          className="text-slate-600 active:text-red-400"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleDeleteReminder(reminder.id)}
+                        className="shrink-0 text-slate-600 active:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 );

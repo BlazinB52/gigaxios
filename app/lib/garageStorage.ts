@@ -409,3 +409,21 @@ export async function autoUpdateIntervalFromService(
 
   await generateRemindersFromIntervals(userId);
 }
+
+export async function clearIntervalLastDone(
+  userId: string,
+  serviceType: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("service_intervals")
+    .update({
+      last_done_odometer: null,
+      last_done_date: null,
+    })
+    .eq("user_id", userId)
+    .eq("service_type", serviceType);
+
+  if (error) {
+    console.error("Clear interval error:", error.message);
+  }
+}

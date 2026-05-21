@@ -332,30 +332,17 @@ export default function GaragePage() {
                 maintenanceReminders.map((reminder, index) => (
                   <div
                     key={reminder.id}
-                    className={`flex items-center justify-between py-4 ${
+                    className={`flex items-center justify-between gap-2 py-4 ${
                       index > 0 ? "border-t border-slate-800" : ""
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-xl">{getServiceIcon(reminder.title)}</span>
-                      <div>
-                        <p className="font-bold text-white">{reminder.title}</p>
-                        <p className={`text-sm ${getReminderUrgencyColor(reminder, currentOdometer)}`}>
-                          {getDueText(reminder, currentOdometer)}
-                        </p>
-                      </div>
+                      <span className="font-semibold text-white">{reminder.title}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <p
-                        className={`text-sm font-semibold ${getReminderUrgencyColor(
-                          reminder,
-                          currentOdometer
-                        )}`}
-                      >
-                        {formatDate(reminder.dueDate)}
-                      </p>
-                      <ChevronRight className="h-4 w-4 text-slate-600" />
-                    </div>
+                    <span className={`shrink-0 text-sm font-medium ${getReminderUrgencyColor(reminder, currentOdometer)}`}>
+                      {getDueText(reminder, currentOdometer)}
+                    </span>
                   </div>
                 ))
               )}

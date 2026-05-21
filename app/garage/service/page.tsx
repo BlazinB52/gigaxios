@@ -11,6 +11,8 @@ import {
   saveServiceEntryToSupabase,
   deleteServiceEntryFromSupabase,
   autoUpdateIntervalFromService,
+  clearIntervalLastDone,
+  generateRemindersFromIntervals,
 } from "@/app/lib/garageStorage";
 
 function getServiceIcon(serviceType: string): string {
@@ -69,11 +71,35 @@ export default function ServicePage() {
   }, [router]);
 
   async function handleDeleteEntry(id: string) {
+    if (!userId) return;
+
+    const deletedEntry = serviceEntries.find((e) => e.id === id);
     await deleteServiceEntryFromSupabase(id);
-    if (userId) {
-      const entries = await loadServiceEntriesFromSupabase(userId);
-      setServiceEntries(entries);
+
+    if (deletedEntry) {
+      const { data: remaining } = await supabase
+        .from("service_entries")
+        .select("date, odometer")
+        .eq("user_id", userId)
+        .eq("service_type", deletedEntry.serviceType)
+        .order("date", { ascending: false })
+        .limit(1);
+
+      if (remaining && remaining.length > 0) {
+        await autoUpdateIntervalFromService(
+          userId,
+          deletedEntry.serviceType,
+          parseFloat(remaining[0].odometer) || 0,
+          remaining[0].date
+        );
+      } else {
+        await clearIntervalLastDone(userId, deletedEntry.serviceType);
+        await generateRemindersFromIntervals(userId);
+      }
     }
+
+    const entries = await loadServiceEntriesFromSupabase(userId);
+    setServiceEntries(entries);
   }
 
   async function handleSaveService() {

@@ -1,5 +1,10 @@
 import { supabase } from "@/app/lib/supabaseClient";
 
+// Run this SQL in Supabase before using generateRemindersFromIntervals:
+// alter table public.maintenance_reminders
+// add constraint maintenance_reminders_user_id_title_key
+// unique (user_id, title);
+
 export type Vehicle = {
   id: string;
   userId: string;
@@ -14,103 +19,116 @@ export type Vehicle = {
 };
 
 export type ServiceEntry = {
-    id: string;
-    userId: string;
-    date: string;
-    odometer: string;
-    serviceType: string;
-    cost: string;
-    notes: string;
+  id: string;
+  userId: string;
+  date: string;
+  odometer: string;
+  serviceType: string;
+  cost: string;
+  notes: string;
 };
 
 export type MaintenanceReminder = {
-    id: string;
-    userId: string;
-    title: string;
-    lastDoneOdometer: string;
-    intervalMiles: string;
-    dueOdometer: string;
-    dueDate: string;
-    notes: string;
+  id: string;
+  userId: string;
+  title: string;
+  lastDoneOdometer: string;
+  intervalMiles: string;
+  dueOdometer: string;
+  dueDate: string;
+  notes: string;
+};
+
+export type ServiceInterval = {
+  id: string;
+  userId: string;
+  serviceType: string;
+  intervalMiles: number | null;
+  intervalMonths: number | null;
+  lastDoneOdometer: number | null;
+  lastDoneDate: string | null;
+};
+
+export type GeneralSettings = {
+  weekStartsOn: string;
+  notificationsEnabled: boolean;
 };
 
 export async function deleteServiceEntryFromSupabase(id: string) {
-    const { error } = await supabase
-        .from("service_entries")
-        .delete()
-        .eq("id", id);
+  const { error } = await supabase
+    .from("service_entries")
+    .delete()
+    .eq("id", id);
 
-    if (error) {
-        console.error("Supabase service delete error:", error.message);
-    }
+  if (error) {
+    console.error("Supabase service delete error:", error.message);
+  }
 }
 
 export async function loadServiceEntriesFromSupabase(
-    userId: string
+  userId: string
 ): Promise<ServiceEntry[]> {
-    const { data, error } = await supabase
-        .from("service_entries")
-        .select("*")
-        .eq("user_id", userId)
-        .order("date", { ascending: false });
+  const { data, error } = await supabase
+    .from("service_entries")
+    .select("*")
+    .eq("user_id", userId)
+    .order("date", { ascending: false });
 
-    if (error) {
-        console.error("Supabase service load error:", error.message);
-        return [];
-    }
+  if (error) {
+    console.error("Supabase service load error:", error.message);
+    return [];
+  }
 
-    return data.map((entry) => ({
-        id: entry.id,
-        userId: entry.user_id,
-        date: entry.date,
-        odometer: entry.odometer ?? "",
-        serviceType: entry.service_type ?? "",
-        cost: entry.cost ?? "",
-        notes: entry.notes ?? "",
-    }));
+  return data.map((entry) => ({
+    id: entry.id,
+    userId: entry.user_id,
+    date: entry.date,
+    odometer: entry.odometer ?? "",
+    serviceType: entry.service_type ?? "",
+    cost: entry.cost ?? "",
+    notes: entry.notes ?? "",
+  }));
 }
 
-export async function saveServiceEntryToSupabase(
-    entry: ServiceEntry
-) {
-    const { error } = await supabase.from("service_entries").insert({
-        user_id: entry.userId,
-        date: entry.date,
-        odometer: entry.odometer || null,
-        service_type: entry.serviceType,
-        cost: entry.cost || null,
-        notes: entry.notes,
-    });
+export async function saveServiceEntryToSupabase(entry: ServiceEntry) {
+  const { error } = await supabase.from("service_entries").insert({
+    user_id: entry.userId,
+    date: entry.date,
+    odometer: entry.odometer || null,
+    service_type: entry.serviceType,
+    cost: entry.cost || null,
+    notes: entry.notes,
+  });
 
-    if (error) {
-        console.error("Supabase service save error:", error.message);
-    }
+  if (error) {
+    console.error("Supabase service save error:", error.message);
+  }
 }
 
 export async function loadMaintenanceRemindersFromSupabase(
-    userId: string
+  userId: string
 ): Promise<MaintenanceReminder[]> {
-    const { data, error } = await supabase
-        .from("maintenance_reminders")
-        .select("*")
-        .eq("user_id", userId)
-        .order("due_odometer", { ascending: true, nullsFirst: false });
+  const { data, error } = await supabase
+    .from("maintenance_reminders")
+    .select("*")
+    .eq("user_id", userId)
+    .order("due_odometer", { ascending: true, nullsFirst: false });
 
-    if (error) {
-        console.error("Supabase reminder load error:", error.message);
-        return [];
-    }
+  if (error) {
+    console.error("Supabase reminder load error:", error.message);
+    return [];
+  }
 
-    return data.map((entry) => ({
-        id: entry.id,
-        userId: entry.user_id,
-        title: entry.title ?? "",
-        lastDoneOdometer: entry.last_done_odometer ?? "",
-        intervalMiles: entry.interval_miles ?? "",
-        dueOdometer: entry.due_odometer ?? "",
-        dueDate: entry.due_date ?? "",
-        notes: entry.notes ?? "",
-    }));
+  return data.map((entry) => ({
+    id: entry.id,
+    userId: entry.user_id,
+    title: entry.title ?? "",
+    lastDoneOdometer: entry.last_done_odometer ?? "",
+    intervalMiles: entry.interval_miles ?? "",
+    dueOdometer: entry.due_odometer ?? "",
+    dueDate: entry.due_date ?? "",
+    notes: entry.notes ?? "",
+  }));
 }
 
 export async function loadVehicleFromSupabase(userId: string): Promise<Vehicle | null> {
@@ -157,50 +175,24 @@ export function computeServiceStats(entries: ServiceEntry[]) {
   return { totalServices, totalSpent, lastServiceOdometer };
 }
 
-export async function saveMaintenanceReminderToSupabase(
-    reminder: MaintenanceReminder
-) {
-    const dueOdometer =
-        Number(reminder.lastDoneOdometer || 0) + Number(reminder.intervalMiles || 0);
+export async function saveMaintenanceReminderToSupabase(reminder: MaintenanceReminder) {
+  const dueOdometer =
+    Number(reminder.lastDoneOdometer || 0) + Number(reminder.intervalMiles || 0);
 
-    console.log("[saveReminder] inserting:", JSON.stringify({
-        user_id: reminder.userId,
-        title: reminder.title,
-        last_done_odometer: reminder.lastDoneOdometer,
-        interval_miles: reminder.intervalMiles,
-        due_odometer: dueOdometer,
-        due_date: reminder.dueDate || null,
-    }));
+  const { error } = await supabase.from("maintenance_reminders").insert({
+    user_id: reminder.userId,
+    title: reminder.title,
+    last_done_odometer: reminder.lastDoneOdometer || null,
+    interval_miles: reminder.intervalMiles || null,
+    due_odometer: dueOdometer || null,
+    due_date: reminder.dueDate || null,
+    notes: reminder.notes,
+  });
 
-    const { error } = await supabase.from("maintenance_reminders").insert({
-        user_id: reminder.userId,
-        title: reminder.title,
-        last_done_odometer: reminder.lastDoneOdometer || null,
-        interval_miles: reminder.intervalMiles || null,
-        due_odometer: dueOdometer || null,
-        due_date: reminder.dueDate || null,
-        notes: reminder.notes,
-    });
-
-    console.log("[saveReminder] error:", error);
-    if (error) {
-        console.error("Supabase reminder save error:", error.message);
-    }
-
+  if (error) {
+    console.error("Supabase reminder save error:", error.message);
+  }
 }
-
-export type ServiceInterval = {
-  id: string;
-  userId: string;
-  serviceType: string;
-  intervalMiles: number | null;
-  intervalMonths: number | null;
-};
-
-export type GeneralSettings = {
-  weekStartsOn: string;
-  notificationsEnabled: boolean;
-};
 
 export async function saveVehicleToSupabase(vehicle: Vehicle): Promise<void> {
   const existing = await loadVehicleFromSupabase(vehicle.userId);
@@ -252,10 +244,15 @@ export async function loadServiceIntervalsFromSupabase(userId: string): Promise<
     serviceType: entry.service_type ?? "",
     intervalMiles: entry.interval_miles ?? null,
     intervalMonths: entry.interval_months ?? null,
+    lastDoneOdometer: entry.last_done_odometer ?? null,
+    lastDoneDate: entry.last_done_date ?? null,
   }));
 }
 
-export async function saveServiceIntervalsToSupabase(userId: string, intervals: ServiceInterval[]): Promise<void> {
+export async function saveServiceIntervalsToSupabase(
+  userId: string,
+  intervals: ServiceInterval[]
+): Promise<void> {
   await supabase.from("service_intervals").delete().eq("user_id", userId);
 
   if (intervals.length === 0) return;
@@ -266,13 +263,18 @@ export async function saveServiceIntervalsToSupabase(userId: string, intervals: 
       service_type: interval.serviceType,
       interval_miles: interval.intervalMiles,
       interval_months: interval.intervalMonths,
+      last_done_odometer: interval.lastDoneOdometer ?? null,
+      last_done_date: interval.lastDoneDate ?? null,
     }))
   );
 
   if (error) console.error("Supabase service intervals save error:", error.message);
 }
 
-export function getIntervalForServiceType(intervals: ServiceInterval[], serviceType: string): ServiceInterval | null {
+export function getIntervalForServiceType(
+  intervals: ServiceInterval[],
+  serviceType: string
+): ServiceInterval | null {
   return intervals.find((i) => i.serviceType === serviceType) ?? null;
 }
 
@@ -285,4 +287,125 @@ export async function deleteMaintenanceReminderFromSupabase(id: string) {
   if (error) {
     console.error("Supabase reminder delete error:", error.message);
   }
+}
+
+function getDefaultInterval(
+  serviceType: string
+): { intervalMiles: number | null; intervalMonths: number | null } {
+  switch (serviceType) {
+    case "Oil Change": return { intervalMiles: 5000, intervalMonths: null };
+    case "Tire Rotation": return { intervalMiles: 5000, intervalMonths: null };
+    case "Brake Inspection": return { intervalMiles: 20000, intervalMonths: null };
+    case "Transmission Service": return { intervalMiles: 40000, intervalMonths: null };
+    case "Battery Check": return { intervalMiles: 50000, intervalMonths: null };
+    case "Tires": return { intervalMiles: 50000, intervalMonths: null };
+    case "Wipers": return { intervalMiles: null, intervalMonths: 12 };
+    case "Inspection": return { intervalMiles: null, intervalMonths: 12 };
+    case "Registration Renewal": return { intervalMiles: null, intervalMonths: 12 };
+    default: return { intervalMiles: 5000, intervalMonths: null };
+  }
+}
+
+export async function generateRemindersFromIntervals(userId: string): Promise<void> {
+  const intervals = await loadServiceIntervalsFromSupabase(userId);
+
+  for (const interval of intervals) {
+    const isDateBased =
+      interval.intervalMonths !== null && interval.intervalMiles === null;
+
+    if (isDateBased) {
+      if (!interval.lastDoneDate) continue;
+
+      const lastDate = new Date(interval.lastDoneDate + "T12:00:00");
+      lastDate.setMonth(lastDate.getMonth() + (interval.intervalMonths ?? 0));
+      const dueDate = lastDate.toISOString().split("T")[0];
+
+      const { error } = await supabase
+        .from("maintenance_reminders")
+        .upsert(
+          {
+            user_id: userId,
+            title: interval.serviceType,
+            due_odometer: null,
+            due_date: dueDate,
+            last_done_odometer: interval.lastDoneOdometer,
+            interval_miles: null,
+            notes: "",
+          },
+          { onConflict: "user_id,title" }
+        );
+
+      if (error) console.error("generateReminders upsert error:", error.message);
+    } else {
+      if (interval.lastDoneOdometer === null) continue;
+
+      const dueOdometer = interval.lastDoneOdometer + (interval.intervalMiles ?? 0);
+
+      const { error } = await supabase
+        .from("maintenance_reminders")
+        .upsert(
+          {
+            user_id: userId,
+            title: interval.serviceType,
+            due_odometer: dueOdometer,
+            due_date: null,
+            last_done_odometer: interval.lastDoneOdometer,
+            interval_miles: interval.intervalMiles,
+            notes: "",
+          },
+          { onConflict: "user_id,title" }
+        );
+
+      if (error) console.error("generateReminders upsert error:", error.message);
+    }
+  }
+}
+
+const DATE_BASED_TYPES = ["Wipers", "Inspection", "Registration Renewal"];
+
+export async function autoUpdateIntervalFromService(
+  userId: string,
+  serviceType: string,
+  odometer: number,
+  serviceDate: string
+): Promise<void> {
+  const isDateBased = DATE_BASED_TYPES.includes(serviceType);
+
+  const { data: existing } = await supabase
+    .from("service_intervals")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("service_type", serviceType)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    if (isDateBased) {
+      const { error } = await supabase
+        .from("service_intervals")
+        .update({ last_done_odometer: odometer, last_done_date: serviceDate })
+        .eq("user_id", userId)
+        .eq("service_type", serviceType);
+      if (error) console.error("autoUpdateInterval update error:", error.message);
+    } else {
+      const { error } = await supabase
+        .from("service_intervals")
+        .update({ last_done_odometer: odometer })
+        .eq("user_id", userId)
+        .eq("service_type", serviceType);
+      if (error) console.error("autoUpdateInterval update error:", error.message);
+    }
+  } else {
+    const defaults = getDefaultInterval(serviceType);
+    const { error } = await supabase.from("service_intervals").insert({
+      user_id: userId,
+      service_type: serviceType,
+      interval_miles: defaults.intervalMiles,
+      interval_months: defaults.intervalMonths,
+      last_done_odometer: isDateBased ? null : odometer,
+      last_done_date: isDateBased ? serviceDate : null,
+    });
+    if (error) console.error("autoUpdateInterval insert error:", error.message);
+  }
+
+  await generateRemindersFromIntervals(userId);
 }

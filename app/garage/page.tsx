@@ -9,10 +9,12 @@ import {
   ServiceEntry,
   MaintenanceReminder,
   Vehicle,
+  ServiceInterval,
   loadServiceEntriesFromSupabase,
   loadMaintenanceRemindersFromSupabase,
   loadVehicleFromSupabase,
   loadCurrentOdometer,
+  loadServiceIntervalsFromSupabase,
   computeServiceStats,
 } from "@/app/lib/garageStorage";
 
@@ -63,32 +65,34 @@ function getReminderUrgencyColor(reminder: MaintenanceReminder, currentOdometer:
   }
 
   if (milesRemaining < 0 || daysRemaining < 0) return "text-red-400";
-  if (milesRemaining <= 500 || daysRemaining <= 14) return "text-amber-400";
+  if (milesRemaining <= 500 || daysRemaining <= 30) return "text-amber-400";
   return "text-blue-400";
 }
 
 function computeHealthStatus(
-  reminders: MaintenanceReminder[],
-  keyword: string,
+  intervals: ServiceInterval[],
+  serviceType: string,
   currentOdometer: number
 ): { status: string; colorClass: string } {
-  const reminder = reminders.find((r) => r.title.toLowerCase().includes(keyword));
-  if (!reminder) return { status: "—", colorClass: "text-slate-400" };
+  const interval = intervals.find((i) => i.serviceType === serviceType);
+  if (!interval || interval.lastDoneOdometer === null || interval.intervalMiles === null) {
+    return { status: "—", colorClass: "text-slate-400" };
+  }
 
-  const dueOdo = parseFloat(reminder.dueOdometer) || 0;
-  const interval = parseFloat(reminder.intervalMiles) || 1;
-  const milesRemaining = dueOdo - currentOdometer;
+  const milesRemaining =
+    interval.lastDoneOdometer + interval.intervalMiles - currentOdometer;
+  const percentRemaining = milesRemaining / interval.intervalMiles;
 
-  if (milesRemaining < 0) return { status: "Due", colorClass: "text-red-400" };
-  if (milesRemaining <= interval * 0.2) return { status: "Monitor", colorClass: "text-amber-400" };
+  if (percentRemaining < 0) return { status: "Due", colorClass: "text-red-400" };
+  if (percentRemaining <= 0.2) return { status: "Monitor", colorClass: "text-amber-400" };
   return { status: "Good", colorClass: "text-emerald-400" };
 }
 
 const HEALTH_INDICATORS = [
-  { label: "Oil Life", keyword: "oil", icon: "🛢️" },
-  { label: "Tires", keyword: "tire", icon: "🔄" },
-  { label: "Brakes", keyword: "brake", icon: "🔵" },
-  { label: "Battery", keyword: "battery", icon: "🔋" },
+  { label: "Oil Life", serviceType: "Oil Change", icon: "🛢️" },
+  { label: "Tires", serviceType: "Tires", icon: "🔄" },
+  { label: "Brakes", serviceType: "Brake Inspection", icon: "🔵" },
+  { label: "Battery", serviceType: "Battery Check", icon: "🔋" },
 ];
 
 export default function GaragePage() {
@@ -97,6 +101,7 @@ export default function GaragePage() {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [maintenanceReminders, setMaintenanceReminders] = useState<MaintenanceReminder[]>([]);
+  const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
   const [currentOdometer, setCurrentOdometer] = useState(0);
 
   useEffect(() => {
@@ -110,17 +115,19 @@ export default function GaragePage() {
         return;
       }
 
-      const [services, reminders, vehicleData, odo] = await Promise.all([
+      const [services, reminders, vehicleData, odo, intervals] = await Promise.all([
         loadServiceEntriesFromSupabase(user.id),
         loadMaintenanceRemindersFromSupabase(user.id),
         loadVehicleFromSupabase(user.id),
         loadCurrentOdometer(user.id),
+        loadServiceIntervalsFromSupabase(user.id),
       ]);
 
       setServiceEntries(services);
       setMaintenanceReminders(reminders);
       setVehicle(vehicleData);
       setCurrentOdometer(odo);
+      setServiceIntervals(intervals);
     }
 
     loadGarageData();
@@ -175,7 +182,9 @@ export default function GaragePage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold">Service</h2>
-                  <ChevronRight className="h-5 w-5 text-slate-500" />
+                  <button onClick={() => router.push("/garage/service")}>
+                    <ChevronRight className="h-5 w-5 text-slate-500" />
+                  </button>
                 </div>
                 <p className="mt-1 text-sm leading-6 text-slate-400">
                   Track major maintenance and repairs.
@@ -276,14 +285,14 @@ export default function GaragePage() {
 
             <div className="mt-5 border-t border-slate-800 pt-5">
               <div className="grid grid-cols-4 gap-2 text-center">
-                {HEALTH_INDICATORS.map(({ label, keyword, icon }) => {
+                {HEALTH_INDICATORS.map(({ label, serviceType, icon }) => {
                   const { status, colorClass } = computeHealthStatus(
-                    maintenanceReminders,
-                    keyword,
+                    serviceIntervals,
+                    serviceType,
                     currentOdometer
                   );
                   return (
-                    <div key={keyword}>
+                    <div key={serviceType}>
                       <p className="text-xl">{icon}</p>
                       <p className={`mt-1 text-sm font-bold ${colorClass}`}>{status}</p>
                       <p className="text-xs text-slate-400">{label}</p>

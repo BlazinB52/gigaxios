@@ -1,0 +1,281 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, Trash2 } from "lucide-react";
+import BottomNav from "../../components/BottomNav";
+import { supabase } from "@/app/lib/supabaseClient";
+import {
+  ServiceEntry,
+  loadServiceEntriesFromSupabase,
+  saveServiceEntryToSupabase,
+  deleteServiceEntryFromSupabase,
+  autoUpdateIntervalFromService,
+} from "@/app/lib/garageStorage";
+
+function getServiceIcon(serviceType: string): string {
+  const t = serviceType.toLowerCase();
+  if (t.includes("oil")) return "🛢️";
+  if (t.includes("tire")) return "🔄";
+  if (t.includes("brake")) return "🔵";
+  if (t.includes("battery")) return "🔋";
+  if (t.includes("registration")) return "📋";
+  if (t.includes("inspection")) return "🔍";
+  if (t.includes("wiper")) return "💧";
+  if (t.includes("transmission")) return "⚙️";
+  return "🔧";
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return "—";
+  return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export default function ServicePage() {
+  const router = useRouter();
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
+
+  const [showForm, setShowForm] = useState(false);
+  const [serviceDate, setServiceDate] = useState(new Date().toISOString().split("T")[0]);
+  const [serviceType, setServiceType] = useState("");
+  const [serviceOdometer, setServiceOdometer] = useState("");
+  const [serviceCost, setServiceCost] = useState("");
+  const [serviceNotes, setServiceNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      setUserId(user.id);
+      const entries = await loadServiceEntriesFromSupabase(user.id);
+      setServiceEntries(entries);
+    }
+
+    load();
+  }, [router]);
+
+  async function handleDeleteEntry(id: string) {
+    await deleteServiceEntryFromSupabase(id);
+    if (userId) {
+      const entries = await loadServiceEntriesFromSupabase(userId);
+      setServiceEntries(entries);
+    }
+  }
+
+  async function handleSaveService() {
+    if (!serviceType || !userId) return;
+    setSaving(true);
+
+    const entry: ServiceEntry = {
+      id: crypto.randomUUID(),
+      userId,
+      date: serviceDate,
+      odometer: serviceOdometer,
+      serviceType,
+      cost: serviceCost,
+      notes: serviceNotes,
+    };
+
+    await saveServiceEntryToSupabase(entry);
+
+    if (serviceType !== "Other" && serviceOdometer) {
+      await autoUpdateIntervalFromService(
+        userId,
+        serviceType,
+        parseFloat(serviceOdometer),
+        serviceDate
+      );
+    }
+
+    const entries = await loadServiceEntriesFromSupabase(userId);
+    setServiceEntries(entries);
+
+    setServiceDate(new Date().toISOString().split("T")[0]);
+    setServiceType("");
+    setServiceOdometer("");
+    setServiceCost("");
+    setServiceNotes("");
+    setShowForm(false);
+    setSaving(false);
+  }
+
+  const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
+
+  return (
+    <main className="min-h-screen bg-[#020814] text-white">
+      <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">
+
+        {/* PAGE HEADER */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-300"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-4xl font-bold tracking-tight">Service</h1>
+            <p className="mt-1 text-sm text-slate-400">Your maintenance history.</p>
+          </div>
+        </div>
+
+        {/* SERVICE HISTORY */}
+        <div className="relative mt-6">
+          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
+            <p className="mb-4 text-lg font-semibold text-slate-300">History</p>
+
+            {serviceEntries.length === 0 ? (
+              <p className="text-sm text-slate-400">No service history yet.</p>
+            ) : (
+              serviceEntries.map((entry, index) => (
+                <div
+                  key={entry.id}
+                  className={index > 0 ? "mt-4 border-t border-slate-800 pt-4" : ""}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 text-xl leading-none">
+                        {getServiceIcon(entry.serviceType)}
+                      </span>
+                      <div>
+                        <p className="font-semibold text-white">{entry.serviceType}</p>
+                        <p className="text-sm text-slate-400">{formatDate(entry.date)}</p>
+                        {entry.odometer && (
+                          <p className="text-xs text-slate-500">
+                            {parseInt(entry.odometer).toLocaleString()} mi
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <div className="text-right">
+                        {entry.cost && (
+                          <p className="text-sm font-semibold text-emerald-400">
+                            ${parseFloat(entry.cost).toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteEntry(entry.id)}
+                        className="text-slate-600 active:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </section>
+        </div>
+
+        {/* ADD SERVICE FORM */}
+        <div className="relative mt-6">
+          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
+            <button
+              onClick={() => setShowForm((v) => !v)}
+              className="flex w-full items-center justify-between"
+            >
+              <p className="text-lg font-semibold text-white">Add Service</p>
+              <span className="text-2xl font-light text-blue-400">{showForm ? "−" : "+"}</span>
+            </button>
+
+            {showForm && (
+              <div className="mt-5 space-y-3">
+                <input
+                  type="date"
+                  value={serviceDate}
+                  onChange={(e) => setServiceDate(e.target.value)}
+                  className={`${inputClass} [color-scheme:dark]`}
+                />
+
+                <select
+                  value={serviceType}
+                  onChange={(e) => setServiceType(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Select service type</option>
+                  <option value="Oil Change">Oil Change</option>
+                  <option value="Tire Rotation">Tire Rotation</option>
+                  <option value="Brake Inspection">Brake Inspection</option>
+                  <option value="Transmission Service">Transmission Service</option>
+                  <option value="Battery Check">Battery Check</option>
+                  <option value="Tires">Tires</option>
+                  <option value="Wipers">Wipers</option>
+                  <option value="Inspection">Inspection</option>
+                  <option value="Registration Renewal">Registration Renewal</option>
+                  <option value="Other">Other</option>
+                </select>
+
+                <input
+                  type="number"
+                  placeholder="Odometer at time of service"
+                  value={serviceOdometer}
+                  onChange={(e) => setServiceOdometer(e.target.value)}
+                  className={inputClass}
+                />
+
+                <input
+                  type="number"
+                  placeholder="Cost ($)"
+                  value={serviceCost}
+                  onChange={(e) => setServiceCost(e.target.value)}
+                  className={inputClass}
+                />
+
+                <textarea
+                  placeholder="Notes (optional)"
+                  value={serviceNotes}
+                  onChange={(e) => setServiceNotes(e.target.value)}
+                  className={`${inputClass} min-h-20`}
+                />
+
+                <button
+                  onClick={handleSaveService}
+                  disabled={saving || !serviceType}
+                  className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Save Service"}
+                </button>
+                <button
+                  onClick={() => {
+                    setServiceDate(new Date().toISOString().split("T")[0]);
+                    setServiceType("");
+                    setServiceOdometer("");
+                    setServiceCost("");
+                    setServiceNotes("");
+                    setShowForm(false);
+                  }}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
+
+      </div>
+      <BottomNav />
+    </main>
+  );
+}

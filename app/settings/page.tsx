@@ -12,9 +12,14 @@ import {
   loadServiceIntervalsFromSupabase,
   saveVehicleToSupabase,
   saveServiceIntervalsToSupabase,
+  generateRemindersFromIntervals,
 } from "@/app/lib/garageStorage";
 
-const DEFAULT_INTERVALS: Array<{ serviceType: string; intervalMiles: number | null; intervalMonths: number | null }> = [
+const DEFAULT_INTERVALS: Array<{
+  serviceType: string;
+  intervalMiles: number | null;
+  intervalMonths: number | null;
+}> = [
   { serviceType: "Oil Change", intervalMiles: 5000, intervalMonths: null },
   { serviceType: "Tire Rotation", intervalMiles: 5000, intervalMonths: null },
   { serviceType: "Brake Inspection", intervalMiles: 20000, intervalMonths: null },
@@ -30,6 +35,8 @@ type IntervalRow = {
   serviceType: string;
   intervalMiles: string;
   intervalMonths: string;
+  lastDoneOdometer: string;
+  lastDoneDate: string;
 };
 
 export default function SettingsPage() {
@@ -50,9 +57,12 @@ export default function SettingsPage() {
       serviceType: d.serviceType,
       intervalMiles: d.intervalMiles !== null ? String(d.intervalMiles) : "",
       intervalMonths: d.intervalMonths !== null ? String(d.intervalMonths) : "",
+      lastDoneOdometer: "",
+      lastDoneDate: "",
     }))
   );
   const [intervalsSaving, setIntervalsSaving] = useState(false);
+  const [intervalsSaved, setIntervalsSaved] = useState(false);
 
   const [weekStartsOn, setWeekStartsOn] = useState("Monday");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -89,17 +99,18 @@ export default function SettingsPage() {
         setIntervalRows(
           DEFAULT_INTERVALS.map((d) => {
             const saved = intervals.find((i) => i.serviceType === d.serviceType);
-            if (saved) {
-              return {
-                serviceType: d.serviceType,
-                intervalMiles: saved.intervalMiles !== null ? String(saved.intervalMiles) : "",
-                intervalMonths: saved.intervalMonths !== null ? String(saved.intervalMonths) : "",
-              };
-            }
             return {
               serviceType: d.serviceType,
-              intervalMiles: d.intervalMiles !== null ? String(d.intervalMiles) : "",
-              intervalMonths: d.intervalMonths !== null ? String(d.intervalMonths) : "",
+              intervalMiles: saved?.intervalMiles !== null && saved?.intervalMiles !== undefined
+                ? String(saved.intervalMiles)
+                : d.intervalMiles !== null ? String(d.intervalMiles) : "",
+              intervalMonths: saved?.intervalMonths !== null && saved?.intervalMonths !== undefined
+                ? String(saved.intervalMonths)
+                : d.intervalMonths !== null ? String(d.intervalMonths) : "",
+              lastDoneOdometer: saved?.lastDoneOdometer !== null && saved?.lastDoneOdometer !== undefined
+                ? String(saved.lastDoneOdometer)
+                : "",
+              lastDoneDate: saved?.lastDoneDate ?? "",
             };
           })
         );
@@ -133,6 +144,7 @@ export default function SettingsPage() {
   async function handleSaveIntervals() {
     if (!userId) return;
     setIntervalsSaving(true);
+    setIntervalsSaved(false);
 
     const intervals: ServiceInterval[] = intervalRows.map((row) => ({
       id: crypto.randomUUID(),
@@ -140,10 +152,16 @@ export default function SettingsPage() {
       serviceType: row.serviceType,
       intervalMiles: row.intervalMiles !== "" ? Number(row.intervalMiles) : null,
       intervalMonths: row.intervalMonths !== "" ? Number(row.intervalMonths) : null,
+      lastDoneOdometer: row.lastDoneOdometer !== "" ? Number(row.lastDoneOdometer) : null,
+      lastDoneDate: row.lastDoneDate !== "" ? row.lastDoneDate : null,
     }));
 
     await saveServiceIntervalsToSupabase(userId, intervals);
+    await generateRemindersFromIntervals(userId);
+
     setIntervalsSaving(false);
+    setIntervalsSaved(true);
+    setTimeout(() => setIntervalsSaved(false), 3000);
   }
 
   async function handleSignOut() {
@@ -151,13 +169,18 @@ export default function SettingsPage() {
     router.push("/login");
   }
 
-  function updateIntervalRow(index: number, field: "intervalMiles" | "intervalMonths", value: string) {
+  function updateIntervalRow(
+    index: number,
+    field: keyof Omit<IntervalRow, "serviceType">,
+    value: string
+  ) {
     setIntervalRows((prev) =>
       prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
     );
   }
 
   const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
+  const smallInputClass = "rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-white";
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -181,7 +204,7 @@ export default function SettingsPage() {
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-            <div className="flex items-center gap-3 mb-5">
+            <div className="mb-5 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-950/60 text-xl">
                 🚗
               </div>
@@ -189,55 +212,20 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Year"
-                value={vehicleYear}
-                onChange={(e) => setVehicleYear(e.target.value)}
-                className={inputClass}
-              />
-              <input
-                type="text"
-                placeholder="Make"
-                value={vehicleMake}
-                onChange={(e) => setVehicleMake(e.target.value)}
-                className={inputClass}
-              />
-              <input
-                type="text"
-                placeholder="Model"
-                value={vehicleModel}
-                onChange={(e) => setVehicleModel(e.target.value)}
-                className={inputClass}
-              />
-              <input
-                type="text"
-                placeholder="Trim (optional)"
-                value={vehicleTrim}
-                onChange={(e) => setVehicleTrim(e.target.value)}
-                className={inputClass}
-              />
-              <input
-                type="text"
-                placeholder="Color (optional)"
-                value={vehicleColor}
-                onChange={(e) => setVehicleColor(e.target.value)}
-                className={inputClass}
-              />
-              <input
-                type="text"
-                placeholder="License Plate (optional)"
-                value={vehicleLicensePlate}
-                onChange={(e) => setVehicleLicensePlate(e.target.value)}
-                className={inputClass}
-              />
-              <input
-                type="text"
-                placeholder="VIN (optional)"
-                value={vehicleVin}
-                onChange={(e) => setVehicleVin(e.target.value)}
-                className={inputClass}
-              />
+              <input type="text" placeholder="Year" value={vehicleYear}
+                onChange={(e) => setVehicleYear(e.target.value)} className={inputClass} />
+              <input type="text" placeholder="Make" value={vehicleMake}
+                onChange={(e) => setVehicleMake(e.target.value)} className={inputClass} />
+              <input type="text" placeholder="Model" value={vehicleModel}
+                onChange={(e) => setVehicleModel(e.target.value)} className={inputClass} />
+              <input type="text" placeholder="Trim (optional)" value={vehicleTrim}
+                onChange={(e) => setVehicleTrim(e.target.value)} className={inputClass} />
+              <input type="text" placeholder="Color (optional)" value={vehicleColor}
+                onChange={(e) => setVehicleColor(e.target.value)} className={inputClass} />
+              <input type="text" placeholder="License Plate (optional)" value={vehicleLicensePlate}
+                onChange={(e) => setVehicleLicensePlate(e.target.value)} className={inputClass} />
+              <input type="text" placeholder="VIN (optional)" value={vehicleVin}
+                onChange={(e) => setVehicleVin(e.target.value)} className={inputClass} />
             </div>
 
             <button
@@ -254,7 +242,7 @@ export default function SettingsPage() {
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-amber-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-            <div className="flex items-center gap-3 mb-1">
+            <div className="mb-1 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-950/60 text-xl">
                 <Wrench className="h-5 w-5 text-amber-400" />
               </div>
@@ -262,34 +250,77 @@ export default function SettingsPage() {
             </div>
             <p className="mb-5 text-sm text-slate-400">Set your default maintenance intervals.</p>
 
-            <div className="space-y-3">
-              {intervalRows.map((row, index) => (
-                <div key={row.serviceType} className="flex items-center justify-between gap-3">
-                  <span className="flex-1 text-sm text-slate-300">{row.serviceType}</span>
-                  {row.intervalMiles !== "" || DEFAULT_INTERVALS[index].intervalMiles !== null ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        value={row.intervalMiles}
-                        onChange={(e) => updateIntervalRow(index, "intervalMiles", e.target.value)}
-                        className="w-20 rounded-xl border border-slate-700 bg-slate-950 p-2 text-right text-sm text-white"
-                      />
-                      <span className="text-xs text-slate-400">mi</span>
+            <div>
+              {intervalRows.map((row, index) => {
+                const isMileageBased = DEFAULT_INTERVALS[index].intervalMiles !== null;
+                return (
+                  <div
+                    key={row.serviceType}
+                    className={index > 0 ? "mt-4 border-t border-slate-800 pt-4" : ""}
+                  >
+                    <p className="mb-2 text-sm font-semibold text-white">{row.serviceType}</p>
+
+                    {/* Row 1: interval */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-400">Interval</span>
+                      <div className="flex items-center gap-1">
+                        {isMileageBased ? (
+                          <>
+                            <input
+                              type="number"
+                              value={row.intervalMiles}
+                              onChange={(e) => updateIntervalRow(index, "intervalMiles", e.target.value)}
+                              className={`w-24 text-right ${smallInputClass}`}
+                            />
+                            <span className="text-xs text-slate-400">mi</span>
+                          </>
+                        ) : (
+                          <>
+                            <input
+                              type="number"
+                              value={row.intervalMonths}
+                              onChange={(e) => updateIntervalRow(index, "intervalMonths", e.target.value)}
+                              className={`w-24 text-right ${smallInputClass}`}
+                            />
+                            <span className="text-xs text-slate-400">mo</span>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        value={row.intervalMonths}
-                        onChange={(e) => updateIntervalRow(index, "intervalMonths", e.target.value)}
-                        className="w-20 rounded-xl border border-slate-700 bg-slate-950 p-2 text-right text-sm text-white"
-                      />
-                      <span className="text-xs text-slate-400">mo</span>
+
+                    {/* Row 2: last done */}
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-400">
+                        {isMileageBased ? "Last done at" : "Last done"}
+                      </span>
+                      {isMileageBased ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            placeholder="—"
+                            value={row.lastDoneOdometer}
+                            onChange={(e) => updateIntervalRow(index, "lastDoneOdometer", e.target.value)}
+                            className={`w-24 text-right ${smallInputClass}`}
+                          />
+                          <span className="text-xs text-slate-400">mi</span>
+                        </div>
+                      ) : (
+                        <input
+                          type="date"
+                          value={row.lastDoneDate}
+                          onChange={(e) => updateIntervalRow(index, "lastDoneDate", e.target.value)}
+                          className={`${smallInputClass} [color-scheme:dark]`}
+                        />
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
+
+            {intervalsSaved && (
+              <p className="mt-4 text-sm text-emerald-400">Intervals saved.</p>
+            )}
 
             <button
               onClick={handleSaveIntervals}
@@ -305,7 +336,7 @@ export default function SettingsPage() {
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-slate-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-            <div className="flex items-center gap-3 mb-5">
+            <div className="mb-5 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-800 text-xl">
                 <Settings className="h-5 w-5 text-slate-400" />
               </div>

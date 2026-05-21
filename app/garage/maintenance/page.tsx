@@ -139,10 +139,16 @@ export default function MaintenancePage() {
   }
 
   async function handleSaveReminder() {
+    console.log("[saveReminder] called");
     if (!reminderTitle) return;
     if (!userId) return;
 
     setSaving(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    console.log("[saveReminder] user:", user?.id);
 
     const dueOdo = Number(reminderLastOdometer || 0) + Number(reminderIntervalMiles || 0);
 
@@ -157,6 +163,7 @@ export default function MaintenancePage() {
       notes: reminderNotes,
     };
 
+    console.log("[saveReminder] reminder object:", JSON.stringify(reminder));
     await saveMaintenanceReminderToSupabase(reminder);
     const updated = await loadMaintenanceRemindersFromSupabase(userId);
     setMaintenanceReminders(updated);

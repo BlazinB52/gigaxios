@@ -163,6 +163,15 @@ export async function saveMaintenanceReminderToSupabase(
     const dueOdometer =
         Number(reminder.lastDoneOdometer || 0) + Number(reminder.intervalMiles || 0);
 
+    console.log("[saveReminder] inserting:", JSON.stringify({
+        user_id: reminder.userId,
+        title: reminder.title,
+        last_done_odometer: reminder.lastDoneOdometer,
+        interval_miles: reminder.intervalMiles,
+        due_odometer: dueOdometer,
+        due_date: reminder.dueDate || null,
+    }));
+
     const { error } = await supabase.from("maintenance_reminders").insert({
         user_id: reminder.userId,
         title: reminder.title,
@@ -173,6 +182,7 @@ export async function saveMaintenanceReminderToSupabase(
         notes: reminder.notes,
     });
 
+    console.log("[saveReminder] error:", error);
     if (error) {
         console.error("Supabase reminder save error:", error.message);
     }

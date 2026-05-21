@@ -159,60 +159,6 @@ export default function ServicePage() {
           </div>
         </div>
 
-        {/* SERVICE HISTORY */}
-        <div className="relative mt-6">
-          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
-          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-            <p className="mb-4 text-lg font-semibold text-slate-300">History</p>
-
-            {serviceEntries.length === 0 ? (
-              <p className="text-sm text-slate-400">No service history yet.</p>
-            ) : (
-              serviceEntries.map((entry, index) => (
-                <div
-                  key={entry.id}
-                  className={index > 0 ? "mt-4 border-t border-slate-800 pt-4" : ""}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 text-xl leading-none">
-                        {getServiceIcon(entry.serviceType)}
-                      </span>
-                      <div>
-                        <p className="font-semibold text-white">{entry.serviceType}</p>
-                        <p className="text-sm text-slate-400">{formatDate(entry.date)}</p>
-                        {entry.odometer && (
-                          <p className="text-xs text-slate-500">
-                            {parseInt(entry.odometer).toLocaleString()} mi
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <div className="text-right">
-                        {entry.cost && (
-                          <p className="text-sm font-semibold text-emerald-400">
-                            ${parseFloat(entry.cost).toLocaleString("en-US", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => handleDeleteEntry(entry.id)}
-                        className="text-slate-600 active:text-red-400"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </section>
-        </div>
-
         {/* ADD SERVICE FORM */}
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
@@ -296,6 +242,60 @@ export default function ServicePage() {
                   Cancel
                 </button>
               </div>
+            )}
+          </section>
+        </div>
+
+        {/* SERVICE HISTORY */}
+        <div className="relative mt-6">
+          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
+            <p className="mb-4 text-lg font-semibold text-slate-300">History</p>
+
+            {serviceEntries.length === 0 ? (
+              <p className="text-sm text-slate-400">No service history yet.</p>
+            ) : (
+              serviceEntries.map((entry, index) => (
+                <div
+                  key={entry.id}
+                  className={index > 0 ? "mt-4 border-t border-slate-800 pt-4" : ""}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 text-xl leading-none">
+                        {getServiceIcon(entry.serviceType)}
+                      </span>
+                      <div>
+                        <p className="font-semibold text-white">{entry.serviceType}</p>
+                        <p className="text-sm text-slate-400">{formatDate(entry.date)}</p>
+                        {entry.odometer && (
+                          <p className="text-xs text-slate-500">
+                            {parseInt(entry.odometer).toLocaleString()} mi
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <div className="text-right">
+                        {entry.cost && (
+                          <p className="text-sm font-semibold text-emerald-400">
+                            ${parseFloat(entry.cost).toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteEntry(entry.id)}
+                        className="text-slate-600 active:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
             )}
           </section>
         </div>

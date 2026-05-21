@@ -121,7 +121,6 @@ export default function GaragePage() {
       setMaintenanceReminders(reminders);
       setVehicle(vehicleData);
       setCurrentOdometer(odo);
-      console.log("[garage] maintenanceReminders set:", reminders);
     }
 
     loadGarageData();
@@ -134,7 +133,7 @@ export default function GaragePage() {
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">
 
         {/* PAGE HEADER */}
-        <div className="flex items-start justify-between gap-3">
+        <div className="grid grid-cols-2 items-start gap-3">
           <div>
             <h1 className="text-4xl font-bold tracking-tight">Garage</h1>
             <p className="mt-2 text-base text-slate-400">Your vehicle. Your business.</p>
@@ -142,11 +141,11 @@ export default function GaragePage() {
           {vehicle ? (
             <button
               onClick={() => router.push("/settings")}
-              className="flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-3 py-2"
+              className="flex w-full items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-3 py-2"
             >
-              <span className="text-sm">🚗</span>
-              <div className="min-w-0 text-left">
-                <p className="text-sm font-semibold text-white">
+              <span className="text-base leading-none">🚗</span>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-sm font-semibold leading-snug text-white">
                   {vehicle.year} {vehicle.make} {vehicle.model}
                 </p>
                 <p className="text-xs text-slate-400">
@@ -158,7 +157,7 @@ export default function GaragePage() {
           ) : (
             <button
               onClick={() => router.push("/settings")}
-              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-300"
+              className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-300"
             >
               ⚙️ Settings
             </button>
@@ -307,7 +306,9 @@ export default function GaragePage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold">Upcoming Maintenance</h2>
-                  <ChevronRight className="h-5 w-5 text-slate-500" />
+                  <button onClick={() => router.push("/garage/maintenance")}>
+                    <ChevronRight className="h-5 w-5 text-slate-500" />
+                  </button>
                 </div>
                 <p className="mt-1 text-sm leading-6 text-slate-400">
                   Stay ahead of what&apos;s due so you can avoid problems.

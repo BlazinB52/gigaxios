@@ -96,8 +96,6 @@ export async function loadMaintenanceRemindersFromSupabase(
         .eq("user_id", userId)
         .order("due_odometer", { ascending: true, nullsFirst: false });
 
-    console.log("[reminders] raw data:", data, "error:", error);
-
     if (error) {
         console.error("Supabase reminder load error:", error.message);
         return [];
@@ -266,4 +264,15 @@ export async function saveServiceIntervalsToSupabase(userId: string, intervals: 
 
 export function getIntervalForServiceType(intervals: ServiceInterval[], serviceType: string): ServiceInterval | null {
   return intervals.find((i) => i.serviceType === serviceType) ?? null;
+}
+
+export async function deleteMaintenanceReminderFromSupabase(id: string) {
+  const { error } = await supabase
+    .from("maintenance_reminders")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("Supabase reminder delete error:", error.message);
+  }
 }

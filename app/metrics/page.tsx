@@ -17,6 +17,15 @@ const fmt = (n: number) =>
 const fmtPct = (n: number) => (n * 100).toFixed(1) + "%";
 const fmtDollar = (n: number) => "$" + fmt(n);
 
+function parseShiftDate(dateStr: string): Date {
+  if (!dateStr) return new Date(0);
+  if (dateStr.includes("/")) {
+    const [month, day, year] = dateStr.split("/");
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+  }
+  return new Date(dateStr + "T12:00:00");
+}
+
 export default function MetricsPage() {
   const router = useRouter();
 
@@ -46,6 +55,10 @@ export default function MetricsPage() {
       setShifts(s as SavedShift[]);
       setFuelEntries(f);
       setServiceEntries(sv);
+      console.log("[metrics] shifts loaded:", s.length);
+      console.log("[metrics] fuel loaded:", f.length);
+      console.log("[metrics] earliest shift:", s[s.length - 1]?.date);
+      console.log("[metrics] latest shift:", s[0]?.date);
       setIsLoaded(true);
     }
 
@@ -54,7 +67,7 @@ export default function MetricsPage() {
 
   const availableYears = useMemo(() => {
     const years = [
-      ...new Set(shifts.map((s) => new Date(s.date + "T12:00:00").getFullYear())),
+      ...new Set(shifts.map((s) => parseShiftDate(s.date).getFullYear())),
     ].sort((a, b) => b - a);
     const currentYear = new Date().getFullYear();
     if (!years.includes(currentYear)) return [currentYear, ...years];
@@ -63,13 +76,13 @@ export default function MetricsPage() {
 
   const metrics = useMemo(() => {
     const yearShifts = shifts.filter(
-      (s) => new Date(s.date + "T12:00:00").getFullYear() === selectedYear
+      (s) => parseShiftDate(s.date).getFullYear() === selectedYear
     );
     const yearFuel = fuelEntries.filter(
-      (f) => new Date(f.date + "T12:00:00").getFullYear() === selectedYear
+      (f) => parseShiftDate(f.date).getFullYear() === selectedYear
     );
     const yearServices = serviceEntries.filter(
-      (sv) => new Date(sv.date + "T12:00:00").getFullYear() === selectedYear
+      (sv) => parseShiftDate(sv.date).getFullYear() === selectedYear
     );
 
     const totalDeliveries = yearShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
@@ -84,7 +97,7 @@ export default function MetricsPage() {
     }, 0);
 
     const sortedFuel = [...yearFuel].sort(
-      (a, b) => new Date(a.date + "T12:00:00").getTime() - new Date(b.date + "T12:00:00").getTime()
+      (a, b) => parseShiftDate(a.date).getTime() - parseShiftDate(b.date).getTime()
     );
     let totalMilesDriven = 0;
     if (sortedFuel.length >= 2) {
@@ -119,10 +132,10 @@ export default function MetricsPage() {
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const monthlyData = MONTHS.map((month, i) => {
       const mShifts = yearShifts.filter(
-        (s) => new Date(s.date + "T12:00:00").getMonth() === i
+        (s) => parseShiftDate(s.date).getMonth() === i
       );
       const mFuel = yearFuel.filter(
-        (f) => new Date(f.date + "T12:00:00").getMonth() === i
+        (f) => parseShiftDate(f.date).getMonth() === i
       );
       const gross = mShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
       const mShiftMiles = mShifts.reduce((sum, s) => {

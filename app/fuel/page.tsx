@@ -6,8 +6,8 @@ import { supabase } from "@/app/lib/supabaseClient";
 
 import {
   FuelEntry,
-  loadFuelEntries,
   saveFuelEntries,
+  loadFuelEntriesFromSupabase,
 } from "@/app/lib/fuelStorage";
 
 export default function FuelPage() {
@@ -21,7 +21,7 @@ export default function FuelPage() {
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    async function checkUser() {
+    async function load() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -30,14 +30,13 @@ export default function FuelPage() {
         router.push("/login");
         return;
       }
+
+      const entries = await loadFuelEntriesFromSupabase(user.id);
+      setFuelEntries(entries);
+      setDate(new Date().toISOString().slice(0, 10));
     }
 
-    checkUser();
-
-    setFuelEntries(loadFuelEntries());
-
-    const today = new Date().toISOString().slice(0, 10);
-    setDate(today);
+    load();
   }, [router]);
 
 async function handleSaveFuel() {

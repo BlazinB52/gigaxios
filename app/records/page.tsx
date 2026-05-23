@@ -10,6 +10,21 @@ import { FuelEntry } from "@/app/lib/fuelStorage";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function parseShiftDate(dateStr: string): Date {
+  if (!dateStr) return new Date(0);
+  if (dateStr.includes("/")) {
+    const [month, day, year] = dateStr.split("/");
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+  }
+  return new Date(dateStr + "T12:00:00");
+}
+
+function toISODate(dateStr: string): string {
+  const d = parseShiftDate(dateStr);
+  if (d.getTime() === 0) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function getWeekBounds(offsetWeeks: number): { weekStart: string; weekEnd: string } {
   const today = new Date();
   const day = today.getDay();
@@ -137,13 +152,15 @@ export default function RecordsPage() {
 
   // ─── Derived Data ──────────────────────────────────────────────────────────
 
-  const weekShifts = shifts.filter(
-    (s) => s.date >= weekStart && s.date <= weekEnd
-  );
+  const weekShifts = shifts.filter((s) => {
+    const iso = toISODate(s.date);
+    return iso >= weekStart && iso <= weekEnd;
+  });
 
-  const weekFuel = fuelEntries.filter(
-    (f) => f.date >= weekStart && f.date <= weekEnd
-  );
+  const weekFuel = fuelEntries.filter((f) => {
+    const iso = toISODate(f.date);
+    return iso >= weekStart && iso <= weekEnd;
+  });
 
   const totalDeliveries = weekShifts.reduce((sum, s) => sum + Number(s.deliveries || 0), 0);
   const totalHours = weekShifts.reduce((sum, s) => sum + Number(s.hoursWorked || 0), 0);
@@ -177,7 +194,7 @@ export default function RecordsPage() {
 
   const dailyGross = weekDates.map((date) =>
     shifts
-      .filter((s) => s.date === date)
+      .filter((s) => toISODate(s.date) === date)
       .reduce((sum, s) => sum + Number(s.grossPay || 0), 0)
   );
 
@@ -185,7 +202,7 @@ export default function RecordsPage() {
 
   // Daily breakdown rows
   const daySummaries: DaySummary[] = weekDates.map((date, i) => {
-    const dayShifts = shifts.filter((s) => s.date === date);
+    const dayShifts = shifts.filter((s) => toISODate(s.date) === date);
     const deliveries = dayShifts.reduce((sum, s) => sum + Number(s.deliveries || 0), 0);
     const hours = dayShifts.reduce((sum, s) => sum + Number(s.hoursWorked || 0), 0);
     const mileage = dayShifts.reduce(

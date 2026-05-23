@@ -46,20 +46,19 @@ export default function MetricsPage() {
         return;
       }
 
-      const [s, f, sv] = await Promise.all([
-        loadShiftsFromSupabase(user.id),
-        loadFuelEntriesFromSupabase(user.id),
-        loadServiceEntriesFromSupabase(user.id),
-      ]);
+      try {
+        const [s, f, sv] = await Promise.all([
+          loadShiftsFromSupabase(user.id),
+          loadFuelEntriesFromSupabase(user.id),
+          loadServiceEntriesFromSupabase(user.id),
+        ]);
 
-      setShifts(s as SavedShift[]);
-      setFuelEntries(f);
-      setServiceEntries(sv);
-      console.log("[metrics] shifts loaded:", s.length);
-      console.log("[metrics] fuel loaded:", f.length);
-      console.log("[metrics] earliest shift:", s[s.length - 1]?.date);
-      console.log("[metrics] latest shift:", s[0]?.date);
-      setIsLoaded(true);
+        setShifts(s as SavedShift[]);
+        setFuelEntries(f);
+        setServiceEntries(sv);
+      } finally {
+        setIsLoaded(true);
+      }
     }
 
     load();

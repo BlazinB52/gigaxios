@@ -10,6 +10,21 @@ import { FuelEntry } from "@/app/lib/fuelStorage";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function parseShiftDate(dateStr: string): Date {
+  if (!dateStr) return new Date(0);
+  if (dateStr.includes("/")) {
+    const [month, day, year] = dateStr.split("/");
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+  }
+  return new Date(dateStr + "T12:00:00");
+}
+
+function toISODate(dateStr: string): string {
+  const d = parseShiftDate(dateStr);
+  if (d.getTime() === 0) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function formatCurrency(val: number) {
   return val.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
@@ -66,8 +81,8 @@ export default function DayDetailPage() {
         loadFuelEntriesFromSupabase(user.id),
       ]);
 
-      setShifts(allShifts.filter((s) => s.date === dateStr));
-      setFuelEntries(allFuel.filter((f) => f.date === dateStr));
+      setShifts(allShifts.filter((s) => toISODate(s.date) === dateStr));
+      setFuelEntries(allFuel.filter((f) => toISODate(f.date) === dateStr));
       setLoading(false);
     }
     load();

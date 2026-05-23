@@ -23,7 +23,7 @@ export default function ShiftsPage() {
     const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
     const router = useRouter();
 
-    useEffect(() => {
+    useEffect(() => {  
         async function loadCloudShifts() {
             const {
                 data: { user },
@@ -92,8 +92,8 @@ export default function ShiftsPage() {
         };
 
         setSavedShifts([...existingShifts, newShift]);
-setShiftDate("");
-setBeginningMileage("");
+        setShiftDate("");
+        setBeginningMileage("");
 
         await supabase.from("shifts").insert({
             id: newShift.id,
@@ -143,7 +143,7 @@ setBeginningMileage("");
             return shift;
         });
 
-        
+
         setSavedShifts(updatedShifts);
 
         setEndingMileage("");
@@ -154,18 +154,18 @@ setBeginningMileage("");
         setOtherPay("");
 
         await supabase
-    .from("shifts")
-    .update({
-        ending_mileage: endingMileage,
-        deliveries,
-        hours_worked: hoursWorked,
-        base_pay: basePay,
-        tips,
-        other_pay: otherPay,
-        gross_pay: calculatedGrossPay.toFixed(2),
-        status: "closed",
-    })
-    .eq("id", activeShift.id);
+            .from("shifts")
+            .update({
+                ending_mileage: endingMileage,
+                deliveries,
+                hours_worked: hoursWorked,
+                base_pay: basePay,
+                tips,
+                other_pay: otherPay,
+                gross_pay: calculatedGrossPay.toFixed(2),
+                status: "closed",
+            })
+            .eq("id", activeShift.id);
 
         router.push("/");
     }

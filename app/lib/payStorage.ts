@@ -5,6 +5,9 @@ export type PayEntry = {
     userId?: string;
     date: string;
     platform: string;
+    entryType: "shift" | "mga" | "delayed_tip" | "bonus" | "correction";
+    payPeriodStart: string;
+    payPeriodEnd: string;
     deliveries: string;
     hours: string;
     basePay: string;
@@ -33,6 +36,9 @@ export async function loadPayEntriesFromSupabase(userId: string): Promise<PayEnt
     userId: entry.user_id,
     date: entry.date,
     platform: entry.platform ?? "",
+    entryType: entry.entry_type ?? "shift",
+    payPeriodStart: entry.pay_period_start ?? "",
+    payPeriodEnd: entry.pay_period_end ?? "",
     deliveries: entry.deliveries ?? "",
     hours: entry.hours ?? "",
     basePay: entry.base_pay ?? "",
@@ -49,6 +55,9 @@ export async function savePayEntryToSupabase(entry: PayEntry) {
     user_id: entry.userId,
     date: entry.date,
     platform: entry.platform,
+    entry_type: entry.entryType,
+    pay_period_start: entry.payPeriodStart || null,
+    pay_period_end: entry.payPeriodEnd || null,
     deliveries: entry.deliveries,
     hours: entry.hours,
     base_pay: entry.basePay,

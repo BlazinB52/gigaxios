@@ -264,36 +264,56 @@ export default function RecordsPage() {
           <>
             {/* ── Hero Card ── */}
             <section className="mt-5 rounded-3xl border border-slate-700/60 bg-slate-900/80 p-5">
-              <p className="text-sm font-semibold text-slate-400">Gross Earnings</p>
-              <p className="mt-1 text-5xl font-bold tracking-tight text-white">
-                {formatCurrency(grossEarnings)}
-              </p>
-
-              {/* Mini Bar Chart */}
-              <div className="mt-5 flex items-end gap-1.5">
-                {dailyGross.map((val, i) => {
-                  const heightPct = Math.max((val / maxDailyGross) * 100, 4);
-                  const isToday = weekDates[i] === new Date().toISOString().slice(0, 10);
-                  return (
-                    <div key={i} className="flex flex-1 flex-col items-center gap-1">
-                      <div className="w-full rounded-sm" style={{ height: 48 }}>
-                        <div
-                          className={`w-full rounded-sm transition-all ${
-                            val > 0
-                              ? isToday
-                                ? "bg-blue-400"
-                                : "bg-blue-600"
-                              : "bg-slate-800"
-                          }`}
-                          style={{ height: `${heightPct}%`, marginTop: `${100 - heightPct}%` }}
-                        />
-                      </div>
-                      <span className="text-[10px] font-medium text-slate-500">
-                        {DAY_LABELS[i]}
+              <div className="flex items-end gap-4">
+                {/* Left: earnings info */}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-slate-400">Gross Earnings</p>
+                  <p className="mt-1 text-4xl font-bold tracking-tight text-white">
+                    {formatCurrency(grossEarnings)}
+                  </p>
+                  {/* Week-over-week badge — derived inline from all-shifts state */}
+                  {(() => {
+                    const { weekStart: ps, weekEnd: pe } = getWeekBounds(weekOffset - 1);
+                    const prev = shifts
+                      .filter((s) => { const iso = toISODate(s.date); return iso >= ps && iso <= pe; })
+                      .reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
+                    if (prev === 0) return null;
+                    const pct = ((grossEarnings - prev) / prev) * 100;
+                    const up = pct >= 0;
+                    return (
+                      <span className={`mt-2 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${up ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
+                        {up ? "↑" : "↓"} {Math.abs(pct).toFixed(0)}% vs last week
                       </span>
-                    </div>
-                  );
-                })}
+                    );
+                  })()}
+                </div>
+
+                {/* Right: mini bar chart */}
+                <div className="flex shrink-0 items-end gap-1">
+                  {dailyGross.map((val, i) => {
+                    const heightPct = Math.max((val / maxDailyGross) * 100, 5);
+                    const isToday = weekDates[i] === new Date().toISOString().slice(0, 10);
+                    return (
+                      <div key={i} className="flex flex-col items-center gap-0.5">
+                        <div className="flex w-3 items-end" style={{ height: 44 }}>
+                          <div
+                            className={`w-full rounded-t-sm transition-all ${
+                              val > 0
+                                ? isToday
+                                  ? "bg-blue-400"
+                                  : "bg-blue-600"
+                                : "bg-slate-800"
+                            }`}
+                            style={{ height: `${heightPct}%` }}
+                          />
+                        </div>
+                        <span className="text-[9px] font-medium text-slate-600">
+                          {DAY_LABELS[i]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </section>
 

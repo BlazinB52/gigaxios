@@ -32,6 +32,7 @@ export default function MetricsPage() {
   const [shifts, setShifts] = useState<SavedShift[]>([]);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
+  const [adjustments, setAdjustments] = useState<{ amount: number; week_start: string }[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -47,15 +48,17 @@ export default function MetricsPage() {
       }
 
       try {
-        const [s, f, sv] = await Promise.all([
+        const [s, f, sv, adjRes] = await Promise.all([
           loadShiftsFromSupabase(user.id),
           loadFuelEntriesFromSupabase(user.id),
           loadServiceEntriesFromSupabase(user.id),
+          supabase.from("pay_adjustments").select("amount, week_start").eq("user_id", user.id),
         ]);
 
         setShifts(s as SavedShift[]);
         setFuelEntries(f);
         setServiceEntries(sv);
+        setAdjustments((adjRes.data ?? []) as { amount: number; week_start: string }[]);
       } finally {
         setIsLoaded(true);
       }
@@ -84,9 +87,14 @@ export default function MetricsPage() {
       (sv) => parseShiftDate(sv.date).getFullYear() === selectedYear
     );
 
+    const yearAdjustments = adjustments.filter(
+      (a) => new Date(a.week_start + "T12:00:00").getFullYear() === selectedYear
+    );
+    const totalAdjustments = yearAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+
     const totalDeliveries = yearShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
     const totalHours = yearShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
-    const totalGrossPay = yearShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0);
+    const totalGrossPay = yearShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0) + totalAdjustments;
     const totalFuelCost = yearFuel.reduce((s, x) => s + Number(x.totalCost || 0), 0);
 
     const totalShiftMiles = yearShifts.reduce((sum, s) => {
@@ -136,7 +144,10 @@ export default function MetricsPage() {
       const mFuel = yearFuel.filter(
         (f) => parseShiftDate(f.date).getMonth() === i
       );
-      const gross = mShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
+      const mAdjTotal = yearAdjustments
+        .filter((a) => new Date(a.week_start + "T12:00:00").getMonth() === i)
+        .reduce((sum, a) => sum + Number(a.amount || 0), 0);
+      const gross = mShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0) + mAdjTotal;
       const mShiftMiles = mShifts.reduce((sum, s) => {
         const begin = Number(s.beginningMileage);
         const end = Number(s.endingMileage);
@@ -146,21 +157,21 @@ export default function MetricsPage() {
       const _ = mFuelCostTotal; void _;
       const mWorkFuel = mShiftMiles * fuelCostPerMile;
       const net = Math.max(gross - mWorkFuel, 0);
-      return { month, grossPay: gross, netProfit: net, hasData: mShifts.length > 0 };
+      return { month, grossPay: gross, netProfit: net, hasData: mShifts.length > 0 || mAdjTotal > 0 };
     }).filter((m) => m.hasData);
 
     const maxMonthlyValue = Math.max(...monthlyData.map((m) => m.grossPay), 1);
 
     return {
-      totalDeliveries, totalHours, totalGrossPay, totalFuelCost,
+      totalDeliveries, totalHours, totalGrossPay, totalFuelCost, totalAdjustments,
       totalShiftMiles, totalMilesDriven, businessUsePct,
       workFuelCost, netProfit, netProfitPct, fuelPct,
       hourlyRate, profitPerDelivery,
       yearServiceCost, businessServiceCost, trueNetProfit, trueNetPct, serviceCostPct,
       monthlyData, maxMonthlyValue,
-      hasData: yearShifts.length > 0,
+      hasData: yearShifts.length > 0 || totalAdjustments > 0,
     };
-  }, [shifts, fuelEntries, serviceEntries, selectedYear]);
+  }, [shifts, fuelEntries, serviceEntries, adjustments, selectedYear]);
 
   if (!isLoaded) {
     return (
@@ -171,7 +182,7 @@ export default function MetricsPage() {
   }
 
   const {
-    totalDeliveries, totalHours, totalGrossPay,
+    totalDeliveries, totalHours, totalGrossPay, totalAdjustments,
     totalShiftMiles, totalMilesDriven, businessUsePct,
     workFuelCost, netProfit, netProfitPct, fuelPct,
     profitPerDelivery,
@@ -382,6 +393,11 @@ export default function MetricsPage() {
                           <span className="text-sm text-slate-300">Gross Pay</span>
                           <span className="text-sm text-white">{fmtDollar(totalGrossPay)}</span>
                         </div>
+                        {totalAdjustments > 0 && (
+                          <p className="text-right text-xs text-slate-500">
+                            incl. {fmtDollar(totalAdjustments)} in adjustments
+                          </p>
+                        )}
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-slate-300">− Work Fuel Cost</span>
                           <span className="text-sm text-red-400">−{fmtDollar(workFuelCost)}</span>

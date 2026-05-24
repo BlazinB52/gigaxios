@@ -231,7 +231,7 @@ export default function RecordsPage() {
 
     return (
         <main className="min-h-screen bg-[#020814] text-white">
-            <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-28 pt-8">
+            <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-28 pt-3">
 
                 {/* Header 
                 <div>

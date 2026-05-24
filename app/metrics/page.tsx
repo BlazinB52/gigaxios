@@ -192,13 +192,14 @@ export default function MetricsPage() {
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">
+      <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-3">
 
-        {/* HEADER */}
+        {/* HEADER 
         <div>
           <h1 className="text-4xl font-bold tracking-tight">Metrics</h1>
           <p className="mt-2 text-base text-slate-400">Your earnings. Your truth.</p>
         </div>
+        */}
 
         {/* YEAR SELECTOR */}
         <div className="mt-5 flex items-center justify-between">

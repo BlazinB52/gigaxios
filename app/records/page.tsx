@@ -241,7 +241,7 @@ export default function RecordsPage() {
                 */}
 
                 {/* Week Selector */}
-                <div className="mt-6 flex items-center justify-between">
+                <div className="mt-2 flex items-center justify-between">
                     <button
                         onClick={() => setWeekOffset((o) => o - 1)}
                         className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 text-2xl text-slate-400 active:bg-slate-800"

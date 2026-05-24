@@ -301,14 +301,14 @@ export default function MetricsPage() {
               <div className="relative mt-6">
                 <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-purple-500" />
                 <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-                  <div className="mb-5 flex items-center gap-2">
+                  <div className="mb-5 flex items-center justify-center gap-2">
                     <h2 className="text-lg font-bold">Monthly Breakdown</h2>
                     <span className="rounded-full bg-purple-950 px-2 py-0.5 text-xs text-purple-400">
                       {selectedYear}
                     </span>
                   </div>
 
-                  <div className="flex items-end gap-2 overflow-x-auto pb-2">
+                  <div className="flex items-end justify-center gap-2 overflow-x-auto pb-2">
                     {monthlyData.map((m) => {
                       const grossH = Math.max(
                         Math.round((m.grossPay / maxMonthlyValue) * 80),
@@ -339,7 +339,7 @@ export default function MetricsPage() {
                     })}
                   </div>
 
-                  <div className="mt-3 flex items-center gap-4">
+                  <div className="mt-3 flex items-center justify-center gap-4">
                     <span className="flex items-center gap-1.5 text-xs text-slate-400">
                       <span className="inline-block h-2 w-4 rounded-sm bg-slate-600" />
                       Gross Pay

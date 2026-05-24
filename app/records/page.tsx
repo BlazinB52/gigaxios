@@ -51,6 +51,11 @@ function formatCurrency(val: number) {
     return val.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function getWorkMilePercentage(workMiles: number, totalOdometerMiles: number): number {
+    if (totalOdometerMiles <= 0) return 1;
+    return Math.min(workMiles / totalOdometerMiles, 1);
+}
+
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -169,6 +174,16 @@ export default function RecordsPage() {
         0
     );
     const totalFuelCost = weekFuel.reduce((sum, f) => sum + Number(f.totalCost || 0), 0);
+
+    const sortedWeekFuel = [...weekFuel].sort((a, b) => Number(a.odometer) - Number(b.odometer));
+    let weekOdometerMiles = 0;
+    if (sortedWeekFuel.length >= 2) {
+        const firstOdo = Number(sortedWeekFuel[0].odometer);
+        const lastOdo = Number(sortedWeekFuel[sortedWeekFuel.length - 1].odometer);
+        if (lastOdo > firstOdo) weekOdometerMiles = lastOdo - firstOdo;
+    }
+    const workMilePct = getWorkMilePercentage(totalMileage, weekOdometerMiles);
+    const workFuelCost = totalFuelCost * workMilePct;
 
     // Gross from shifts (operational)
     const shiftGross = weekShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
@@ -345,7 +360,7 @@ export default function RecordsPage() {
                                 { label: "Adjustments", value: displayAdjustments, color: "text-blue-400" },
                                 { label: "Bonuses", value: displayBonuses, color: "text-yellow-400" },
                                 { label: "Reimbursements", value: displayReimbursements, color: "text-purple-400" },
-                                { label: "Fuel Cost", value: -totalFuelCost, color: "text-red-400" },
+                                { label: "Fuel Cost", value: -workFuelCost, color: "text-red-400" },
                             ].map((row) => (
                                 <div key={row.label} className="flex items-center justify-between py-2 border-b border-slate-800 last:border-0">
                                     <span className="text-sm text-slate-400">{row.label}</span>

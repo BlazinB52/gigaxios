@@ -29,6 +29,11 @@ function formatCurrency(val: number) {
   return val.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function getWorkMilePercentage(workMiles: number, totalOdometerMiles: number): number {
+  if (totalOdometerMiles <= 0) return 1;
+  return Math.min(workMiles / totalOdometerMiles, 1);
+}
+
 function formatTime(timeStr: string) {
   if (!timeStr) return "";
   const [h, m] = timeStr.split(":").map(Number);
@@ -101,6 +106,16 @@ export default function DayDetailPage() {
   const totalOtherPay = shifts.reduce((sum, s) => sum + Number(s.otherPay || 0), 0);
   const totalGross = shifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
   const totalFuelCost = fuelEntries.reduce((sum, f) => sum + Number(f.totalCost || 0), 0);
+
+  const sortedDayFuel = [...fuelEntries].sort((a, b) => Number(a.odometer) - Number(b.odometer));
+  let dayOdometerMiles = 0;
+  if (sortedDayFuel.length >= 2) {
+    const firstOdo = Number(sortedDayFuel[0].odometer);
+    const lastOdo = Number(sortedDayFuel[sortedDayFuel.length - 1].odometer);
+    if (lastOdo > firstOdo) dayOdometerMiles = lastOdo - firstOdo;
+  }
+  const workMilePct = getWorkMilePercentage(totalMileage, dayOdometerMiles);
+  const workFuelCost = totalFuelCost * workMilePct;
 
   const displayDate = new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
     weekday: "long",
@@ -279,7 +294,7 @@ export default function DayDetailPage() {
                 { label: "Base Pay", value: totalBasePay, color: "text-white" },
                 { label: "Tips", value: totalTips, color: "text-emerald-400" },
                 { label: "Other Pay", value: totalOtherPay, color: "text-blue-400" },
-                { label: "Fuel Cost", value: totalFuelCost, color: "text-red-400", negative: true },
+                { label: "Fuel Cost", value: workFuelCost, color: "text-red-400", negative: true },
               ].map((row) => (
                 <div key={row.label} className="flex items-center justify-between py-2.5 border-b border-slate-800 last:border-0">
                   <span className="text-sm text-slate-400">{row.label}</span>

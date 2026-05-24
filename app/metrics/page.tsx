@@ -26,6 +26,11 @@ function parseShiftDate(dateStr: string): Date {
   return new Date(dateStr + "T12:00:00");
 }
 
+function getWorkMilePercentage(workMiles: number, totalOdometerMiles: number): number {
+  if (totalOdometerMiles <= 0) return 1;
+  return Math.min(workMiles / totalOdometerMiles, 1);
+}
+
 export default function MetricsPage() {
   const router = useRouter();
 
@@ -115,13 +120,8 @@ export default function MetricsPage() {
       totalMilesDriven = totalShiftMiles;
     }
 
-    const businessUsePct =
-      totalShiftMiles > 0 && totalMilesDriven > 0
-        ? Math.min(totalShiftMiles / totalMilesDriven, 1)
-        : 0;
-
-    const fuelCostPerMile = totalMilesDriven > 0 ? totalFuelCost / totalMilesDriven : 0;
-    const workFuelCost = totalShiftMiles * fuelCostPerMile;
+    const businessUsePct = getWorkMilePercentage(totalShiftMiles, totalMilesDriven);
+    const workFuelCost = totalFuelCost * businessUsePct;
 
     const netProfit = totalGrossPay - workFuelCost;
     const netProfitPct = totalGrossPay > 0 ? netProfit / totalGrossPay : 0;
@@ -148,14 +148,8 @@ export default function MetricsPage() {
         .filter((a) => new Date(a.week_start + "T12:00:00").getMonth() === i)
         .reduce((sum, a) => sum + Number(a.amount || 0), 0);
       const gross = mShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0) + mAdjTotal;
-      const mShiftMiles = mShifts.reduce((sum, s) => {
-        const begin = Number(s.beginningMileage);
-        const end = Number(s.endingMileage);
-        return begin > 0 && end > begin ? sum + (end - begin) : sum;
-      }, 0);
       const mFuelCostTotal = mFuel.reduce((sum, f) => sum + Number(f.totalCost || 0), 0);
-      const _ = mFuelCostTotal; void _;
-      const mWorkFuel = mShiftMiles * fuelCostPerMile;
+      const mWorkFuel = mFuelCostTotal * businessUsePct;
       const net = Math.max(gross - mWorkFuel, 0);
       return { month, grossPay: gross, netProfit: net, hasData: mShifts.length > 0 || mAdjTotal > 0 };
     }).filter((m) => m.hasData);
@@ -368,7 +362,7 @@ export default function MetricsPage() {
 
                 <div className="my-4 border-t border-slate-800" />
 
-                {businessUsePct === 0 ? (
+                {totalMilesDriven === 0 ? (
                   <p className="text-center text-sm text-slate-500">
                     Add fuel entries and shift mileage to unlock this view.
                   </p>

@@ -25,7 +25,6 @@ import { useEffect, useState } from "react";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "./lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
-import { PayEntry, loadPayEntriesFromSupabase } from "@/app/lib/payStorage";
 
 /* =========================================================
    HOME COMPONENT
@@ -45,8 +44,6 @@ export default function Home() {
   /* =========================================================
      STATE VARIABLES
      ========================================================= */
-
-  const [payEntries, setPayEntries] = useState<PayEntry[]>([]);
 
   const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
 
@@ -93,22 +90,6 @@ export default function Home() {
 
     loadCloudFuel();
 
-    async function loadCloudPay() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      const pay = await loadPayEntriesFromSupabase(user.id);
-      setPayEntries(pay);
-    }
-
-    loadCloudPay();
-
   }, [router]);
 
   /* =========================================================
@@ -132,9 +113,11 @@ export default function Home() {
      ========================================================= */
 
   const today = new Date();
+  const dayOfWeek = today.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
   const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+  startOfWeek.setDate(today.getDate() + mondayOffset);
   startOfWeek.setHours(0, 0, 0, 0);
 
   const endOfWeek = new Date(startOfWeek);

@@ -25,7 +25,7 @@ export default function RootLayout({
           <div className="mx-auto flex max-w-md items-center justify-between px-5 py-4">
             <div>
               <img
-                src="/gigaxios-logo.png"
+                src="/GigAxios-logo.png"
                 alt="GigAxios"
                 className="h-9 w-auto"
               />

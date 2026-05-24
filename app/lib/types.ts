@@ -39,7 +39,8 @@ export type AdjustmentType =
   | "bonus"
   | "correction"
   | "reimbursement"
-  | "promo";
+  | "promo"
+  | "overtime";
 
 
 // ======================================================

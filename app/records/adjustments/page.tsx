@@ -27,6 +27,7 @@ const ADJUSTMENT_LABELS: Record<AdjustmentType, string> = {
   correction: "Correction",
   reimbursement: "Reimbursement",
   promo: "Promo",
+  overtime: "Overtime",
 };
 
 const ADJUSTMENT_COLORS: Record<AdjustmentType, string> = {
@@ -36,6 +37,7 @@ const ADJUSTMENT_COLORS: Record<AdjustmentType, string> = {
   correction: "text-orange-400",
   reimbursement: "text-purple-400",
   promo: "text-pink-400",
+  overtime: "text-cyan-400",
 };
 
 const PLATFORMS = ["GoPuff", "Amazon Flex", "Uber Eats", "DoorDash", "Other"];
@@ -46,6 +48,7 @@ const ADJUSTMENT_TYPES: AdjustmentType[] = [
   "correction",
   "reimbursement",
   "promo",
+  "overtime",
 ];
 
 // ─── Inner Component (uses useSearchParams) ───────────────────────────────────

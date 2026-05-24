@@ -27,7 +27,7 @@ export default function RootLayout({
               <img
                 src="/GigAxios-logo.png"
                 alt="GigAxios"
-                className="h-9 w-auto"
+                className="h-12 w-auto brightness-125 contrast-125"
               />
 
               <p className="mt-1 text-sm text-slate-400">

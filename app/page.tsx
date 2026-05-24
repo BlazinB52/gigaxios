@@ -103,9 +103,9 @@ export default function Home() {
 
 
   function parseLocalDate(dateString: string) {
-  const [year, month, day] = dateString.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
+    const [year, month, day] = dateString.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
 
   /* =========================================================
      CURRENT_WEEK_FILTER
@@ -284,6 +284,10 @@ export default function Home() {
 
           <p className="mt-2 text-slate-400">
             Net Profit
+          </p>
+
+          <p className="mt-1 text-sm text-slate-500">
+            After estimated fuel cost
           </p>
 
           {/* MAIN_CARD_METRICS */}

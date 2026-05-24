@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import BottomNav from "@/app/components/BottomNav";
-// import GigHeader from "@/app/components/GigHeader";
 import "./globals.css";
 
 const inter = Inter({
@@ -20,32 +19,29 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} h-full antialiased`}
-    >
+    <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full bg-[#020814]">
         <header className="fixed left-0 right-0 top-0 z-50 border-b border-slate-800 bg-[#020814]/95 backdrop-blur">
-          <div className="mx-auto flex max-w-md items-center justify-between px-5 py-5">
+          <div className="mx-auto flex max-w-md items-center justify-between px-5 py-4">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white">
-                Gig<span className="text-blue-400">A</span>xios
-              </h1>
+              <img
+                src="/gigaxios-logo.png"
+                alt="GigAxios"
+                className="h-9 w-auto"
+              />
 
               <p className="mt-1 text-sm text-slate-400">
                 Know what you actually make
               </p>
             </div>
 
-            <button className="flex h-14 w-14 items-center justify-center rounded-full border border-slate-700 text-xl">
+            <button className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-700 text-xl">
               🔔
             </button>
           </div>
         </header>
 
-        <div className="min-h-screen pb-24 pt-24">
-          {children}
-        </div>
+        <div className="min-h-screen pb-24 pt-24">{children}</div>
 
         <BottomNav />
       </body>

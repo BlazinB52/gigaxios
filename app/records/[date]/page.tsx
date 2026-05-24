@@ -107,14 +107,17 @@ export default function DayDetailPage() {
   const totalGross = shifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
   const totalFuelCost = fuelEntries.reduce((sum, f) => sum + Number(f.totalCost || 0), 0);
 
-  const sortedDayFuel = [...fuelEntries].sort((a, b) => Number(a.odometer) - Number(b.odometer));
-  let dayOdometerMiles = 0;
-  if (sortedDayFuel.length >= 2) {
-    const firstOdo = Number(sortedDayFuel[0].odometer);
-    const lastOdo = Number(sortedDayFuel[sortedDayFuel.length - 1].odometer);
-    if (lastOdo > firstOdo) dayOdometerMiles = lastOdo - firstOdo;
-  }
-  const workMilePct = getWorkMilePercentage(totalMileage, dayOdometerMiles);
+  const highestEndingMileage = shifts.length > 0
+    ? shifts.reduce((max, s) => Math.max(max, Number(s.endingMileage || 0)), 0)
+    : 0;
+  const lowestFuelOdometer = fuelEntries.length > 0
+    ? fuelEntries.reduce((min, f) => Math.min(min, Number(f.odometer || 0)), Infinity)
+    : 0;
+  const totalMilesDriven =
+    highestEndingMileage > lowestFuelOdometer && lowestFuelOdometer > 0
+      ? highestEndingMileage - lowestFuelOdometer
+      : 0;
+  const workMilePct = getWorkMilePercentage(totalMileage, totalMilesDriven);
   const workFuelCost = totalFuelCost * workMilePct;
 
   const displayDate = new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {

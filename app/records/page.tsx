@@ -175,14 +175,17 @@ export default function RecordsPage() {
     );
     const totalFuelCost = weekFuel.reduce((sum, f) => sum + Number(f.totalCost || 0), 0);
 
-    const sortedWeekFuel = [...weekFuel].sort((a, b) => Number(a.odometer) - Number(b.odometer));
-    let weekOdometerMiles = 0;
-    if (sortedWeekFuel.length >= 2) {
-        const firstOdo = Number(sortedWeekFuel[0].odometer);
-        const lastOdo = Number(sortedWeekFuel[sortedWeekFuel.length - 1].odometer);
-        if (lastOdo > firstOdo) weekOdometerMiles = lastOdo - firstOdo;
-    }
-    const workMilePct = getWorkMilePercentage(totalMileage, weekOdometerMiles);
+    const highestEndingMileage = weekShifts.length > 0
+        ? weekShifts.reduce((max, s) => Math.max(max, Number(s.endingMileage || 0)), 0)
+        : 0;
+    const lowestFuelOdometer = weekFuel.length > 0
+        ? weekFuel.reduce((min, f) => Math.min(min, Number(f.odometer || 0)), Infinity)
+        : 0;
+    const totalMilesDriven =
+        highestEndingMileage > lowestFuelOdometer && lowestFuelOdometer > 0
+            ? highestEndingMileage - lowestFuelOdometer
+            : 0;
+    const workMilePct = getWorkMilePercentage(totalMileage, totalMilesDriven);
     const workFuelCost = totalFuelCost * workMilePct;
 
     // Gross from shifts (operational)

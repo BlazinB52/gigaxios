@@ -233,11 +233,12 @@ export default function RecordsPage() {
         <main className="min-h-screen bg-[#020814] text-white">
             <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-28 pt-8">
 
-                {/* Header */}
+                {/* Header 
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Records</h1>
                     <p className="text-sm text-slate-400">Weekly pay period view</p>
                 </div>
+                */}
 
                 {/* Week Selector */}
                 <div className="mt-6 flex items-center justify-between">

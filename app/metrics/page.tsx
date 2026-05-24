@@ -156,13 +156,18 @@ export default function MetricsPage() {
 
     const maxMonthlyValue = Math.max(...monthlyData.map((m) => m.grossPay), 1);
 
+    const validMpgEntries = fuelEntries.filter((f) => f.mpg && f.mpg > 0);
+    const avgMpg = validMpgEntries.length > 0
+      ? validMpgEntries.reduce((sum, f) => sum + f.mpg!, 0) / validMpgEntries.length
+      : 0;
+
     return {
       totalDeliveries, totalHours, totalGrossPay, totalFuelCost, totalAdjustments,
       totalShiftMiles, totalMilesDriven, businessUsePct,
       workFuelCost, netProfit, netProfitPct, fuelPct,
       hourlyRate, profitPerDelivery,
       yearServiceCost, businessServiceCost, trueNetProfit, trueNetPct, serviceCostPct,
-      monthlyData, maxMonthlyValue,
+      monthlyData, maxMonthlyValue, avgMpg,
       hasData: yearShifts.length > 0 || totalAdjustments > 0,
     };
   }, [shifts, fuelEntries, serviceEntries, adjustments, selectedYear]);
@@ -181,7 +186,7 @@ export default function MetricsPage() {
     workFuelCost, netProfit, netProfitPct, fuelPct,
     profitPerDelivery,
     yearServiceCost, businessServiceCost, trueNetProfit, trueNetPct,
-    monthlyData, maxMonthlyValue,
+    monthlyData, maxMonthlyValue, avgMpg,
     hasData,
   } = metrics;
 
@@ -379,6 +384,16 @@ export default function MetricsPage() {
                         {totalMilesDriven.toLocaleString()} total mi
                       </p>
                     </div>
+
+                    {avgMpg > 0 && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-slate-300">Avg MPG</span>
+                          <span className="font-semibold text-amber-400">{avgMpg.toFixed(1)}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-500">all-time average</p>
+                      </div>
+                    )}
 
                     <div className="mt-4 border-t border-slate-800 pt-4">
                       {/* Cost breakdown */}

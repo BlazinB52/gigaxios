@@ -51,10 +51,6 @@ function formatCurrency(val: number) {
     return val.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-function getWorkMilePercentage(workMiles: number, totalOdometerMiles: number): number {
-    if (totalOdometerMiles <= 0) return 1;
-    return Math.min(workMiles / totalOdometerMiles, 1);
-}
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -162,31 +158,23 @@ export default function RecordsPage() {
         return iso >= weekStart && iso <= weekEnd;
     });
 
-    const weekFuel = fuelEntries.filter((f) => {
-        const iso = toISODate(f.date);
-        return iso >= weekStart && iso <= weekEnd;
-    });
-
     const totalDeliveries = weekShifts.reduce((sum, s) => sum + Number(s.deliveries || 0), 0);
     const totalHours = weekShifts.reduce((sum, s) => sum + Number(s.hoursWorked || 0), 0);
     const totalMileage = weekShifts.reduce(
         (sum, s) => sum + (Number(s.endingMileage || 0) - Number(s.beginningMileage || 0)),
         0
     );
-    const totalFuelCost = weekFuel.reduce((sum, f) => sum + Number(f.totalCost || 0), 0);
-
-    const highestEndingMileage = weekShifts.length > 0
-        ? weekShifts.reduce((max, s) => Math.max(max, Number(s.endingMileage || 0)), 0)
+    const recentFuelDesc = [...fuelEntries]
+        .filter((f) => f.mpg && f.mpg > 0 && f.costPerMile && f.costPerMile > 0)
+        .sort((a, b) => Number(b.odometer) - Number(a.odometer))
+        .slice(0, 5);
+    const rollingMpg = recentFuelDesc.length > 0
+        ? recentFuelDesc.reduce((sum, f) => sum + f.mpg!, 0) / recentFuelDesc.length
         : 0;
-    const lowestFuelOdometer = weekFuel.length > 0
-        ? weekFuel.reduce((min, f) => Math.min(min, Number(f.odometer || 0)), Infinity)
+    const rollingCostPerMile = recentFuelDesc.length > 0
+        ? recentFuelDesc.reduce((sum, f) => sum + f.costPerMile!, 0) / recentFuelDesc.length
         : 0;
-    const totalMilesDriven =
-        highestEndingMileage > lowestFuelOdometer && lowestFuelOdometer > 0
-            ? highestEndingMileage - lowestFuelOdometer
-            : 0;
-    const workMilePct = getWorkMilePercentage(totalMileage, totalMilesDriven);
-    const workFuelCost = totalFuelCost * workMilePct;
+    const workFuelCost = rollingCostPerMile > 0 ? totalMileage * rollingCostPerMile : 0;
 
     // Gross from shifts (operational)
     const shiftGross = weekShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
@@ -363,14 +351,19 @@ export default function RecordsPage() {
                                 { label: "Adjustments", value: displayAdjustments, color: "text-blue-400" },
                                 { label: "Bonuses", value: displayBonuses, color: "text-yellow-400" },
                                 { label: "Reimbursements", value: displayReimbursements, color: "text-purple-400" },
-                                { label: "Fuel Cost", value: -workFuelCost, color: "text-red-400" },
+                                { label: "Fuel Cost", value: -workFuelCost, color: "text-red-400", note: rollingMpg > 0 ? `${rollingMpg.toFixed(1)} MPG rolling avg` : undefined },
                             ].map((row) => (
-                                <div key={row.label} className="flex items-center justify-between py-2 border-b border-slate-800 last:border-0">
-                                    <span className="text-sm text-slate-400">{row.label}</span>
-                                    <span className={`text-sm font-semibold ${row.color}`}>
-                                        {row.label === "Fuel Cost" && totalFuelCost > 0 ? "−" : ""}
-                                        {formatCurrency(Math.abs(row.value))}
-                                    </span>
+                                <div key={row.label} className="py-2 border-b border-slate-800 last:border-0">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-slate-400">{row.label}</span>
+                                        <span className={`text-sm font-semibold ${row.color}`}>
+                                            {row.label === "Fuel Cost" && workFuelCost > 0 ? "−" : ""}
+                                            {formatCurrency(Math.abs(row.value))}
+                                        </span>
+                                    </div>
+                                    {row.note && (
+                                        <p className="mt-0.5 text-right text-xs text-slate-500">{row.note}</p>
+                                    )}
                                 </div>
                             ))}
 

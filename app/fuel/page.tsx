@@ -8,6 +8,7 @@ import {
   FuelEntry,
   saveFuelEntries,
   loadFuelEntriesFromSupabase,
+  saveFuelEntryToSupabase,
 } from "@/app/lib/fuelStorage";
 
 export default function FuelPage() {
@@ -72,15 +73,7 @@ async function handleSaveFuel() {
   saveFuelEntries(updatedEntries);
   setFuelEntries(updatedEntries);
 
-  await supabase.from("fuel_entries").insert({
-    user_id: user.id,
-    date: newEntry.date,
-    odometer: newEntry.odometer,
-    gallons: newEntry.gallons,
-    price_per_gallon: newEntry.pricePerGallon,
-    total_cost: newEntry.totalCost,
-    notes: newEntry.notes ?? null,
-  });
+  await saveFuelEntryToSupabase(newEntry);
 
   alert("Fuel entry saved.");
   router.push("/");

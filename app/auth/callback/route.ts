@@ -6,6 +6,10 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
+  console.log("AUTH CALLBACK HIT");
+  console.log("code:", code);
+  console.log("origin:", origin);
+
   if (code) {
     const cookieStore = await cookies();
     const supabase = createServerClient(
@@ -26,9 +30,15 @@ export async function GET(request: Request) {
     );
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
+    console.log("exchange error:", error);
+    
     if (!error) {
       return NextResponse.redirect(`${origin}/`);
     }
+
+    console.log("exchange failed, redirecting to login");
+  } else {
+    console.log("no code found in URL");
   }
 
   return NextResponse.redirect(`${origin}/login`);

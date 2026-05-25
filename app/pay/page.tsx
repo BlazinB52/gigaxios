@@ -18,7 +18,7 @@ export default function PayPage() {
   const [date, setDate] = useState("");
   const [platform, setPlatform] = useState("GoPuff");
   const [entryType, setEntryType] =
-    useState<"shift" | "mga" | "delayed_tip" | "bonus" | "correction">("shift");
+  useState<"shift" | "mga" | "delayed_tip" | "bonus" | "correction">("shift");
   const [payPeriodStart, setPayPeriodStart] = useState("");
   const [payPeriodEnd, setPayPeriodEnd] = useState("");
   const [deliveries, setDeliveries] = useState("");
@@ -118,7 +118,7 @@ export default function PayPage() {
     const updatedEntries = [newEntry, ...payEntries];
 
     // =========================================================
-    // UPDATE MATCHING SHIFT WITH PAY DATA -----
+    // UPDATE MATCHING SHIFT WITH PAY DATA
     // =========================================================
 
     const updatedShifts = savedShifts.map((shift) => {
@@ -194,8 +194,8 @@ export default function PayPage() {
               value={entryType}
               onChange={(event) =>
                 setEntryType(
-                  event.target.value as "shift" | "mga" | "delayed_tip" | "bonus" | "correction"
-                )
+  event.target.value as "shift" | "mga" | "delayed_tip" | "bonus" | "correction"
+)
               }
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
             >

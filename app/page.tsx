@@ -254,13 +254,13 @@ export default function Home() {
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-4">
 
         {/* =====================================================
-            HOME_HEADER --
+            HOME_HEADER
             App title + notification button now handeled in layout.tsx
            ===================================================== */}
 
 
         {/* =====================================================
-            GREETING_SECTION -- -
+            GREETING_SECTION
            ===================================================== */}
 
 

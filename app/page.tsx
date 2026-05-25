@@ -35,7 +35,7 @@ export default function Home() {
 
 
   /* =========================================================
-     ROUTER
+     ROUTER -
      Used for page navigation buttons
      ========================================================= */
 

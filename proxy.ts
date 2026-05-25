@@ -39,6 +39,6 @@ export async function proxy(request: NextRequest) {
 // Runs on all routes except /login, /auth/*, static assets, and Next.js internals
 export const config = {
   matcher: [
-    '/((?!login|auth|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!login|auth/callback|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

@@ -35,7 +35,7 @@ export default function Home() {
 
 
   /* =========================================================
-     ROUTER -
+     ROUTER
      Used for page navigation buttons
      ========================================================= */
 
@@ -63,15 +63,12 @@ export default function Home() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      console.log("[shifts] user:", user?.id ?? "null");
-
       if (!user) {
         router.push("/login");
         return;
       }
 
       const shifts = await loadShiftsFromSupabase(user.id);
-      console.log("[shifts] loaded:", shifts);
       setSavedShifts(shifts);
     }
 
@@ -82,15 +79,12 @@ export default function Home() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      console.log("[fuel] user:", user?.id ?? "null");
-
       if (!user) {
         router.push("/login");
         return;
       }
 
       const fuel = await loadFuelEntriesFromSupabase(user.id);
-      console.log("[fuel] loaded:", fuel);
       setFuelEntries(fuel);
     }
 

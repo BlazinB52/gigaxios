@@ -6,6 +6,8 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
 
+  console.log('callback hit, code:', code ? 'present' : 'missing')
+
   if (code) {
     const cookieStore = await cookies()
 
@@ -18,23 +20,23 @@ export async function GET(request: NextRequest) {
             return cookieStore.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
+            cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options)
-            )
+            })
           },
         },
       }
     )
 
-const { error } = await supabase.auth.exchangeCodeForSession(code)
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
-    console.log('callback error:', JSON.stringify(error))
+    console.log('exchange error:', JSON.stringify(error))
+    console.log('exchange session:', data?.session ? 'present' : 'missing')
 
-    if (!error) {
-      return NextResponse.redirect(new URL('/', origin))
+    if (!error && data.session) {
+      const response = NextResponse.redirect(new URL('/', origin))
+      return response
     }
-
-    console.log('exchange failed, redirecting to login')
   }
 
   return NextResponse.redirect(new URL('/login', origin))

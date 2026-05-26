@@ -1,21 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import type { FormEvent } from "react";
 import { supabase } from "@/app/lib/supabaseClient";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: { preventDefault(): void }) {
     event.preventDefault();
     setMessage("");
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/`,
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
 

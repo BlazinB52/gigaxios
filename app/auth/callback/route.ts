@@ -26,11 +26,15 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
+const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+    console.log('callback error:', JSON.stringify(error))
 
     if (!error) {
       return NextResponse.redirect(new URL('/', origin))
     }
+
+    console.log('exchange failed, redirecting to login')
   }
 
   return NextResponse.redirect(new URL('/login', origin))

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { supabase } from "../lib/supabaseClient";
 import { SavedShift } from "@/app/lib/types";
@@ -22,7 +21,6 @@ export default function AdminPage() {
     const [fuelEntries, setFuelEntries] = useState<any[]>([]);
     const [payEntries, setPayEntries] = useState<any[]>([]);
     const [supabaseStatus, setSupabaseStatus] = useState("Checking Supabase...");
-    const router = useRouter();
 
     useEffect(() => {
         async function loadAdminData() {
@@ -30,10 +28,7 @@ export default function AdminPage() {
                 data: { user },
             } = await supabase.auth.getUser();
 
-            if (!user) {
-                router.push("/login");
-                return;
-            }
+            if (!user) return;
 
             const shifts = await loadShiftsFromSupabase(user.id);
             const fuel = await loadFuelEntriesFromSupabase(user.id);
@@ -46,17 +41,14 @@ export default function AdminPage() {
         }
 
         loadAdminData();
-    }, [router]);
+    }, []);
 
     async function handleExportBackup() {
         const {
             data: { user },
         } = await supabase.auth.getUser();
 
-        if (!user) {
-            router.push("/login");
-            return;
-        }
+        if (!user) return;
 
         const { data: shifts, error: shiftsError } = await supabase
             .from("shifts")

@@ -1,5 +1,17 @@
 "use client";
 
+/* =========================================================
+   PAY PAGE
+   ---------------------------------------------------------
+   Lets the user log daily income after it appears in their
+   gig app.  Supports two entry modes:
+     • shift  — full shift pay (base + tips + adjustments)
+     • adjustment types (MGA, delayed tip, bonus, correction)
+       — single amount linked to a pay period date range
+   When a shift entry matches a closed shift by date, that
+   shift record is updated with the pay data automatically.
+   ========================================================= */
+
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import { useEffect, useState } from "react";
@@ -12,13 +24,16 @@ import {
 import { SavedShift } from "@/app/lib/types";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 
-
 export default function PayPage() {
+
+  /* =========================================================
+     STATE VARIABLES
+     ========================================================= */
 
   const [date, setDate] = useState("");
   const [platform, setPlatform] = useState("GoPuff");
   const [entryType, setEntryType] =
-  useState<"shift" | "mga" | "delayed_tip" | "bonus" | "correction">("shift");
+    useState<"shift" | "mga" | "delayed_tip" | "bonus" | "correction">("shift");
   const [payPeriodStart, setPayPeriodStart] = useState("");
   const [payPeriodEnd, setPayPeriodEnd] = useState("");
   const [deliveries, setDeliveries] = useState("");
@@ -29,9 +44,15 @@ export default function PayPage() {
   const [notes, setNotes] = useState("");
   const [payEntries, setPayEntries] = useState<PayEntry[]>([]);
   const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
+
   const router = useRouter();
 
-  /* This gives the Pay page access to completed shift records */
+  /* =========================================================
+     DATA LOADING
+     Verifies auth, then loads existing pay entries and saved
+     shifts.  Shifts are needed so pay entries can be matched
+     back to closed shift records by date.
+     ========================================================= */
 
   useEffect(() => {
     async function loadCloudData() {
@@ -54,13 +75,19 @@ export default function PayPage() {
     loadCloudData();
   }, [router]);
 
-
+  /* =========================================================
+     SAVE PAY ENTRY
+     Builds a PayEntry, optionally back-fills the matching
+     closed shift with pay data, saves both to Supabase,
+     and navigates home.
+     ========================================================= */
 
   async function handleSavePay() {
     if (!date) {
       alert("Enter a date.");
       return;
     }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -70,18 +97,25 @@ export default function PayPage() {
       return;
     }
 
-    // =========================================================
-    // NEW PAY ENTRY
-    // =========================================================
+    /* -------------------------------------------------------
+       BUILD GROSS PAY
+       Shift entries sum base + tips + adjustments.
+       Adjustment-only entries (MGA, bonus, etc.) use the
+       adjustments field as the full amount.
+       ------------------------------------------------------- */
 
     const grossPay =
       entryType === "shift"
         ? (
-          Number(basePay || 0) +
-          Number(tips || 0) +
-          Number(adjustments || 0)
-        ).toFixed(2)
+            Number(basePay || 0) +
+            Number(tips || 0) +
+            Number(adjustments || 0)
+          ).toFixed(2)
         : Number(adjustments || 0).toFixed(2);
+
+    /* -------------------------------------------------------
+       NEW PAY ENTRY OBJECT
+       ------------------------------------------------------- */
 
     const newEntry = {
       id: crypto.randomUUID(),
@@ -100,26 +134,28 @@ export default function PayPage() {
       notes,
     };
 
-    // =========================================================
-    // MATCH CLOSED SHIFT BY DATE
-    // =========================================================
+    /* -------------------------------------------------------
+       MATCH CLOSED SHIFT BY DATE
+       Finds a closed shift on the same date so its record
+       can be updated with this pay entry's data.
+       ------------------------------------------------------- */
 
     const matchingShift =
       entryType === "shift"
         ? savedShifts.find(
-          (shift) =>
-            shift.date === date &&
-            shift.status === "closed"
-        )
+            (shift) =>
+              shift.date === date &&
+              shift.status === "closed"
+          )
         : undefined;
-
-
 
     const updatedEntries = [newEntry, ...payEntries];
 
-    // =========================================================
-    // UPDATE MATCHING SHIFT WITH PAY DATA
-    // =========================================================
+    /* -------------------------------------------------------
+       UPDATE MATCHING SHIFT WITH PAY DATA
+       Back-fills the shift record with platform, deliveries,
+       hours, pay breakdown, and computed gross pay.
+       ------------------------------------------------------- */
 
     const updatedShifts = savedShifts.map((shift) => {
       if (matchingShift && shift.id === matchingShift.id) {
@@ -138,9 +174,12 @@ export default function PayPage() {
           ).toFixed(2),
         };
       }
-
       return shift;
     });
+
+    /* -------------------------------------------------------
+       PERSIST TO SUPABASE
+       ------------------------------------------------------- */
 
     await savePayEntryToSupabase(newEntry);
 
@@ -169,9 +208,15 @@ export default function PayPage() {
     router.push("/");
   }
 
+  /* =========================================================
+     RENDER
+     ========================================================= */
+
   return (
     <main className="min-h-screen bg-[#020814] text-white">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">
+
+        {/* PAGE HEADER */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight">Pay</h1>
           <p className="mt-1 text-sm text-slate-400">
@@ -179,23 +224,30 @@ export default function PayPage() {
           </p>
         </div>
 
+        {/* =====================================================
+            ADD PAY ENTRY FORM
+           ===================================================== */}
+
         <section className="rounded-3xl border border-slate-700/70 bg-slate-950/70 p-5">
           <h2 className="text-lg font-bold">Add Pay Entry</h2>
 
           <div className="mt-5 space-y-3">
+
+            {/* DATE */}
             <input
               type="date"
               value={date}
               onChange={(event) => setDate(event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white [color-scheme:dark]"
             />
 
+            {/* ENTRY TYPE SELECTOR — shift or adjustment category */}
             <select
               value={entryType}
               onChange={(event) =>
                 setEntryType(
-  event.target.value as "shift" | "mga" | "delayed_tip" | "bonus" | "correction"
-)
+                  event.target.value as "shift" | "mga" | "delayed_tip" | "bonus" | "correction"
+                )
               }
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
             >
@@ -205,41 +257,37 @@ export default function PayPage() {
               <option value="bonus">Bonus</option>
               <option value="correction">Correction</option>
             </select>
+
+            {/* PAY PERIOD DATES — only shown for non-shift adjustment types */}
             {entryType !== "shift" && (
               <>
                 <div>
-                  <p className="mb-1 text-sm text-slate-400">
-                    Pay Period Start
-                  </p>
-
+                  <p className="mb-1 text-sm text-slate-400">Pay Period Start</p>
                   <input
                     type="date"
                     value={payPeriodStart}
                     onChange={(event) => setPayPeriodStart(event.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white [color-scheme:dark]"
                   />
                 </div>
 
                 <div>
-                  <p className="mb-1 text-sm text-slate-400">
-                    Pay Period End
-                  </p>
-
+                  <p className="mb-1 text-sm text-slate-400">Pay Period End</p>
                   <input
                     type="date"
                     value={payPeriodEnd}
                     onChange={(event) => setPayPeriodEnd(event.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white [color-scheme:dark]"
                   />
                 </div>
               </>
             )}
 
+            {/* SHIFT-SPECIFIC FIELDS — platform, deliveries, hours, base pay, tips */}
             {entryType === "shift" && (
               <>
-
+                {/* PLATFORM */}
                 <select
-
                   value={platform}
                   onChange={(event) => setPlatform(event.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
@@ -249,6 +297,7 @@ export default function PayPage() {
                   <option value="Other">Other</option>
                 </select>
 
+                {/* DELIVERIES */}
                 <input
                   type="number"
                   value={deliveries}
@@ -257,6 +306,7 @@ export default function PayPage() {
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
                 />
 
+                {/* HOURS */}
                 <input
                   type="number"
                   value={hours}
@@ -265,6 +315,7 @@ export default function PayPage() {
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
                 />
 
+                {/* BASE PAY */}
                 <input
                   type="number"
                   value={basePay}
@@ -273,7 +324,7 @@ export default function PayPage() {
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
                 />
 
-
+                {/* TIPS */}
                 <input
                   type="number"
                   value={tips}
@@ -281,22 +332,19 @@ export default function PayPage() {
                   placeholder="Tips"
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
                 />
-
               </>
             )}
 
+            {/* ADJUSTMENTS / AMOUNT — shown for all entry types */}
             <input
               type="number"
               value={adjustments}
               onChange={(event) => setAdjustments(event.target.value)}
-              placeholder={
-                entryType === "shift"
-                  ? "Adjustments"
-                  : "Amount"
-              }
+              placeholder={entryType === "shift" ? "Adjustments" : "Amount"}
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
             />
 
+            {/* NOTES */}
             <input
               type="text"
               value={notes}
@@ -305,14 +353,17 @@ export default function PayPage() {
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
             />
 
+            {/* SAVE BUTTON */}
             <button
               onClick={handleSavePay}
               className="w-full rounded-xl bg-blue-600/90 p-3 font-bold text-white shadow-lg shadow-blue-500/20"
             >
               Save Pay Entry
             </button>
+
           </div>
         </section>
+
       </div>
 
       <BottomNav />

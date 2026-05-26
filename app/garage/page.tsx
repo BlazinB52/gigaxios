@@ -1,5 +1,18 @@
 "use client";
 
+/* =========================================================
+   GARAGE PAGE
+   ---------------------------------------------------------
+   Vehicle hub with four summary cards:
+     • Service       — total services logged and money spent
+     • Overhead      — recurring costs (coming soon)
+     • Vehicle Health — quick oil / tires / brakes / battery status
+     • Upcoming Maintenance — list of active reminders with
+                               urgency color coding
+   Tapping the vehicle chip in the header navigates to Settings
+   where vehicle data and service intervals are managed.
+   ========================================================= */
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Settings } from "lucide-react";
@@ -18,18 +31,30 @@ import {
   computeServiceStats,
 } from "@/app/lib/garageStorage";
 
+/* =========================================================
+   SERVICE ICON HELPER
+   Maps a service type string to an emoji icon.
+   Defaults to 🔧 for unrecognised types.
+   ========================================================= */
+
 function getServiceIcon(title: string): string {
   const t = title.toLowerCase();
-  if (t.includes("oil")) return "🛢️";
-  if (t.includes("tire")) return "🔄";
-  if (t.includes("brake")) return "🔵";
-  if (t.includes("battery")) return "🔋";
+  if (t.includes("oil"))          return "🛢️";
+  if (t.includes("tire"))         return "🔄";
+  if (t.includes("brake"))        return "🔵";
+  if (t.includes("battery"))      return "🔋";
   if (t.includes("registration")) return "📋";
-  if (t.includes("inspection")) return "🔍";
-  if (t.includes("wiper")) return "💧";
+  if (t.includes("inspection"))   return "🔍";
+  if (t.includes("wiper"))        return "💧";
   if (t.includes("transmission")) return "⚙️";
   return "🔧";
 }
+
+/* =========================================================
+   DATE FORMATTER
+   Converts an ISO date string to "Mon DD, YYYY".
+   Noon time prevents timezone-offset edge cases.
+   ========================================================= */
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return "—";
@@ -39,6 +64,12 @@ function formatDate(dateStr: string): string {
     year: "numeric",
   });
 }
+
+/* =========================================================
+   DUE TEXT
+   Returns a human-readable due status for a reminder:
+     "Due in X mi" / "X mi overdue" / "Due Mon DD, YYYY"
+   ========================================================= */
 
 function getDueText(reminder: MaintenanceReminder, currentOdometer: number): string {
   const dueOdo = parseFloat(reminder.dueOdometer) || 0;
@@ -52,6 +83,13 @@ function getDueText(reminder: MaintenanceReminder, currentOdometer: number): str
   }
   return "—";
 }
+
+/* =========================================================
+   REMINDER URGENCY COLOR
+   red   = overdue
+   amber = within 500 mi or 30 days
+   blue  = on track
+   ========================================================= */
 
 function getReminderUrgencyColor(reminder: MaintenanceReminder, currentOdometer: number): string {
   const dueOdo = parseFloat(reminder.dueOdometer) || 0;
@@ -69,6 +107,13 @@ function getReminderUrgencyColor(reminder: MaintenanceReminder, currentOdometer:
   return "text-blue-400";
 }
 
+/* =========================================================
+   HEALTH STATUS CALCULATOR
+   Compares the current odometer against the last-done
+   odometer + interval to return a Good / Monitor / Due label.
+   Returns "—" if the interval record is incomplete.
+   ========================================================= */
+
 function computeHealthStatus(
   intervals: ServiceInterval[],
   serviceType: string,
@@ -83,26 +128,40 @@ function computeHealthStatus(
     interval.lastDoneOdometer + interval.intervalMiles - currentOdometer;
   const percentRemaining = milesRemaining / interval.intervalMiles;
 
-  if (percentRemaining < 0) return { status: "Due", colorClass: "text-red-400" };
-  if (percentRemaining <= 0.2) return { status: "Monitor", colorClass: "text-amber-400" };
-  return { status: "Good", colorClass: "text-emerald-400" };
+  if (percentRemaining < 0)    return { status: "Due",     colorClass: "text-red-400"     };
+  if (percentRemaining <= 0.2) return { status: "Monitor", colorClass: "text-amber-400"   };
+  return                              { status: "Good",    colorClass: "text-emerald-400" };
 }
 
+/* =========================================================
+   HEALTH INDICATOR DEFINITIONS
+   The four items shown in the Vehicle Health card.
+   ========================================================= */
+
 const HEALTH_INDICATORS = [
-  { label: "Oil Life", serviceType: "Oil Change", icon: "🛢️" },
-  { label: "Tires", serviceType: "Tires", icon: "🔄" },
-  { label: "Brakes", serviceType: "Brake Inspection", icon: "🔵" },
-  { label: "Battery", serviceType: "Battery Check", icon: "🔋" },
+  { label: "Oil Life", serviceType: "Oil Change",       icon: "🛢️" },
+  { label: "Tires",    serviceType: "Tires",            icon: "🔄" },
+  { label: "Brakes",   serviceType: "Brake Inspection", icon: "🔵" },
+  { label: "Battery",  serviceType: "Battery Check",    icon: "🔋" },
 ];
 
 export default function GaragePage() {
   const router = useRouter();
+
+  /* =========================================================
+     STATE VARIABLES
+     ========================================================= */
 
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [maintenanceReminders, setMaintenanceReminders] = useState<MaintenanceReminder[]>([]);
   const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
   const [currentOdometer, setCurrentOdometer] = useState(0);
+
+  /* =========================================================
+     DATA LOADING
+     Loads all five data sources in parallel on mount.
+     ========================================================= */
 
   useEffect(() => {
     async function loadGarageData() {
@@ -133,13 +192,23 @@ export default function GaragePage() {
     loadGarageData();
   }, [router]);
 
+  /* Derive aggregate service stats for the Service card */
   const { totalServices, totalSpent, lastServiceOdometer } = computeServiceStats(serviceEntries);
+
+  /* =========================================================
+     RENDER
+     ========================================================= */
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">
 
-        {/* PAGE HEADER */}
+        {/* =====================================================
+            PAGE HEADER
+            Left: title. Right: vehicle chip (or Settings button
+            if no vehicle is saved yet). Both navigate to Settings.
+           ===================================================== */}
+
         <div className="grid grid-cols-2 items-start gap-3">
           <div>
             <h1 className="text-4xl font-bold tracking-tight">Garage</h1>
@@ -171,7 +240,11 @@ export default function GaragePage() {
           )}
         </div>
 
-        {/* SERVICE CARD */}
+        {/* =====================================================
+            SERVICE CARD
+            Tapping the chevron navigates to /garage/service.
+           ===================================================== */}
+
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-[#3b82f6]" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg shadow-blue-950/20">
@@ -192,6 +265,7 @@ export default function GaragePage() {
               </div>
             </div>
 
+            {/* SERVICE STATS — total count, total spend, last service odometer */}
             <div className="mt-5 border-t border-slate-800 pt-5">
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div>
@@ -221,7 +295,10 @@ export default function GaragePage() {
           </section>
         </div>
 
-        {/* OVERHEAD CARD */}
+        {/* =====================================================
+            OVERHEAD CARD — Coming soon
+           ===================================================== */}
+
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-[#22c55e]" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg shadow-emerald-950/20">
@@ -264,7 +341,12 @@ export default function GaragePage() {
           </section>
         </div>
 
-        {/* VEHICLE HEALTH CARD */}
+        {/* =====================================================
+            VEHICLE HEALTH CARD
+            Shows Good / Monitor / Due for the four key systems
+            based on service intervals set in Settings.
+           ===================================================== */}
+
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-[#a855f7]" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg shadow-purple-950/20">
@@ -283,6 +365,7 @@ export default function GaragePage() {
               </div>
             </div>
 
+            {/* HEALTH INDICATORS GRID */}
             <div className="mt-5 border-t border-slate-800 pt-5">
               <div className="grid grid-cols-4 gap-2 text-center">
                 {HEALTH_INDICATORS.map(({ label, serviceType, icon }) => {
@@ -304,7 +387,12 @@ export default function GaragePage() {
           </section>
         </div>
 
-        {/* UPCOMING MAINTENANCE CARD */}
+        {/* =====================================================
+            UPCOMING MAINTENANCE CARD
+            Lists all active reminders with urgency color.
+            Tapping the chevron navigates to /garage/maintenance.
+           ===================================================== */}
+
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-[#f59e0b]" />
           <section className="rounded-3xl border border-amber-900/60 bg-slate-950/80 p-5 shadow-lg shadow-amber-950/20">
@@ -325,6 +413,7 @@ export default function GaragePage() {
               </div>
             </div>
 
+            {/* REMINDER LIST */}
             <div className="mt-5 border-t border-slate-800 pt-5">
               {maintenanceReminders.length === 0 ? (
                 <p className="text-sm text-slate-500">No reminders yet.</p>

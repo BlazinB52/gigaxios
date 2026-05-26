@@ -1,5 +1,17 @@
 "use client";
 
+/* =========================================================
+   SETTINGS PAGE
+   ---------------------------------------------------------
+   Three configuration sections:
+     1. Vehicle — year, make, model, trim, color, plate, VIN
+     2. Service Intervals — per-service mileage/month
+        thresholds and last-done records used to generate
+        maintenance reminders in the Garage
+     3. General — week start day, notifications toggle
+   Also contains the Sign Out button.
+   ========================================================= */
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Settings, Wrench } from "lucide-react";
@@ -15,21 +27,34 @@ import {
   generateRemindersFromIntervals,
 } from "@/app/lib/garageStorage";
 
+/* =========================================================
+   DEFAULT SERVICE INTERVALS
+   Pre-populated values shown before the user saves their
+   own.  null means that dimension (miles or months) is not
+   applicable for that service type.
+   ========================================================= */
+
 const DEFAULT_INTERVALS: Array<{
   serviceType: string;
   intervalMiles: number | null;
   intervalMonths: number | null;
 }> = [
-  { serviceType: "Oil Change", intervalMiles: 5000, intervalMonths: null },
-  { serviceType: "Tire Rotation", intervalMiles: 5000, intervalMonths: null },
-  { serviceType: "Brake Inspection", intervalMiles: 20000, intervalMonths: null },
-  { serviceType: "Transmission Service", intervalMiles: 40000, intervalMonths: null },
-  { serviceType: "Battery Check", intervalMiles: 50000, intervalMonths: null },
-  { serviceType: "Tires", intervalMiles: 50000, intervalMonths: null },
-  { serviceType: "Wipers", intervalMiles: null, intervalMonths: 6 },
-  { serviceType: "Inspection", intervalMiles: null, intervalMonths: 12 },
-  { serviceType: "Registration Renewal", intervalMiles: null, intervalMonths: 12 },
+  { serviceType: "Oil Change",            intervalMiles: 5000,  intervalMonths: null },
+  { serviceType: "Tire Rotation",         intervalMiles: 5000,  intervalMonths: null },
+  { serviceType: "Brake Inspection",      intervalMiles: 20000, intervalMonths: null },
+  { serviceType: "Transmission Service",  intervalMiles: 40000, intervalMonths: null },
+  { serviceType: "Battery Check",         intervalMiles: 50000, intervalMonths: null },
+  { serviceType: "Tires",                 intervalMiles: 50000, intervalMonths: null },
+  { serviceType: "Wipers",               intervalMiles: null,  intervalMonths: 6  },
+  { serviceType: "Inspection",           intervalMiles: null,  intervalMonths: 12 },
+  { serviceType: "Registration Renewal", intervalMiles: null,  intervalMonths: 12 },
 ];
+
+/* =========================================================
+   INTERVAL ROW TYPE
+   String-based so form inputs bind directly without Number()
+   conversions at every keystroke.  Coercion happens on save.
+   ========================================================= */
 
 type IntervalRow = {
   serviceType: string;
@@ -41,8 +66,14 @@ type IntervalRow = {
 
 export default function SettingsPage() {
   const router = useRouter();
+
+  /* =========================================================
+     STATE VARIABLES
+     ========================================================= */
+
   const [userId, setUserId] = useState<string | null>(null);
 
+  /* Vehicle fields */
   const [vehicleYear, setVehicleYear] = useState("");
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
@@ -52,6 +83,7 @@ export default function SettingsPage() {
   const [vehicleVin, setVehicleVin] = useState("");
   const [vehicleSaving, setVehicleSaving] = useState(false);
 
+  /* Service interval rows — one per DEFAULT_INTERVALS entry */
   const [intervalRows, setIntervalRows] = useState<IntervalRow[]>(
     DEFAULT_INTERVALS.map((d) => ({
       serviceType: d.serviceType,
@@ -64,8 +96,16 @@ export default function SettingsPage() {
   const [intervalsSaving, setIntervalsSaving] = useState(false);
   const [intervalsSaved, setIntervalsSaved] = useState(false);
 
+  /* General preferences */
   const [weekStartsOn, setWeekStartsOn] = useState("Monday");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+
+  /* =========================================================
+     DATA LOADING
+     Loads vehicle profile and saved service intervals from
+     Supabase, merging saved values over the defaults so the
+     form starts pre-filled with the user's existing data.
+     ========================================================= */
 
   useEffect(() => {
     async function load() {
@@ -85,6 +125,7 @@ export default function SettingsPage() {
         loadServiceIntervalsFromSupabase(user.id),
       ]);
 
+      /* Pre-fill vehicle fields if a record exists */
       if (vehicle) {
         setVehicleYear(vehicle.year);
         setVehicleMake(vehicle.make);
@@ -95,6 +136,7 @@ export default function SettingsPage() {
         setVehicleVin(vehicle.vin);
       }
 
+      /* Merge saved intervals over defaults */
       if (intervals.length > 0) {
         setIntervalRows(
           DEFAULT_INTERVALS.map((d) => {
@@ -120,6 +162,11 @@ export default function SettingsPage() {
     load();
   }, [router]);
 
+  /* =========================================================
+     SAVE VEHICLE
+     Builds a Vehicle object from form state and upserts it.
+     ========================================================= */
+
   async function handleSaveVehicle() {
     if (!userId) return;
     setVehicleSaving(true);
@@ -140,6 +187,13 @@ export default function SettingsPage() {
     await saveVehicleToSupabase(vehicle);
     setVehicleSaving(false);
   }
+
+  /* =========================================================
+     SAVE INTERVALS
+     Converts string rows back to typed ServiceInterval objects,
+     persists them, then re-generates maintenance reminders so
+     the Garage page reflects the updated thresholds immediately.
+     ========================================================= */
 
   async function handleSaveIntervals() {
     if (!userId) return;
@@ -164,10 +218,21 @@ export default function SettingsPage() {
     setTimeout(() => setIntervalsSaved(false), 3000);
   }
 
+  /* =========================================================
+     SIGN OUT
+     Ends the Supabase session and redirects to login.
+     ========================================================= */
+
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/login");
   }
+
+  /* =========================================================
+     INTERVAL ROW UPDATER
+     Generic helper used by every input inside the interval
+     table to update a single field on a single row.
+     ========================================================= */
 
   function updateIntervalRow(
     index: number,
@@ -179,8 +244,16 @@ export default function SettingsPage() {
     );
   }
 
+  /* =========================================================
+     SHARED INPUT CLASS CONSTANTS
+     ========================================================= */
+
   const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
   const smallInputClass = "rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-white";
+
+  /* =========================================================
+     RENDER
+     ========================================================= */
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -200,7 +273,10 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* SECTION 1 - VEHICLE PROFILE */}
+        {/* =====================================================
+            SECTION 1 — VEHICLE PROFILE
+           ===================================================== */}
+
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
@@ -212,20 +288,20 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
-              <input type="text" placeholder="Year" value={vehicleYear}
-                onChange={(e) => setVehicleYear(e.target.value)} className={inputClass} />
-              <input type="text" placeholder="Make" value={vehicleMake}
-                onChange={(e) => setVehicleMake(e.target.value)} className={inputClass} />
+              <input type="text" placeholder="Year"  value={vehicleYear}
+                onChange={(e) => setVehicleYear(e.target.value)}  className={inputClass} />
+              <input type="text" placeholder="Make"  value={vehicleMake}
+                onChange={(e) => setVehicleMake(e.target.value)}  className={inputClass} />
               <input type="text" placeholder="Model" value={vehicleModel}
                 onChange={(e) => setVehicleModel(e.target.value)} className={inputClass} />
-              <input type="text" placeholder="Trim (optional)" value={vehicleTrim}
-                onChange={(e) => setVehicleTrim(e.target.value)} className={inputClass} />
-              <input type="text" placeholder="Color (optional)" value={vehicleColor}
-                onChange={(e) => setVehicleColor(e.target.value)} className={inputClass} />
-              <input type="text" placeholder="License Plate (optional)" value={vehicleLicensePlate}
+              <input type="text" placeholder="Trim (optional)"           value={vehicleTrim}
+                onChange={(e) => setVehicleTrim(e.target.value)}         className={inputClass} />
+              <input type="text" placeholder="Color (optional)"          value={vehicleColor}
+                onChange={(e) => setVehicleColor(e.target.value)}        className={inputClass} />
+              <input type="text" placeholder="License Plate (optional)"  value={vehicleLicensePlate}
                 onChange={(e) => setVehicleLicensePlate(e.target.value)} className={inputClass} />
-              <input type="text" placeholder="VIN (optional)" value={vehicleVin}
-                onChange={(e) => setVehicleVin(e.target.value)} className={inputClass} />
+              <input type="text" placeholder="VIN (optional)"            value={vehicleVin}
+                onChange={(e) => setVehicleVin(e.target.value)}          className={inputClass} />
             </div>
 
             <button
@@ -238,7 +314,13 @@ export default function SettingsPage() {
           </section>
         </div>
 
-        {/* SECTION 2 - SERVICE INTERVALS */}
+        {/* =====================================================
+            SECTION 2 — SERVICE INTERVALS
+            Each row shows the service name, its threshold
+            (miles or months), and where / when it was last done.
+            isMileageBased determines which inputs to show.
+           ===================================================== */}
+
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-amber-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
@@ -258,9 +340,10 @@ export default function SettingsPage() {
                     key={row.serviceType}
                     className={index > 0 ? "mt-4 border-t border-slate-800 pt-4" : ""}
                   >
+                    {/* SERVICE NAME */}
                     <p className="mb-2 text-sm font-semibold text-white">{row.serviceType}</p>
 
-                    {/* Row 1: interval */}
+                    {/* ROW 1: INTERVAL THRESHOLD */}
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs text-slate-400">Interval</span>
                       <div className="flex items-center gap-1">
@@ -288,7 +371,7 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    {/* Row 2: last done */}
+                    {/* ROW 2: LAST DONE — odometer for mileage-based, date for time-based */}
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="text-xs text-slate-400">
                         {isMileageBased ? "Last done at" : "Last done"}
@@ -318,6 +401,7 @@ export default function SettingsPage() {
               })}
             </div>
 
+            {/* SUCCESS CONFIRMATION — auto-clears after 3 s */}
             {intervalsSaved && (
               <p className="mt-4 text-sm text-emerald-400">Intervals saved.</p>
             )}
@@ -332,7 +416,10 @@ export default function SettingsPage() {
           </section>
         </div>
 
-        {/* SECTION 3 - GENERAL */}
+        {/* =====================================================
+            SECTION 3 — GENERAL PREFERENCES
+           ===================================================== */}
+
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-slate-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
@@ -344,6 +431,8 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-4">
+
+              {/* WEEK START DAY */}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-300">Week starts on</span>
                 <select
@@ -355,6 +444,7 @@ export default function SettingsPage() {
                 </select>
               </div>
 
+              {/* NOTIFICATIONS TOGGLE */}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-300">Notifications</span>
                 <button
@@ -370,6 +460,7 @@ export default function SettingsPage() {
                   />
                 </button>
               </div>
+
             </div>
 
             <button className="mt-5 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-white">

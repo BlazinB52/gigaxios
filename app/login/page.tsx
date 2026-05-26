@@ -1,11 +1,32 @@
 "use client";
 
+/* =========================================================
+   LOGIN PAGE
+   ---------------------------------------------------------
+   Magic-link authentication using Supabase OTP.
+   On submit, Supabase emails a secure link that redirects
+   to /auth/callback where the PKCE code is exchanged for
+   a session cookie.
+   ========================================================= */
+
 import { useState } from "react";
 import { supabase } from "@/app/lib/supabaseClient";
 
 export default function LoginPage() {
+
+  /* =========================================================
+     STATE VARIABLES
+     ========================================================= */
+
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+
+  /* =========================================================
+     HANDLE LOGIN
+     Sends a magic link to the entered email address.
+     emailRedirectTo must point to /auth/callback so the
+     PKCE code exchange happens before the user lands on /.
+     ========================================================= */
 
   async function handleLogin(event: { preventDefault(): void }) {
     event.preventDefault();
@@ -26,8 +47,14 @@ export default function LoginPage() {
     setMessage("Check your email for the login link.");
   }
 
+  /* =========================================================
+     RENDER
+     ========================================================= */
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-white">
+
+      {/* LOGIN CARD */}
       <section className="mx-auto max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg">
         <h1 className="text-2xl font-bold">Log in to GigAxios</h1>
 
@@ -35,7 +62,10 @@ export default function LoginPage() {
           Enter your email and we&apos;ll send you a secure login link.
         </p>
 
+        {/* EMAIL FORM */}
         <form onSubmit={handleLogin} className="mt-6 space-y-4">
+
+          {/* EMAIL INPUT */}
           <input
             type="email"
             required
@@ -45,19 +75,23 @@ export default function LoginPage() {
             className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-500"
           />
 
+          {/* SUBMIT BUTTON */}
           <button
             type="submit"
             className="w-full rounded-xl bg-blue-500 px-4 py-3 font-semibold text-white"
           >
             Send login link
           </button>
+
         </form>
 
+        {/* STATUS MESSAGE — shows success or error after submit */}
         {message && (
           <p className="mt-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
             {message}
           </p>
         )}
+
       </section>
     </main>
   );

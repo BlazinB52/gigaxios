@@ -1,5 +1,17 @@
 "use client";
 
+/* =========================================================
+   METRICS PAGE
+   ---------------------------------------------------------
+   Full earnings analytics for a selected calendar year.
+   Pulls shifts, fuel entries, service entries, and pay
+   adjustments from Supabase, then computes:
+     • KPI overview (deliveries, hours, gross, fuel, net)
+     • Retention percentage bar
+     • Monthly gross vs net bar chart
+     • True Cost View (includes vehicle maintenance share)
+   ========================================================= */
+
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
@@ -12,10 +24,25 @@ import {
 } from "@/app/lib/garageStorage";
 import BottomNav from "../components/BottomNav";
 
+/* =========================================================
+   FORMATTING HELPERS
+   ========================================================= */
+
+/** Formats a number to 2 decimal places with thousands commas */
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Formats a 0–1 ratio as a percentage string, e.g. 0.823 → "82.3%" */
 const fmtPct = (n: number) => (n * 100).toFixed(1) + "%";
+
+/** Formats a number as a dollar string, e.g. 123.4 → "$123.40" */
 const fmtDollar = (n: number) => "$" + fmt(n);
+
+/* =========================================================
+   DATE PARSING
+   Handles both MM/DD/YYYY (legacy) and YYYY-MM-DD formats.
+   Noon time prevents timezone-offset edge cases.
+   ========================================================= */
 
 function parseShiftDate(dateStr: string): Date {
   if (!dateStr) return new Date(0);
@@ -26,13 +53,27 @@ function parseShiftDate(dateStr: string): Date {
   return new Date(dateStr + "T12:00:00");
 }
 
+/* =========================================================
+   BUSINESS USE PERCENTAGE
+   Returns the fraction of total miles driven that were for
+   work.  Capped at 1.0 — can't be more than 100% business.
+   ========================================================= */
+
 function getWorkMilePercentage(workMiles: number, totalOdometerMiles: number): number {
   if (totalOdometerMiles <= 0) return 1;
   return Math.min(workMiles / totalOdometerMiles, 1);
 }
 
+/* =========================================================
+   METRICS PAGE COMPONENT
+   ========================================================= */
+
 export default function MetricsPage() {
   const router = useRouter();
+
+  /* =========================================================
+     STATE VARIABLES
+     ========================================================= */
 
   const [shifts, setShifts] = useState<SavedShift[]>([]);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
@@ -40,6 +81,13 @@ export default function MetricsPage() {
   const [adjustments, setAdjustments] = useState<{ amount: number; week_start: string }[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [isLoaded, setIsLoaded] = useState(false);
+
+  /* =========================================================
+     DATA LOADING
+     Fetches all four data sources in parallel.  isLoaded
+     gates the loading spinner so the page doesn't flash
+     empty before data arrives.
+     ========================================================= */
 
   useEffect(() => {
     async function load() {
@@ -72,6 +120,12 @@ export default function MetricsPage() {
     load();
   }, [router]);
 
+  /* =========================================================
+     AVAILABLE YEARS
+     Derived from shift dates — always includes the current
+     year even if no data exists for it yet.
+     ========================================================= */
+
   const availableYears = useMemo(() => {
     const years = [
       ...new Set(shifts.map((s) => parseShiftDate(s.date).getFullYear())),
@@ -81,7 +135,15 @@ export default function MetricsPage() {
     return years;
   }, [shifts]);
 
+  /* =========================================================
+     METRICS COMPUTATION
+     All calculations are memoized and re-run whenever the
+     selected year or any data source changes.
+     ========================================================= */
+
   const metrics = useMemo(() => {
+
+    /* Filter all data sources to the selected year */
     const yearShifts = shifts.filter(
       (s) => parseShiftDate(s.date).getFullYear() === selectedYear
     );
@@ -92,22 +154,27 @@ export default function MetricsPage() {
       (sv) => parseShiftDate(sv.date).getFullYear() === selectedYear
     );
 
+    /* Pay adjustments (MGA, bonuses, etc.) */
     const yearAdjustments = adjustments.filter(
       (a) => new Date(a.week_start + "T12:00:00").getFullYear() === selectedYear
     );
     const totalAdjustments = yearAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0);
 
+    /* Basic shift totals */
     const totalDeliveries = yearShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
     const totalHours = yearShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
     const totalGrossPay = yearShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0) + totalAdjustments;
     const totalFuelCost = yearFuel.reduce((s, x) => s + Number(x.totalCost || 0), 0);
 
+    /* Work miles — difference between ending and beginning mileage per shift */
     const totalShiftMiles = yearShifts.reduce((sum, s) => {
       const begin = Number(s.beginningMileage);
       const end = Number(s.endingMileage);
       return begin > 0 && end > begin ? sum + (end - begin) : sum;
     }, 0);
 
+    /* Total miles driven — first to last odometer reading from fuel entries.
+       Falls back to shift miles if fewer than 2 fuel entries exist. */
     const sortedFuel = [...yearFuel].sort(
       (a, b) => parseShiftDate(a.date).getTime() - parseShiftDate(b.date).getTime()
     );
@@ -120,9 +187,11 @@ export default function MetricsPage() {
       totalMilesDriven = totalShiftMiles;
     }
 
+    /* Business use % determines what share of fuel & service cost is work-related */
     const businessUsePct = getWorkMilePercentage(totalShiftMiles, totalMilesDriven);
     const workFuelCost = totalFuelCost * businessUsePct;
 
+    /* Profitability */
     const netProfit = totalGrossPay - workFuelCost;
     const netProfitPct = totalGrossPay > 0 ? netProfit / totalGrossPay : 0;
     const fuelPct = totalGrossPay > 0 ? workFuelCost / totalGrossPay : 0;
@@ -130,12 +199,14 @@ export default function MetricsPage() {
     const hourlyRate = totalHours > 0 ? netProfit / totalHours : 0;
     const profitPerDelivery = totalDeliveries > 0 ? netProfit / totalDeliveries : 0;
 
+    /* True cost view — adds proportional vehicle maintenance to the deductions */
     const yearServiceCost = yearServices.reduce((s, x) => s + Number(x.cost || 0), 0);
     const businessServiceCost = yearServiceCost * businessUsePct;
     const trueNetProfit = netProfit - businessServiceCost;
     const trueNetPct = totalGrossPay > 0 ? trueNetProfit / totalGrossPay : 0;
     const serviceCostPct = totalGrossPay > 0 ? businessServiceCost / totalGrossPay : 0;
 
+    /* Monthly breakdown — builds one entry per month that has shift data */
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const monthlyData = MONTHS.map((month, i) => {
       const mShifts = yearShifts.filter(
@@ -156,6 +227,7 @@ export default function MetricsPage() {
 
     const maxMonthlyValue = Math.max(...monthlyData.map((m) => m.grossPay), 1);
 
+    /* Average MPG from fuel entries that have an mpg value */
     const validMpgEntries = fuelEntries.filter((f) => f.mpg && f.mpg > 0);
     const avgMpg = validMpgEntries.length > 0
       ? validMpgEntries.reduce((sum, f) => sum + f.mpg!, 0) / validMpgEntries.length
@@ -172,6 +244,11 @@ export default function MetricsPage() {
     };
   }, [shifts, fuelEntries, serviceEntries, adjustments, selectedYear]);
 
+  /* =========================================================
+     LOADING STATE
+     Shown while Supabase data is in flight.
+     ========================================================= */
+
   if (!isLoaded) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#020814] text-white">
@@ -180,6 +257,7 @@ export default function MetricsPage() {
     );
   }
 
+  /* Destructure computed metrics for cleaner JSX references */
   const {
     totalDeliveries, totalHours, totalGrossPay, totalAdjustments,
     totalShiftMiles, totalMilesDriven, businessUsePct,
@@ -190,16 +268,13 @@ export default function MetricsPage() {
     hasData,
   } = metrics;
 
+  /* =========================================================
+     RENDER
+     ========================================================= */
+
   return (
     <main className="min-h-screen bg-[#020814] text-white">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-3">
-
-        {/* HEADER 
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight">Metrics</h1>
-          <p className="mt-2 text-base text-slate-400">Your earnings. Your truth.</p>
-        </div>
-        */}
 
         {/* YEAR SELECTOR */}
         <div className="mt-5 flex items-center justify-between">
@@ -215,6 +290,7 @@ export default function MetricsPage() {
           </select>
         </div>
 
+        {/* NO DATA STATE */}
         {!hasData ? (
           <div className="mt-16 text-center">
             <p className="text-slate-500">No data for {selectedYear}.</p>
@@ -265,6 +341,7 @@ export default function MetricsPage() {
                 <p className="text-4xl font-bold text-emerald-400">{fmtPct(netProfitPct)}</p>
                 <p className="mt-0.5 text-sm text-slate-400">of what you earn (after fuel)</p>
 
+                {/* PROGRESS BAR */}
                 <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-slate-800">
                   <div
                     className="h-full rounded-full bg-emerald-500 transition-all duration-700"
@@ -272,6 +349,7 @@ export default function MetricsPage() {
                   />
                 </div>
 
+                {/* LEGEND */}
                 <div className="mt-4 space-y-1.5">
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 text-slate-400">
@@ -309,6 +387,7 @@ export default function MetricsPage() {
                     </span>
                   </div>
 
+                  {/* BAR CHART — grey = gross, green = net */}
                   <div className="flex items-end justify-center gap-2 overflow-x-auto pb-2">
                     {monthlyData.map((m) => {
                       const grossH = Math.max(
@@ -340,6 +419,7 @@ export default function MetricsPage() {
                     })}
                   </div>
 
+                  {/* CHART LEGEND */}
                   <div className="mt-3 flex items-center justify-center gap-4">
                     <span className="flex items-center gap-1.5 text-xs text-slate-400">
                       <span className="inline-block h-2 w-4 rounded-sm bg-slate-600" />
@@ -368,13 +448,14 @@ export default function MetricsPage() {
 
                 <div className="my-4 border-t border-slate-800" />
 
+                {/* REQUIRES MILEAGE DATA */}
                 {totalMilesDriven === 0 ? (
                   <p className="text-center text-sm text-slate-500">
                     Add fuel entries and shift mileage to unlock this view.
                   </p>
                 ) : (
                   <>
-                    {/* Business use */}
+                    {/* BUSINESS USE PERCENTAGE */}
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-slate-300">Business Use</span>
@@ -386,6 +467,7 @@ export default function MetricsPage() {
                       </p>
                     </div>
 
+                    {/* AVG MPG — only shown if fuel entries include MPG data */}
                     {avgMpg > 0 && (
                       <div className="mt-3">
                         <div className="flex items-center justify-between">
@@ -396,8 +478,8 @@ export default function MetricsPage() {
                       </div>
                     )}
 
+                    {/* COST BREAKDOWN TABLE */}
                     <div className="mt-4 border-t border-slate-800 pt-4">
-                      {/* Cost breakdown */}
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-slate-300">Gross Pay</span>
@@ -422,6 +504,7 @@ export default function MetricsPage() {
                           </p>
                         </div>
 
+                        {/* TRUE NET PROFIT */}
                         <div className="border-t border-slate-800 pt-3">
                           <div className="flex items-center justify-between">
                             <span className="font-semibold text-slate-200">True Net Profit</span>
@@ -432,7 +515,7 @@ export default function MetricsPage() {
                         </div>
                       </div>
 
-                      {/* True retention bar */}
+                      {/* TRUE RETENTION BAR */}
                       <div className="mt-5">
                         <p className="mb-2 text-sm text-slate-300">
                           You truly keep{" "}

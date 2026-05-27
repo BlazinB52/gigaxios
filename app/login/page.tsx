@@ -92,6 +92,18 @@ export default function LoginPage() {
           </p>
         )}
 
+        {/* PRIVACY STATEMENT */}
+        <p className="mt-4 text-center text-xs leading-relaxed text-slate-500">
+          Your data belongs to you. GigAxios uses your email only for
+          secure account access — never for spam or data sales.
+        </p>
+
+        {/* LEGAL LINKS */}
+        <div className="mt-3 flex justify-center gap-4 text-xs text-slate-600">
+          <a href="/privacy" className="hover:text-slate-400">Privacy Policy</a>
+          <a href="/terms" className="hover:text-slate-400">Terms of Use</a>
+        </div>
+
       </section>
     </main>
   );

@@ -4,9 +4,14 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Never block login or the PKCE callback — checked here as belt-and-suspenders
+  // Never block public routes — checked here as belt-and-suspenders
   // in addition to the matcher so regex edge cases can't lock users out.
-  if (pathname.startsWith('/login') || pathname.startsWith('/auth/callback')) {
+  if (
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/auth/callback') ||
+    pathname.startsWith('/privacy') ||
+    pathname.startsWith('/terms')
+  ) {
     return NextResponse.next()
   }
 
@@ -48,6 +53,6 @@ export async function proxy(request: NextRequest) {
 // The function body also guards /login and /auth/callback explicitly as a second layer.
 export const config = {
   matcher: [
-    '/((?!login|auth/callback|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!login|auth/callback|privacy|terms|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

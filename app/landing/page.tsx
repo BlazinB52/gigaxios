@@ -81,24 +81,30 @@ export default function LandingPage() {
               {/* BETA BADGE */}
               <div className="mt-8 rounded-xl border border-blue-500 bg-blue-950/30 p-5">
                 <div className="flex items-center gap-5">
-                  <span className="rounded-md bg-blue-600 px-4 py-2 text-sm font-bold">BETA</span>
+                  <img
+                    src="/say_axios.png"
+                    alt="GigAxios clarity badge"
+                    className="h-20 w-20 flex-shrink-0 rounded-xl object-cover shadow-lg shadow-blue-600/20"
+                  />
+
                   <div>
-                    <p className="text-xl font-bold text-sky-300">GigAxios is now in beta!</p>
+                    <p className="text-xl font-bold text-sky-300">
+                      GigAxios — Know what you actually make.
+                    </p>
                     <p className="text-sm text-slate-200">
-                      We’re actively building and improving based on your feedback.
+                      Know today what your gig is really earning. See how fuel costs affect your bottom line. Understand what maintenance is costing you over time.
                     </p>
                   </div>
                 </div>
               </div>
-
-              {/* CTA CARDS — Join Beta + Facebook */}
+              {/* CTA CARDS — Account + Facebook */}
               <div className="mt-8 grid gap-5 sm:grid-cols-2">
                 <Link href="/login" className="rounded-xl bg-blue-600 p-5 shadow-xl shadow-blue-600/25">
                   <div className="flex items-center gap-4">
-                    <span className="text-3xl">♡</span>
+                    <span className="text-3xl">↗</span>
                     <div>
-                      <p className="text-lg font-bold">Join the Beta</p>
-                      <p className="text-sm text-blue-100">Create your free beta account</p>
+                      <p className="text-lg font-bold">Create Your Free Account</p>
+                      <p className="text-sm text-blue-100">Start seeing the real numbers behind every shift.</p>
                     </div>
                   </div>
                 </Link>
@@ -183,31 +189,47 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* BETA CTA BLOCK — dark card with Join Beta + Facebook buttons */}
+        {/* DRIVER ACCESS CTA BLOCK */}
         <div id="how" className="mx-auto mt-12 max-w-7xl rounded-xl bg-[#041227] p-8 text-white">
-          <div className="grid items-center gap-8 md:grid-cols-[280px_1fr]">
-
-            {/* DECORATIVE GRAPHIC (desktop only) */}
-            <div className="hidden md:block">
-              <div className="h-36 rounded-2xl bg-blue-950/70 p-6">
-                <div className="h-full rounded-xl bg-gradient-to-tr from-blue-800 to-blue-500" />
-              </div>
-            </div>
+          <div className="grid items-center gap-8 md:grid-cols-[1fr_280px]">
 
             {/* CTA COPY + BUTTONS */}
             <div>
-              <h2 className="text-3xl font-extrabold">Join the beta and help shape the future of GigAxios.</h2>
-              <p className="mt-4 max-w-2xl text-slate-200">
-                We’re just getting started and your feedback will help us build the best tracker for gig workers.
+              <p className="mb-3 inline-flex rounded-full border border-blue-400/40 bg-blue-500/10 px-4 py-1 text-sm font-bold text-blue-200">
+                Driver Access
               </p>
-              <div className="mt-6 flex flex-col gap-4 sm:flex-row">
-                <Link href="/login" className="rounded-xl bg-blue-600 px-8 py-4 font-bold">
-                  Join the Beta
+
+              <h2 className="max-w-4xl text-3xl font-extrabold leading-tight md:text-5xl">
+                Know what you make. Take control of your future with GigAxios.
+              </h2>
+
+              <p className="mt-5 max-w-2xl text-lg leading-relaxed text-slate-200">
+                Earnings, mileage, fuel costs, and real profit in one place — so you can make smarter decisions every shift.
+              </p>
+
+              <div className="mt-7 flex flex-col gap-4 sm:flex-row">
+                <Link href="/login" className="rounded-xl bg-blue-600 px-8 py-4 text-center font-bold shadow-lg shadow-blue-600/25">
+                  Get Started
                 </Link>
-                <a href="https://facebook.com/gigaxios" target="_blank" rel="noopener noreferrer" className="rounded-xl border px-8 py-4 font-bold">
+
+                <a
+                  href="https://facebook.com/gigaxios"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-xl border border-white/70 px-8 py-4 text-center font-bold"
+                >
                   Follow us on Facebook
                 </a>
               </div>
+            </div>
+
+            {/* GIGAXIOS BADGE / LOGO */}
+            <div className="hidden md:flex items-center justify-center">
+              <img
+                src="/axios_badge.png"
+                alt="GigAxios Driver Access"
+                className="w-full max-w-[240px] rounded-2xl drop-shadow-2xl"
+              />
             </div>
 
           </div>

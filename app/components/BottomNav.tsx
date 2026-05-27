@@ -45,11 +45,14 @@ export default function BottomNav() {
   /* =========================================================
      RENDER
      Fixed bar pinned to the bottom of the viewport.
-     backdrop-blur softens content scrolling beneath it.
+     translateZ(0) forces a GPU compositing layer so iOS Safari
+     cannot reposition the nav during momentum scroll.  No
+     backdrop-filter is used — it breaks fixed positioning on
+     iOS when the element is scrolled past.
      ========================================================= */
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800 bg-[#020814]/95 px-2 pb-2 pt-2 backdrop-blur">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800 bg-[#020814] px-2 pb-2 pt-2 [transform:translateZ(0)]">
 
       {/* 5-COLUMN GRID — one cell per nav item */}
       <div className="mx-auto grid max-w-md grid-cols-5 text-center">

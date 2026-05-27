@@ -90,7 +90,9 @@ export default function RootLayout({
             BOTTOM NAV
             Rendered here so every page gets it automatically.
            ===================================================== */}
-        <BottomNav />
+        <div className="hide-on-landing">
+          <BottomNav />
+        </div>
 
       </body>
     </html>

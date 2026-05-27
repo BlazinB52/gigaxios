@@ -499,20 +499,22 @@ export default function DayDetailPage() {
                           >
                             Cancel
                           </button>
-                          <button
-                            onClick={() => handleDeleteFuel(fuel.id)}
-                            className="w-full rounded-xl border border-red-500/40 bg-red-950/40 p-3 font-bold text-red-300"
-                          >
-                            Delete Fuel Entry
-                          </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => openEditFuel(fuel)}
-                          className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white active:bg-blue-600"
-                        >
-                          Edit Fuel
-                        </button>
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          <button
+                            onClick={() => openEditFuel(fuel)}
+                            className="rounded-xl bg-blue-500 p-3 font-bold text-white active:bg-blue-600"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteFuel(fuel.id)}
+                            className="rounded-xl border border-red-500/40 bg-red-950/40 p-3 font-bold text-red-300"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       )}
                     </div>
                   );

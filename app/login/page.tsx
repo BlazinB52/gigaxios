@@ -104,6 +104,11 @@ export default function LoginPage() {
           <a href="/terms" className="hover:text-slate-400">Terms of Use</a>
         </div>
 
+        {/* COPYRIGHT */}
+        <p className="mt-6 text-center text-[11px] text-slate-600">
+          © 2026 GigAxios. All rights reserved.
+        </p>
+
       </section>
     </main>
   );

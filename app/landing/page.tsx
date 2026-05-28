@@ -256,7 +256,6 @@ export default function LandingPage() {
             <div className="mt-3 grid gap-2 text-sm text-slate-300">
               <a href="#features">Features</a>
               <a href="#how">How It Works</a>
-              <a href="#faq">FAQ</a>
               <Link href="/privacy">Privacy Policy</Link>
               <Link href="/terms">Terms of Service</Link>
             </div>

@@ -55,7 +55,6 @@ export default function LandingPage() {
               <a href="#features">Features</a>
               <a href="#how">How It Works</a>
               <a href="#workers">For Gig Workers</a>
-              <a href="#faq">FAQ</a>
               <Link href="/login" className="rounded-lg bg-blue-600 px-5 py-3 text-white shadow-lg shadow-blue-600/30">
                 Get Started
               </Link>

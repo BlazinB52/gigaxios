@@ -7,9 +7,10 @@ import Link from "next/link";
    LANDING PAGE
    ---------------------------------------------------------
    Public marketing page at /landing — no auth required.
-   Sections: Hero → Trust/Workers → Features → Beta CTA → Footer.
-   All CTAs point to /login (sign-up page to be built later).
-   Fonts (Syne + DM Sans) are loaded in app/landing/layout.tsx.
+   Sections: Hero → Trust/Workers → Features → Get Started CTA 
+   → Footer. All CTAs point to /login (sign-up page to be built
+   later). Fonts (Syne + DM Sans) are loaded in app/landing/
+   layout.tsx.
    ========================================================= */
 
 export default function LandingPage() {
@@ -56,7 +57,7 @@ export default function LandingPage() {
               <a href="#workers">For Gig Workers</a>
               <a href="#faq">FAQ</a>
               <Link href="/login" className="rounded-lg bg-blue-600 px-5 py-3 text-white shadow-lg shadow-blue-600/30">
-                Join the Beta
+                Get Started
               </Link>
             </div>
           </nav>
@@ -283,7 +284,7 @@ export default function LandingPage() {
         </div>
 
         {/* COPYRIGHT */}
-        <p className="mt-10 text-center text-sm text-slate-400">© 2025 GigAxios. All rights reserved.</p>
+        <p className="mt-10 text-center text-sm text-slate-400">© 2026 GigAxios. All rights reserved.</p>
       </footer>
 
     </main>

@@ -10,6 +10,14 @@ import { FuelEntry } from "@/app/lib/fuelStorage";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function getTodayLocal(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
 function parseShiftDate(dateStr: string): Date {
     if (!dateStr) return new Date(0);
     if (dateStr.includes("/")) {
@@ -301,7 +309,7 @@ export default function RecordsPage() {
                                 <div className="flex shrink-0 items-end gap-1">
                                     {dailyGross.map((val, i) => {
                                         const heightPct = Math.max((val / maxDailyGross) * 100, 5);
-                                        const isToday = weekDates[i] === new Date().toISOString().slice(0, 10);
+                                        const isToday = weekDates[i] === getTodayLocal();
                                         return (
                                             <div key={i} className="flex flex-col items-center gap-0.5">
                                                 <div className="flex w-3 items-end" style={{ height: 44 }}>

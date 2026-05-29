@@ -15,6 +15,14 @@ import {
   generateRemindersFromIntervals,
 } from "@/app/lib/garageStorage";
 
+function getTodayLocal(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function getServiceIcon(serviceType: string): string {
   const t = serviceType.toLowerCase();
   if (t.includes("oil")) return "🛢️";
@@ -44,7 +52,7 @@ export default function ServicePage() {
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
 
   const [showForm, setShowForm] = useState(false);
-  const [serviceDate, setServiceDate] = useState(new Date().toISOString().split("T")[0]);
+  const [serviceDate, setServiceDate] = useState(getTodayLocal());
   const [serviceType, setServiceType] = useState("");
   const [serviceOdometer, setServiceOdometer] = useState("");
   const [serviceCost, setServiceCost] = useState("");
@@ -130,7 +138,7 @@ export default function ServicePage() {
     const entries = await loadServiceEntriesFromSupabase(userId);
     setServiceEntries(entries);
 
-    setServiceDate(new Date().toISOString().split("T")[0]);
+    setServiceDate(getTodayLocal());
     setServiceType("");
     setServiceOdometer("");
     setServiceCost("");
@@ -230,7 +238,7 @@ export default function ServicePage() {
                 </button>
                 <button
                   onClick={() => {
-                    setServiceDate(new Date().toISOString().split("T")[0]);
+                    setServiceDate(getTodayLocal());
                     setServiceType("");
                     setServiceOdometer("");
                     setServiceCost("");

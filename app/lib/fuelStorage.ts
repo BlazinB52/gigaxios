@@ -65,6 +65,7 @@ export async function loadFuelEntriesFromSupabase(userId: string) {
   return data.map((entry) => ({
     id: entry.id,
     userId: entry.user_id ?? "",
+    vehicleId: entry.vehicle_id ?? undefined,
     date: entry.date,
     odometer: entry.odometer ?? "",
     gallons: entry.gallons ?? "",

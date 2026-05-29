@@ -81,6 +81,14 @@ export default function MetricsPage() {
   const [adjustments, setAdjustments] = useState<{ amount: number; week_start: string }[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [isLoaded, setIsLoaded] = useState(false);
+  const [vehicles, setVehicles] = useState<Array<{
+    id: string;
+    year: string;
+    make: string;
+    model: string;
+    is_primary: boolean;
+  }>>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("all");
 
   /* =========================================================
      DATA LOADING
@@ -101,17 +109,27 @@ export default function MetricsPage() {
       }
 
       try {
-        const [s, f, sv, adjRes] = await Promise.all([
+        const [s, f, sv, adjRes, vRes] = await Promise.all([
           loadShiftsFromSupabase(user.id),
           loadFuelEntriesFromSupabase(user.id),
           loadServiceEntriesFromSupabase(user.id),
           supabase.from("pay_adjustments").select("amount, week_start").eq("user_id", user.id),
+          supabase
+            .from("vehicles")
+            .select("id, year, make, model, is_primary, status")
+            .eq("user_id", user.id)
+            .eq("status", "active")
+            .order("is_primary", { ascending: false }),
         ]);
 
         setShifts(s as SavedShift[]);
         setFuelEntries(f);
         setServiceEntries(sv);
         setAdjustments((adjRes.data ?? []) as { amount: number; week_start: string }[]);
+        const vehicleData = vRes.data || [];
+        setVehicles(vehicleData);
+        const primary = vehicleData.find((v: { is_primary: boolean }) => v.is_primary);
+        setSelectedVehicleId(primary?.id || "all");
       } finally {
         setIsLoaded(true);
       }
@@ -127,13 +145,16 @@ export default function MetricsPage() {
      ========================================================= */
 
   const availableYears = useMemo(() => {
+    const filtered = selectedVehicleId === "all"
+      ? shifts
+      : shifts.filter((s) => s.vehicleId === selectedVehicleId);
     const years = [
-      ...new Set(shifts.map((s) => parseShiftDate(s.date).getFullYear())),
+      ...new Set(filtered.map((s) => parseShiftDate(s.date).getFullYear())),
     ].sort((a, b) => b - a);
     const currentYear = new Date().getFullYear();
     if (!years.includes(currentYear)) return [currentYear, ...years];
     return years;
-  }, [shifts]);
+  }, [shifts, selectedVehicleId]);
 
   /* =========================================================
      METRICS COMPUTATION
@@ -143,14 +164,18 @@ export default function MetricsPage() {
 
   const metrics = useMemo(() => {
 
-    /* Filter all data sources to the selected year */
-    const yearShifts = shifts.filter(
+    /* Filter by vehicle first (when not "all"), then by year */
+    const vehicleShifts = selectedVehicleId === "all" ? shifts : shifts.filter((s) => s.vehicleId === selectedVehicleId);
+    const vehicleFuel = selectedVehicleId === "all" ? fuelEntries : fuelEntries.filter((f) => f.vehicleId === selectedVehicleId);
+    const vehicleServices = selectedVehicleId === "all" ? serviceEntries : serviceEntries.filter((sv) => sv.vehicleId === selectedVehicleId);
+
+    const yearShifts = vehicleShifts.filter(
       (s) => parseShiftDate(s.date).getFullYear() === selectedYear
     );
-    const yearFuel = fuelEntries.filter(
+    const yearFuel = vehicleFuel.filter(
       (f) => parseShiftDate(f.date).getFullYear() === selectedYear
     );
-    const yearServices = serviceEntries.filter(
+    const yearServices = vehicleServices.filter(
       (sv) => parseShiftDate(sv.date).getFullYear() === selectedYear
     );
 
@@ -242,7 +267,7 @@ export default function MetricsPage() {
       monthlyData, maxMonthlyValue, avgMpg,
       hasData: yearShifts.length > 0 || totalAdjustments > 0,
     };
-  }, [shifts, fuelEntries, serviceEntries, adjustments, selectedYear]);
+  }, [shifts, fuelEntries, serviceEntries, adjustments, selectedYear, selectedVehicleId]);
 
   /* =========================================================
      LOADING STATE
@@ -275,6 +300,31 @@ export default function MetricsPage() {
   return (
     <main className="min-h-screen bg-[#020814] text-white">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-3">
+
+        {/* PAGE HEADER */}
+        <div className="pt-2 pb-4">
+          <h1 className="text-4xl font-bold tracking-tight">Metrics</h1>
+          <p className="mt-1 text-base text-slate-400">Your earnings. Your truth.</p>
+        </div>
+
+        {/* VEHICLE SELECTOR */}
+        {vehicles.length > 1 && (
+          <div className="mt-5 flex items-center justify-between">
+            <span className="text-sm text-slate-400">Vehicle:</span>
+            <select
+              value={selectedVehicleId}
+              onChange={(e) => setSelectedVehicleId(e.target.value)}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+            >
+              <option value="all">All Vehicles</option>
+              {vehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.year} {v.make} {v.model}{v.is_primary ? " (Primary)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* YEAR SELECTOR */}
         <div className="mt-5 flex items-center justify-between">

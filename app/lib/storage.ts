@@ -47,6 +47,7 @@ export async function loadShiftsFromSupabase(userId?: string) {
   return data.map((shift) => ({
     id: shift.id,
     userId: shift.user_id ?? "",
+    vehicleId: shift.vehicle_id ?? undefined,
     date: shift.date,
     platform: shift.platform,
     beginningMileage: shift.beginning_mileage,

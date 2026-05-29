@@ -55,8 +55,13 @@ export default function DayDetailPage() {
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [vehicles, setVehicles] = useState<Array<{
+    id: string; year: string; make: string; model: string; is_primary: boolean;
+  }>>([]);
+
   // Edit shift state
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+  const [editShiftVehicleId, setEditShiftVehicleId] = useState("");
   const [editPlatform, setEditPlatform] = useState("");
   const [editBeginningMileage, setEditBeginningMileage] = useState("");
   const [editEndingMileage, setEditEndingMileage] = useState("");
@@ -68,6 +73,7 @@ export default function DayDetailPage() {
 
   // Edit fuel state
   const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
+  const [editFuelVehicleId, setEditFuelVehicleId] = useState("");
   const [editFuelOdometer, setEditFuelOdometer] = useState("");
   const [editFuelGallons, setEditFuelGallons] = useState("");
   const [editFuelPricePerGallon, setEditFuelPricePerGallon] = useState("");
@@ -88,6 +94,15 @@ export default function DayDetailPage() {
 
       setShifts(allShifts.filter((s) => toISODate(s.date) === dateStr));
       setFuelEntries(allFuel.filter((f) => toISODate(f.date) === dateStr));
+
+      const { data: vehicleData } = await supabase
+        .from("vehicles")
+        .select("id, year, make, model, is_primary, status")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("is_primary", { ascending: false });
+
+      setVehicles(vehicleData || []);
       setLoading(false);
     }
     load();
@@ -139,6 +154,8 @@ export default function DayDetailPage() {
     setEditBasePay(shift.basePay);
     setEditTips(shift.tips);
     setEditOtherPay(shift.otherPay);
+    const primaryId = vehicles.find((v) => v.is_primary)?.id || vehicles[0]?.id || "";
+    setEditShiftVehicleId(shift.vehicleId || primaryId);
   }
 
   async function handleUpdateShift(shift: SavedShift) {
@@ -164,6 +181,7 @@ export default function DayDetailPage() {
     const { error } = await supabase
       .from("shifts")
       .update({
+        vehicle_id: editShiftVehicleId || null,
         platform: updated.platform,
         beginning_mileage: updated.beginningMileage,
         ending_mileage: updated.endingMileage,
@@ -196,6 +214,8 @@ export default function DayDetailPage() {
     setEditFuelGallons(fuel.gallons);
     setEditFuelPricePerGallon(fuel.pricePerGallon || "");
     setEditFuelNotes(fuel.notes || "");
+    const primaryId = vehicles.find((v) => v.is_primary)?.id || vehicles[0]?.id || "";
+    setEditFuelVehicleId(fuel.vehicleId || primaryId);
   }
 
   async function handleUpdateFuel(fuel: FuelEntry) {
@@ -215,6 +235,7 @@ export default function DayDetailPage() {
     const { error } = await supabase
       .from("fuel_entries")
       .update({
+        vehicle_id: editFuelVehicleId || null,
         odometer: updated.odometer,
         gallons: updated.gallons,
         price_per_gallon: updated.pricePerGallon,
@@ -361,6 +382,24 @@ export default function DayDetailPage() {
                         <div className="mt-4 space-y-3 rounded-2xl border border-blue-500/30 bg-slate-950 p-4">
                           <p className="font-bold text-blue-300">Edit Shift</p>
 
+                          {vehicles.length > 1 && (
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold text-slate-400">Vehicle</label>
+                              <select
+                                value={editShiftVehicleId}
+                                onChange={(e) => setEditShiftVehicleId(e.target.value)}
+                                className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+                              >
+                                {vehicles.map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.year} {v.make} {v.model}{v.is_primary ? " (Primary)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="mt-1 text-xs text-amber-400">Changing vehicle affects mileage and cost calculations.</p>
+                            </div>
+                          )}
+
                           <select
                             value={editPlatform}
                             onChange={(e) => setEditPlatform(e.target.value)}
@@ -460,6 +499,24 @@ export default function DayDetailPage() {
                       {isEditing ? (
                         <div className="mt-4 space-y-3 rounded-2xl border border-blue-500/30 bg-slate-950 p-4">
                           <p className="font-bold text-blue-300">Edit Fuel</p>
+
+                          {vehicles.length > 1 && (
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold text-slate-400">Vehicle</label>
+                              <select
+                                value={editFuelVehicleId}
+                                onChange={(e) => setEditFuelVehicleId(e.target.value)}
+                                className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+                              >
+                                {vehicles.map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.year} {v.make} {v.model}{v.is_primary ? " (Primary)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="mt-1 text-xs text-amber-400">Changing vehicle affects mileage and cost calculations.</p>
+                            </div>
+                          )}
 
                           {[
                             { label: "Odometer", val: editFuelOdometer, set: setEditFuelOdometer },

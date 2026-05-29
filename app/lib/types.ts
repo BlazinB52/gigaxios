@@ -10,6 +10,7 @@ export type ShiftStatus = "open" | "closed";
 export type SavedShift = {
   id: string;
   userId: string;
+  vehicleId?: string;
   platform: string;
   date: string;
 

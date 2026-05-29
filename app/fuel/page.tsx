@@ -33,6 +33,10 @@ export default function FuelPage() {
      ========================================================= */
 
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [vehicles, setVehicles] = useState<Array<{
+    id: string; year: string; make: string; model: string; is_primary: boolean;
+  }>>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [date, setDate] = useState("");
   const [odometer, setOdometer] = useState("");
   const [gallons, setGallons] = useState("");
@@ -58,6 +62,19 @@ export default function FuelPage() {
 
       const entries = await loadFuelEntriesFromSupabase(user.id);
       setFuelEntries(entries);
+
+      const { data: vehicleData } = await supabase
+        .from("vehicles")
+        .select("id, year, make, model, is_primary, status")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("is_primary", { ascending: false });
+
+      const loadedVehicles = vehicleData || [];
+      setVehicles(loadedVehicles);
+      const primary = loadedVehicles.find((v) => v.is_primary) || loadedVehicles[0] || null;
+      setSelectedVehicleId(primary?.id || "");
+
       const today = new Date();
       const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
       setDate(localDate);
@@ -92,6 +109,7 @@ export default function FuelPage() {
     const newEntry: FuelEntry = {
       id: crypto.randomUUID(),
       userId: user.id,
+      vehicleId: selectedVehicleId || undefined,
       date,
       odometer,
       gallons,
@@ -143,6 +161,24 @@ export default function FuelPage() {
           <h2 className="text-lg font-bold">Add fuel</h2>
 
           <div className="mt-4 space-y-3">
+
+            {/* VEHICLE SELECTOR — only shown when user has multiple vehicles */}
+            {vehicles.length > 1 && (
+              <div>
+                <label className="text-sm text-slate-400">Vehicle</label>
+                <select
+                  value={selectedVehicleId}
+                  onChange={(e) => setSelectedVehicleId(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                >
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.year} {v.make} {v.model}{v.is_primary ? " (Primary)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* DATE — [color-scheme:dark] fixes the black calendar icon */}
             <input

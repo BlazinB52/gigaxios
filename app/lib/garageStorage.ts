@@ -23,6 +23,7 @@ export type Vehicle = {
 export type ServiceEntry = {
   id: string;
   userId: string;
+  vehicleId?: string;
   date: string;
   odometer: string;
   serviceType: string;
@@ -95,6 +96,7 @@ export async function loadServiceEntriesFromSupabase(
 export async function saveServiceEntryToSupabase(entry: ServiceEntry) {
   const { error } = await supabase.from("service_entries").insert({
     user_id: entry.userId,
+    vehicle_id: entry.vehicleId || null,
     date: entry.date,
     odometer: entry.odometer || null,
     service_type: entry.serviceType,

@@ -50,6 +50,10 @@ export default function ServicePage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
+  const [vehicles, setVehicles] = useState<Array<{
+    id: string; year: string; make: string; model: string; is_primary: boolean;
+  }>>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
 
   const [showForm, setShowForm] = useState(false);
   const [serviceDate, setServiceDate] = useState(getTodayLocal());
@@ -73,6 +77,18 @@ export default function ServicePage() {
       setUserId(user.id);
       const entries = await loadServiceEntriesFromSupabase(user.id);
       setServiceEntries(entries);
+
+      const { data: vehicleData } = await supabase
+        .from("vehicles")
+        .select("id, year, make, model, is_primary, status")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("is_primary", { ascending: false });
+
+      const loadedVehicles = vehicleData || [];
+      setVehicles(loadedVehicles);
+      const primary = loadedVehicles.find((v) => v.is_primary) || loadedVehicles[0] || null;
+      setSelectedVehicleId(primary?.id || "");
     }
 
     load();
@@ -117,6 +133,7 @@ export default function ServicePage() {
     const entry: ServiceEntry = {
       id: crypto.randomUUID(),
       userId,
+      vehicleId: selectedVehicleId || undefined,
       date: serviceDate,
       odometer: serviceOdometer,
       serviceType,
@@ -181,6 +198,23 @@ export default function ServicePage() {
 
             {showForm && (
               <div className="mt-5 space-y-3">
+                {vehicles.length > 1 && (
+                  <div>
+                    <label className="text-sm text-slate-400">Vehicle</label>
+                    <select
+                      value={selectedVehicleId}
+                      onChange={(e) => setSelectedVehicleId(e.target.value)}
+                      className={`mt-1 ${inputClass}`}
+                    >
+                      {vehicles.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.year} {v.make} {v.model}{v.is_primary ? " (Primary)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <input
                   type="date"
                   value={serviceDate}

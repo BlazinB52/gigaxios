@@ -4,6 +4,7 @@ import { supabase } from "@/app/lib/supabaseClient";
 export type FuelEntry = {
   id: string;
   userId?: string;
+  vehicleId?: string;
   date: string;
   odometer: string;
   gallons: string;
@@ -107,6 +108,7 @@ export async function saveFuelEntryToSupabase(entry: FuelEntry) {
 
   const { error } = await supabase.from("fuel_entries").insert({
     user_id: entry.userId,
+    vehicle_id: entry.vehicleId || null,
     date: entry.date,
     odometer: entry.odometer,
     gallons: entry.gallons,

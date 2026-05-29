@@ -26,6 +26,10 @@ export default function ShiftsPage() {
     const [otherPay, setOtherPay] = useState("");
 
     const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
+    const [vehicles, setVehicles] = useState<Array<{
+      id: string; year: string; make: string; model: string; is_primary: boolean;
+    }>>([]);
+    const [selectedVehicleId, setSelectedVehicleId] = useState("");
     const router = useRouter();
 
     useEffect(() => {  
@@ -41,6 +45,18 @@ export default function ShiftsPage() {
 
             const shifts = await loadShiftsFromSupabase(user.id);
             setSavedShifts(shifts);
+
+            const { data: vehicleData } = await supabase
+              .from("vehicles")
+              .select("id, year, make, model, is_primary, status")
+              .eq("user_id", user.id)
+              .eq("status", "active")
+              .order("is_primary", { ascending: false });
+
+            const loadedVehicles = vehicleData || [];
+            setVehicles(loadedVehicles);
+            const primary = loadedVehicles.find((v) => v.is_primary) || loadedVehicles[0] || null;
+            setSelectedVehicleId(primary?.id || "");
         }
 
         loadCloudShifts();
@@ -103,6 +119,7 @@ export default function ShiftsPage() {
         await supabase.from("shifts").insert({
             id: newShift.id,
             user_id: user.id,
+            vehicle_id: selectedVehicleId || null,
             date: newShift.date,
             platform: newShift.platform ?? null,
             beginning_mileage: newShift.beginningMileage,
@@ -209,6 +226,22 @@ export default function ShiftsPage() {
                         </p>
 
                         <div className="mt-5 space-y-3">
+                            {vehicles.length > 1 && (
+                              <div>
+                                <label className="text-sm text-slate-400">Vehicle</label>
+                                <select
+                                  value={selectedVehicleId}
+                                  onChange={(e) => setSelectedVehicleId(e.target.value)}
+                                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                                >
+                                  {vehicles.map((v) => (
+                                    <option key={v.id} value={v.id}>
+                                      {v.year} {v.make} {v.model}{v.is_primary ? " (Primary)" : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
                             <select
                                 value={platform}
                                 onChange={(event) => setPlatform(event.target.value)}

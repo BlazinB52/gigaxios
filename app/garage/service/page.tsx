@@ -101,7 +101,9 @@ export default function ServicePage() {
     await deleteServiceEntryFromSupabase(id);
 
     if (deletedEntry) {
-      const { data: remaining } = await supabase
+      const entryVehicleId = deletedEntry.vehicleId || selectedVehicleId;
+
+      let remainingQuery = supabase
         .from("service_entries")
         .select("date, odometer")
         .eq("user_id", userId)
@@ -109,16 +111,27 @@ export default function ServicePage() {
         .order("date", { ascending: false })
         .limit(1);
 
+      if (entryVehicleId) {
+        remainingQuery = remainingQuery.eq("vehicle_id", entryVehicleId);
+      }
+
+      const { data: remaining } = await remainingQuery;
+
       if (remaining && remaining.length > 0) {
-        await autoUpdateIntervalFromService(
-          userId,
-          deletedEntry.serviceType,
-          parseFloat(remaining[0].odometer) || 0,
-          remaining[0].date
-        );
+        if (entryVehicleId) {
+          await autoUpdateIntervalFromService(
+            userId,
+            deletedEntry.serviceType,
+            parseFloat(remaining[0].odometer) || 0,
+            remaining[0].date,
+            entryVehicleId
+          );
+        }
       } else {
-        await clearIntervalLastDone(userId, deletedEntry.serviceType);
-        await generateRemindersFromIntervals(userId);
+        await clearIntervalLastDone(userId, deletedEntry.serviceType, entryVehicleId);
+        if (entryVehicleId) {
+          await generateRemindersFromIntervals(userId, entryVehicleId);
+        }
       }
     }
 
@@ -143,12 +156,13 @@ export default function ServicePage() {
 
     await saveServiceEntryToSupabase(entry);
 
-    if (serviceType !== "Other" && serviceOdometer) {
+    if (serviceType !== "Other" && serviceOdometer && selectedVehicleId) {
       await autoUpdateIntervalFromService(
         userId,
         serviceType,
         parseFloat(serviceOdometer),
-        serviceDate
+        serviceDate,
+        selectedVehicleId
       );
     }
 

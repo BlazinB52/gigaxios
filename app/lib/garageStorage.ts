@@ -1,9 +1,13 @@
 import { supabase } from "@/app/lib/supabaseClient";
 
-// Run this SQL in Supabase before using generateRemindersFromIntervals:
-// alter table public.maintenance_reminders
-// add constraint maintenance_reminders_user_id_title_key
-// unique (user_id, title);
+// IMPORTANT: Run this SQL in Supabase to support per-vehicle reminders:
+//
+// ALTER TABLE public.maintenance_reminders
+// DROP CONSTRAINT IF EXISTS maintenance_reminders_user_id_title_key;
+//
+// ALTER TABLE public.maintenance_reminders
+// ADD CONSTRAINT maintenance_reminders_user_id_vehicle_id_title_key
+// UNIQUE (user_id, vehicle_id, title);
 
 export type Vehicle = {
   id: string;
@@ -45,6 +49,7 @@ export type MaintenanceReminder = {
 export type ServiceInterval = {
   id: string;
   userId: string;
+  vehicleId: string | null;
   serviceType: string;
   intervalMiles: number | null;
   intervalMonths: number | null;
@@ -309,17 +314,26 @@ export async function saveVehicleToSupabase(vehicle: Vehicle): Promise<void> {
   }
 }
 
-export async function loadServiceIntervalsFromSupabase(userId: string): Promise<ServiceInterval[]> {
-  const { data, error } = await supabase
+export async function loadServiceIntervalsFromSupabase(
+  userId: string,
+  vehicleId?: string
+): Promise<ServiceInterval[]> {
+  let query = supabase
     .from("service_intervals")
     .select("*")
     .eq("user_id", userId);
 
+  if (vehicleId) {
+    query = query.eq("vehicle_id", vehicleId);
+  }
+
+  const { data, error } = await query;
   if (error || !data) return [];
 
   return data.map((entry) => ({
     id: entry.id,
     userId: entry.user_id,
+    vehicleId: entry.vehicle_id ?? null,
     serviceType: entry.service_type ?? "",
     intervalMiles: entry.interval_miles ?? null,
     intervalMonths: entry.interval_months ?? null,
@@ -330,15 +344,21 @@ export async function loadServiceIntervalsFromSupabase(userId: string): Promise<
 
 export async function saveServiceIntervalsToSupabase(
   userId: string,
+  vehicleId: string,
   intervals: ServiceInterval[]
 ): Promise<void> {
-  await supabase.from("service_intervals").delete().eq("user_id", userId);
+  await supabase
+    .from("service_intervals")
+    .delete()
+    .eq("user_id", userId)
+    .eq("vehicle_id", vehicleId);
 
   if (intervals.length === 0) return;
 
   const { error } = await supabase.from("service_intervals").insert(
     intervals.map((interval) => ({
       user_id: userId,
+      vehicle_id: vehicleId,
       service_type: interval.serviceType,
       interval_miles: interval.intervalMiles,
       interval_months: interval.intervalMonths,
@@ -385,8 +405,11 @@ function getDefaultInterval(
   }
 }
 
-export async function generateRemindersFromIntervals(userId: string): Promise<void> {
-  const intervals = await loadServiceIntervalsFromSupabase(userId);
+export async function generateRemindersFromIntervals(
+  userId: string,
+  vehicleId: string
+): Promise<void> {
+  const intervals = await loadServiceIntervalsFromSupabase(userId, vehicleId);
 
   for (const interval of intervals) {
     const isDateBased =
@@ -399,43 +422,49 @@ export async function generateRemindersFromIntervals(userId: string): Promise<vo
       lastDate.setMonth(lastDate.getMonth() + (interval.intervalMonths ?? 0));
       const dueDate = lastDate.toISOString().split("T")[0];
 
-      const { error } = await supabase
+      await supabase
         .from("maintenance_reminders")
-        .upsert(
-          {
-            user_id: userId,
-            title: interval.serviceType,
-            due_odometer: null,
-            due_date: dueDate,
-            last_done_odometer: interval.lastDoneOdometer,
-            interval_miles: null,
-            notes: "",
-          },
-          { onConflict: "user_id,title" }
-        );
+        .delete()
+        .eq("user_id", userId)
+        .eq("vehicle_id", vehicleId)
+        .eq("title", interval.serviceType);
 
-      if (error) console.error("generateReminders upsert error:", error.message);
+      const { error } = await supabase.from("maintenance_reminders").insert({
+        user_id: userId,
+        vehicle_id: vehicleId,
+        title: interval.serviceType,
+        due_odometer: null,
+        due_date: dueDate,
+        last_done_odometer: interval.lastDoneOdometer,
+        interval_miles: null,
+        notes: "",
+      });
+
+      if (error) console.error("generateReminders insert error:", error.message);
     } else {
       if (interval.lastDoneOdometer === null) continue;
 
       const dueOdometer = interval.lastDoneOdometer + (interval.intervalMiles ?? 0);
 
-      const { error } = await supabase
+      await supabase
         .from("maintenance_reminders")
-        .upsert(
-          {
-            user_id: userId,
-            title: interval.serviceType,
-            due_odometer: dueOdometer,
-            due_date: null,
-            last_done_odometer: interval.lastDoneOdometer,
-            interval_miles: interval.intervalMiles,
-            notes: "",
-          },
-          { onConflict: "user_id,title" }
-        );
+        .delete()
+        .eq("user_id", userId)
+        .eq("vehicle_id", vehicleId)
+        .eq("title", interval.serviceType);
 
-      if (error) console.error("generateReminders upsert error:", error.message);
+      const { error } = await supabase.from("maintenance_reminders").insert({
+        user_id: userId,
+        vehicle_id: vehicleId,
+        title: interval.serviceType,
+        due_odometer: dueOdometer,
+        due_date: null,
+        last_done_odometer: interval.lastDoneOdometer,
+        interval_miles: interval.intervalMiles,
+        notes: "",
+      });
+
+      if (error) console.error("generateReminders insert error:", error.message);
     }
   }
 }
@@ -446,7 +475,8 @@ export async function autoUpdateIntervalFromService(
   userId: string,
   serviceType: string,
   odometer: number,
-  serviceDate: string
+  serviceDate: string,
+  vehicleId: string
 ): Promise<void> {
   const isDateBased = DATE_BASED_TYPES.includes(serviceType);
 
@@ -454,6 +484,7 @@ export async function autoUpdateIntervalFromService(
     .from("service_intervals")
     .select("id")
     .eq("user_id", userId)
+    .eq("vehicle_id", vehicleId)
     .eq("service_type", serviceType)
     .limit(1);
 
@@ -463,6 +494,7 @@ export async function autoUpdateIntervalFromService(
         .from("service_intervals")
         .update({ last_done_odometer: odometer, last_done_date: serviceDate })
         .eq("user_id", userId)
+        .eq("vehicle_id", vehicleId)
         .eq("service_type", serviceType);
       if (error) console.error("autoUpdateInterval update error:", error.message);
     } else {
@@ -470,6 +502,7 @@ export async function autoUpdateIntervalFromService(
         .from("service_intervals")
         .update({ last_done_odometer: odometer })
         .eq("user_id", userId)
+        .eq("vehicle_id", vehicleId)
         .eq("service_type", serviceType);
       if (error) console.error("autoUpdateInterval update error:", error.message);
     }
@@ -477,6 +510,7 @@ export async function autoUpdateIntervalFromService(
     const defaults = getDefaultInterval(serviceType);
     const { error } = await supabase.from("service_intervals").insert({
       user_id: userId,
+      vehicle_id: vehicleId,
       service_type: serviceType,
       interval_miles: defaults.intervalMiles,
       interval_months: defaults.intervalMonths,
@@ -486,23 +520,24 @@ export async function autoUpdateIntervalFromService(
     if (error) console.error("autoUpdateInterval insert error:", error.message);
   }
 
-  await generateRemindersFromIntervals(userId);
+  await generateRemindersFromIntervals(userId, vehicleId);
 }
 
 export async function clearIntervalLastDone(
   userId: string,
-  serviceType: string
+  serviceType: string,
+  vehicleId?: string
 ): Promise<void> {
-  const { error } = await supabase
+  let query = supabase
     .from("service_intervals")
-    .update({
-      last_done_odometer: null,
-      last_done_date: null,
-    })
+    .update({ last_done_odometer: null, last_done_date: null })
     .eq("user_id", userId)
     .eq("service_type", serviceType);
 
-  if (error) {
-    console.error("Clear interval error:", error.message);
+  if (vehicleId) {
+    query = query.eq("vehicle_id", vehicleId);
   }
+
+  const { error } = await query;
+  if (error) console.error("Clear interval error:", error.message);
 }

@@ -6,7 +6,9 @@ import { ChevronLeft, Wrench } from "lucide-react";
 import BottomNav from "../../components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
+  Vehicle,
   ServiceInterval,
+  loadVehiclesFromSupabase,
   loadServiceIntervalsFromSupabase,
   saveServiceIntervalsToSupabase,
   generateRemindersFromIntervals,
@@ -40,6 +42,8 @@ export default function IntervalsPage() {
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [intervalRows, setIntervalRows] = useState<IntervalRow[]>(
     DEFAULT_INTERVALS.map((d) => ({
       serviceType: d.serviceType,
@@ -65,7 +69,15 @@ export default function IntervalsPage() {
 
       setUserId(user.id);
 
-      const intervals = await loadServiceIntervalsFromSupabase(user.id);
+      const loadedVehicles = await loadVehiclesFromSupabase(user.id);
+      setVehicles(loadedVehicles);
+      const primary = loadedVehicles.find((v) => v.isPrimary) || loadedVehicles[0] || null;
+      const primaryId = primary?.id || "";
+      setSelectedVehicleId(primaryId);
+
+      if (!primaryId) return;
+
+      const intervals = await loadServiceIntervalsFromSupabase(user.id, primaryId);
 
       if (intervals.length > 0) {
         setIntervalRows(
@@ -96,13 +108,14 @@ export default function IntervalsPage() {
   }, [router]);
 
   async function handleSaveIntervals() {
-    if (!userId) return;
+    if (!userId || !selectedVehicleId) return;
     setIntervalsSaving(true);
     setIntervalsSaved(false);
 
     const intervals: ServiceInterval[] = intervalRows.map((row) => ({
       id: crypto.randomUUID(),
       userId,
+      vehicleId: selectedVehicleId,
       serviceType: row.serviceType,
       intervalMiles: row.intervalMiles !== "" ? Number(row.intervalMiles) : null,
       intervalMonths: row.intervalMonths !== "" ? Number(row.intervalMonths) : null,
@@ -110,12 +123,77 @@ export default function IntervalsPage() {
       lastDoneDate: row.lastDoneDate !== "" ? row.lastDoneDate : null,
     }));
 
-    await saveServiceIntervalsToSupabase(userId, intervals);
-    await generateRemindersFromIntervals(userId);
+    await saveServiceIntervalsToSupabase(userId, selectedVehicleId, intervals);
+    await generateRemindersFromIntervals(userId, selectedVehicleId);
 
     setIntervalsSaving(false);
     setIntervalsSaved(true);
     setTimeout(() => setIntervalsSaved(false), 3000);
+  }
+
+  async function handleVehicleChange(vehicleId: string) {
+    setSelectedVehicleId(vehicleId);
+    if (!userId) return;
+
+    const vehicleIntervals = await loadServiceIntervalsFromSupabase(userId, vehicleId);
+
+    if (vehicleIntervals.length > 0) {
+      setIntervalRows(
+        DEFAULT_INTERVALS.map((d) => {
+          const saved = vehicleIntervals.find((i) => i.serviceType === d.serviceType);
+          return {
+            serviceType: d.serviceType,
+            intervalMiles:
+              saved?.intervalMiles !== null && saved?.intervalMiles !== undefined
+                ? String(saved.intervalMiles)
+                : d.intervalMiles !== null ? String(d.intervalMiles) : "",
+            intervalMonths:
+              saved?.intervalMonths !== null && saved?.intervalMonths !== undefined
+                ? String(saved.intervalMonths)
+                : d.intervalMonths !== null ? String(d.intervalMonths) : "",
+            lastDoneOdometer:
+              saved?.lastDoneOdometer !== null && saved?.lastDoneOdometer !== undefined
+                ? String(saved.lastDoneOdometer)
+                : "",
+            lastDoneDate: saved?.lastDoneDate ?? "",
+          };
+        })
+      );
+    } else {
+      // No intervals saved for this vehicle yet — seed interval values from primary vehicle
+      const primaryVehicle = vehicles.find((v) => v.isPrimary) || vehicles[0] || null;
+      if (primaryVehicle && primaryVehicle.id !== vehicleId) {
+        const primaryIntervals = await loadServiceIntervalsFromSupabase(userId, primaryVehicle.id);
+        setIntervalRows(
+          DEFAULT_INTERVALS.map((d) => {
+            const saved = primaryIntervals.find((i) => i.serviceType === d.serviceType);
+            return {
+              serviceType: d.serviceType,
+              intervalMiles:
+                saved?.intervalMiles !== null && saved?.intervalMiles !== undefined
+                  ? String(saved.intervalMiles)
+                  : d.intervalMiles !== null ? String(d.intervalMiles) : "",
+              intervalMonths:
+                saved?.intervalMonths !== null && saved?.intervalMonths !== undefined
+                  ? String(saved.intervalMonths)
+                  : d.intervalMonths !== null ? String(d.intervalMonths) : "",
+              lastDoneOdometer: "",
+              lastDoneDate: "",
+            };
+          })
+        );
+      } else {
+        setIntervalRows(
+          DEFAULT_INTERVALS.map((d) => ({
+            serviceType: d.serviceType,
+            intervalMiles: d.intervalMiles !== null ? String(d.intervalMiles) : "",
+            intervalMonths: d.intervalMonths !== null ? String(d.intervalMonths) : "",
+            lastDoneOdometer: "",
+            lastDoneDate: "",
+          }))
+        );
+      }
+    }
   }
 
   function updateIntervalRow(
@@ -147,6 +225,25 @@ export default function IntervalsPage() {
             <p className="mt-1 text-sm text-slate-400">Set your default maintenance intervals.</p>
           </div>
         </div>
+
+        {/* VEHICLE TOGGLE — only shown when user has 2+ active vehicles */}
+        {vehicles.length > 1 && (
+          <div className="mt-4 flex gap-2">
+            {vehicles.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => handleVehicleChange(v.id)}
+                className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold transition-colors ${
+                  selectedVehicleId === v.id
+                    ? "border-blue-500 bg-blue-950/40 text-blue-400"
+                    : "border-slate-700 bg-slate-900/40 text-slate-400"
+                }`}
+              >
+                {v.year} {v.make} {v.model}{v.isPrimary ? " ★" : ""}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* INTERVALS CARD */}
         <div className="relative mt-6">

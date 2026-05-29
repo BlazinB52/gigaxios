@@ -188,7 +188,7 @@ export default function GaragePage() {
         loadServiceEntriesFromSupabase(user.id, primaryVehicleId),
         loadMaintenanceRemindersFromSupabase(user.id, primaryVehicleId),
         loadCurrentOdometer(user.id, primaryVehicleId),
-        loadServiceIntervalsFromSupabase(user.id),
+        loadServiceIntervalsFromSupabase(user.id, primaryVehicleId),
       ]);
 
       setServiceEntries(services);
@@ -214,15 +214,17 @@ export default function GaragePage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [services, reminders, odometer] = await Promise.all([
+    const [services, reminders, odometer, intervals] = await Promise.all([
       loadServiceEntriesFromSupabase(user.id, vehicleId),
       loadMaintenanceRemindersFromSupabase(user.id, vehicleId),
       loadCurrentOdometer(user.id, vehicleId),
+      loadServiceIntervalsFromSupabase(user.id, vehicleId),
     ]);
 
     setServiceEntries(services);
     setMaintenanceReminders(reminders);
     setCurrentOdometer(odometer);
+    setServiceIntervals(intervals);
   }
 
   /* Derive aggregate service stats for the Service card */

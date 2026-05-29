@@ -25,7 +25,7 @@ import {
   ServiceInterval,
   loadServiceEntriesFromSupabase,
   loadMaintenanceRemindersFromSupabase,
-  loadVehicleFromSupabase,
+  loadPrimaryVehicleFromSupabase,
   loadCurrentOdometer,
   loadServiceIntervalsFromSupabase,
   computeServiceStats,
@@ -177,7 +177,7 @@ export default function GaragePage() {
       const [services, reminders, vehicleData, odo, intervals] = await Promise.all([
         loadServiceEntriesFromSupabase(user.id),
         loadMaintenanceRemindersFromSupabase(user.id),
-        loadVehicleFromSupabase(user.id),
+        loadPrimaryVehicleFromSupabase(user.id),
         loadCurrentOdometer(user.id),
         loadServiceIntervalsFromSupabase(user.id),
       ]);

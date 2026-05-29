@@ -16,6 +16,8 @@ export type Vehicle = {
   licensePlate: string;
   vin: string;
   notes: string;
+  status: string;
+  isPrimary: boolean;
 };
 
 export type ServiceEntry = {
@@ -152,6 +154,61 @@ export async function loadVehicleFromSupabase(userId: string): Promise<Vehicle |
     licensePlate: data.license_plate ?? "",
     vin: data.vin ?? "",
     notes: data.notes ?? "",
+    status: data.status ?? "active",
+    isPrimary: data.is_primary ?? false,
+  };
+}
+
+export async function loadVehiclesFromSupabase(userId: string): Promise<Vehicle[]> {
+  const { data, error } = await supabase
+    .from("vehicles")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("is_primary", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (error || !data) return [];
+
+  return data.map((v) => ({
+    id: v.id,
+    userId: v.user_id,
+    year: v.year ?? "",
+    make: v.make ?? "",
+    model: v.model ?? "",
+    trim: v.trim ?? "",
+    color: v.color ?? "",
+    licensePlate: v.license_plate ?? "",
+    vin: v.vin ?? "",
+    notes: v.notes ?? "",
+    status: v.status ?? "active",
+    isPrimary: v.is_primary ?? false,
+  }));
+}
+
+export async function loadPrimaryVehicleFromSupabase(userId: string): Promise<Vehicle | null> {
+  const { data, error } = await supabase
+    .from("vehicles")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("is_primary", true)
+    .single();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    year: data.year ?? "",
+    make: data.make ?? "",
+    model: data.model ?? "",
+    trim: data.trim ?? "",
+    color: data.color ?? "",
+    licensePlate: data.license_plate ?? "",
+    vin: data.vin ?? "",
+    notes: data.notes ?? "",
+    status: data.status ?? "active",
+    isPrimary: data.is_primary ?? false,
   };
 }
 

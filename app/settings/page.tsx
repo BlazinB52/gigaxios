@@ -1,111 +1,62 @@
 "use client";
 
-/* =========================================================
-   SETTINGS PAGE
-   ---------------------------------------------------------
-   Three configuration sections:
-     1. Vehicle — year, make, model, trim, color, plate, VIN
-     2. Service Intervals — per-service mileage/month
-        thresholds and last-done records used to generate
-        maintenance reminders in the Garage
-     3. General — week start day, notifications toggle
-   Also contains the Sign Out button.
-   ========================================================= */
-
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Settings, Wrench } from "lucide-react";
+import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench } from "lucide-react";
 import BottomNav from "../components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
-import {
-  Vehicle,
-  ServiceInterval,
-  loadVehicleFromSupabase,
-  loadServiceIntervalsFromSupabase,
-  saveVehicleToSupabase,
-  saveServiceIntervalsToSupabase,
-  generateRemindersFromIntervals,
-} from "@/app/lib/garageStorage";
+import { Vehicle, loadVehiclesFromSupabase } from "@/app/lib/garageStorage";
 
-/* =========================================================
-   DEFAULT SERVICE INTERVALS
-   Pre-populated values shown before the user saves their
-   own.  null means that dimension (miles or months) is not
-   applicable for that service type.
-   ========================================================= */
-
-const DEFAULT_INTERVALS: Array<{
-  serviceType: string;
-  intervalMiles: number | null;
-  intervalMonths: number | null;
-}> = [
-  { serviceType: "Oil Change",            intervalMiles: 5000,  intervalMonths: null },
-  { serviceType: "Tire Rotation",         intervalMiles: 5000,  intervalMonths: null },
-  { serviceType: "Brake Inspection",      intervalMiles: 20000, intervalMonths: null },
-  { serviceType: "Transmission Service",  intervalMiles: 40000, intervalMonths: null },
-  { serviceType: "Battery Check",         intervalMiles: 50000, intervalMonths: null },
-  { serviceType: "Tires",                 intervalMiles: 50000, intervalMonths: null },
-  { serviceType: "Wipers",               intervalMiles: null,  intervalMonths: 6  },
-  { serviceType: "Inspection",           intervalMiles: null,  intervalMonths: 12 },
-  { serviceType: "Registration Renewal", intervalMiles: null,  intervalMonths: 12 },
-];
-
-/* =========================================================
-   INTERVAL ROW TYPE
-   String-based so form inputs bind directly without Number()
-   conversions at every keystroke.  Coercion happens on save.
-   ========================================================= */
-
-type IntervalRow = {
-  serviceType: string;
-  intervalMiles: string;
-  intervalMonths: string;
-  lastDoneOdometer: string;
-  lastDoneDate: string;
-};
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`relative h-6 w-12 rounded-full transition-colors ${on ? "bg-blue-500" : "bg-slate-700"}`}
+    >
+      <span
+        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+          on ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
+  );
+}
 
 export default function SettingsPage() {
   const router = useRouter();
 
-  /* =========================================================
-     STATE VARIABLES
-     ========================================================= */
-
   const [userId, setUserId] = useState<string | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicleOdometers, setVehicleOdometers] = useState<Record<string, string>>({});
+  const [userEmail, setUserEmail] = useState("");
+  const [defaultPlatform, setDefaultPlatform] = useState("GoPuff");
+  const [notifMaintenance, setNotifMaintenance] = useState(true);
+  const [notifWeeklySummary, setNotifWeeklySummary] = useState(false);
+  const [notifLowFuel, setNotifLowFuel] = useState(false);
+  const [workPaySaved, setWorkPaySaved] = useState(false);
+  const [notifSaved, setNotifSaved] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  /* Vehicle fields */
-  const [vehicleYear, setVehicleYear] = useState("");
-  const [vehicleMake, setVehicleMake] = useState("");
-  const [vehicleModel, setVehicleModel] = useState("");
-  const [vehicleTrim, setVehicleTrim] = useState("");
-  const [vehicleColor, setVehicleColor] = useState("");
-  const [vehicleLicensePlate, setVehicleLicensePlate] = useState("");
-  const [vehicleVin, setVehicleVin] = useState("");
-  const [vehicleSaving, setVehicleSaving] = useState(false);
+  async function fetchVehicles(uid: string) {
+    const loaded = await loadVehiclesFromSupabase(uid);
+    setVehicles(loaded);
 
-  /* Service interval rows — one per DEFAULT_INTERVALS entry */
-  const [intervalRows, setIntervalRows] = useState<IntervalRow[]>(
-    DEFAULT_INTERVALS.map((d) => ({
-      serviceType: d.serviceType,
-      intervalMiles: d.intervalMiles !== null ? String(d.intervalMiles) : "",
-      intervalMonths: d.intervalMonths !== null ? String(d.intervalMonths) : "",
-      lastDoneOdometer: "",
-      lastDoneDate: "",
-    }))
-  );
-  const [intervalsSaving, setIntervalsSaving] = useState(false);
-  const [intervalsSaved, setIntervalsSaved] = useState(false);
+    const { data: fuelData } = await supabase
+      .from("fuel_entries")
+      .select("vehicle_id, odometer")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false });
 
-  /* General preferences */
-  const [weekStartsOn, setWeekStartsOn] = useState("Monday");
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-
-  /* =========================================================
-     DATA LOADING
-     Loads vehicle profile and saved service intervals from
-     Supabase, merging saved values over the defaults so the
-     form starts pre-filled with the user's existing data.
-     ========================================================= */
+    const odometerMap: Record<string, string> = {};
+    if (fuelData) {
+      for (const entry of fuelData) {
+        if (entry.vehicle_id && !odometerMap[entry.vehicle_id]) {
+          odometerMap[entry.vehicle_id] = entry.odometer ?? "";
+        }
+      }
+    }
+    setVehicleOdometers(odometerMap);
+  }
 
   useEffect(() => {
     async function load() {
@@ -119,141 +70,50 @@ export default function SettingsPage() {
       }
 
       setUserId(user.id);
-
-      const [vehicle, intervals] = await Promise.all([
-        loadVehicleFromSupabase(user.id),
-        loadServiceIntervalsFromSupabase(user.id),
-      ]);
-
-      /* Pre-fill vehicle fields if a record exists */
-      if (vehicle) {
-        setVehicleYear(vehicle.year);
-        setVehicleMake(vehicle.make);
-        setVehicleModel(vehicle.model);
-        setVehicleTrim(vehicle.trim);
-        setVehicleColor(vehicle.color);
-        setVehicleLicensePlate(vehicle.licensePlate);
-        setVehicleVin(vehicle.vin);
-      }
-
-      /* Merge saved intervals over defaults */
-      if (intervals.length > 0) {
-        setIntervalRows(
-          DEFAULT_INTERVALS.map((d) => {
-            const saved = intervals.find((i) => i.serviceType === d.serviceType);
-            return {
-              serviceType: d.serviceType,
-              intervalMiles: saved?.intervalMiles !== null && saved?.intervalMiles !== undefined
-                ? String(saved.intervalMiles)
-                : d.intervalMiles !== null ? String(d.intervalMiles) : "",
-              intervalMonths: saved?.intervalMonths !== null && saved?.intervalMonths !== undefined
-                ? String(saved.intervalMonths)
-                : d.intervalMonths !== null ? String(d.intervalMonths) : "",
-              lastDoneOdometer: saved?.lastDoneOdometer !== null && saved?.lastDoneOdometer !== undefined
-                ? String(saved.lastDoneOdometer)
-                : "",
-              lastDoneDate: saved?.lastDoneDate ?? "",
-            };
-          })
-        );
-      }
+      setUserEmail(user.email ?? "");
+      await fetchVehicles(user.id);
+      setDefaultPlatform(localStorage.getItem("gigaxios-default-platform") || "GoPuff");
+      setNotifMaintenance(localStorage.getItem("gigaxios-notif-maintenance") !== "false");
+      setIsLoaded(true);
     }
 
     load();
   }, [router]);
 
-  /* =========================================================
-     SAVE VEHICLE
-     Builds a Vehicle object from form state and upserts it.
-     ========================================================= */
-
-  async function handleSaveVehicle() {
+  async function handleSetPrimary(vehicleId: string) {
     if (!userId) return;
-    setVehicleSaving(true);
-
-    const vehicle: Vehicle = {
-      id: "",
-      userId,
-      year: vehicleYear,
-      make: vehicleMake,
-      model: vehicleModel,
-      trim: vehicleTrim,
-      color: vehicleColor,
-      licensePlate: vehicleLicensePlate,
-      vin: vehicleVin,
-      notes: "",
-    };
-
-    await saveVehicleToSupabase(vehicle);
-    setVehicleSaving(false);
+    await supabase.from("vehicles").update({ is_primary: false }).eq("user_id", userId);
+    await supabase.from("vehicles").update({ is_primary: true }).eq("id", vehicleId);
+    await fetchVehicles(userId);
   }
 
-  /* =========================================================
-     SAVE INTERVALS
-     Converts string rows back to typed ServiceInterval objects,
-     persists them, then re-generates maintenance reminders so
-     the Garage page reflects the updated thresholds immediately.
-     ========================================================= */
-
-  async function handleSaveIntervals() {
-    if (!userId) return;
-    setIntervalsSaving(true);
-    setIntervalsSaved(false);
-
-    const intervals: ServiceInterval[] = intervalRows.map((row) => ({
-      id: crypto.randomUUID(),
-      userId,
-      serviceType: row.serviceType,
-      intervalMiles: row.intervalMiles !== "" ? Number(row.intervalMiles) : null,
-      intervalMonths: row.intervalMonths !== "" ? Number(row.intervalMonths) : null,
-      lastDoneOdometer: row.lastDoneOdometer !== "" ? Number(row.lastDoneOdometer) : null,
-      lastDoneDate: row.lastDoneDate !== "" ? row.lastDoneDate : null,
-    }));
-
-    await saveServiceIntervalsToSupabase(userId, intervals);
-    await generateRemindersFromIntervals(userId);
-
-    setIntervalsSaving(false);
-    setIntervalsSaved(true);
-    setTimeout(() => setIntervalsSaved(false), 3000);
+  async function handleArchiveVehicle(vehicleId: string) {
+    if (!confirm("Archive this vehicle?")) return;
+    const activeVehicles = vehicles.filter((v) => v.status === "active");
+    if (activeVehicles.length <= 1) {
+      alert("You must have at least one active vehicle.");
+      return;
+    }
+    await supabase.from("vehicles").update({ status: "archived" }).eq("id", vehicleId);
+    if (userId) await fetchVehicles(userId);
   }
 
-  /* =========================================================
-     SIGN OUT
-     Ends the Supabase session and redirects to login.
-     ========================================================= */
+  function handleSaveWorkPay() {
+    localStorage.setItem("gigaxios-default-platform", defaultPlatform);
+    setWorkPaySaved(true);
+    setTimeout(() => setWorkPaySaved(false), 2000);
+  }
+
+  function handleSaveNotifications() {
+    localStorage.setItem("gigaxios-notif-maintenance", String(notifMaintenance));
+    setNotifSaved(true);
+    setTimeout(() => setNotifSaved(false), 2000);
+  }
 
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/login");
   }
-
-  /* =========================================================
-     INTERVAL ROW UPDATER
-     Generic helper used by every input inside the interval
-     table to update a single field on a single row.
-     ========================================================= */
-
-  function updateIntervalRow(
-    index: number,
-    field: keyof Omit<IntervalRow, "serviceType">,
-    value: string
-  ) {
-    setIntervalRows((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
-    );
-  }
-
-  /* =========================================================
-     SHARED INPUT CLASS CONSTANTS
-     ========================================================= */
-
-  const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
-  const smallInputClass = "rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-white";
-
-  /* =========================================================
-     RENDER
-     ========================================================= */
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -269,213 +129,298 @@ export default function SettingsPage() {
           </button>
           <div>
             <h1 className="text-4xl font-bold tracking-tight">Settings</h1>
-            <p className="mt-1 text-sm text-slate-400">Configure your vehicle and preferences.</p>
+            <p className="mt-1 text-sm text-slate-400">Manage your preferences and app settings.</p>
           </div>
         </div>
 
         {/* =====================================================
-            SECTION 1 — VEHICLE PROFILE
+            SECTION 1 — VEHICLES
            ===================================================== */}
-
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-            <div className="mb-5 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-950/60 text-xl">
-                🚗
+
+            {/* HEADER ROW */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-950/60 text-lg">
+                  🚗
+                </div>
+                <div>
+                  <p className="text-xs font-bold tracking-wider text-slate-400">VEHICLES</p>
+                  <p className="text-sm text-slate-500">Manage your vehicles and set your primary.</p>
+                </div>
               </div>
-              <h2 className="text-xl font-bold">Vehicle</h2>
+              <button
+                onClick={() => router.push("/settings/vehicle/new")}
+                className="shrink-0 rounded-xl bg-blue-500 px-3 py-2 text-sm font-semibold text-white"
+              >
+                + Add Vehicle
+              </button>
             </div>
 
-            <div className="space-y-3">
-              <input type="text" placeholder="Year"  value={vehicleYear}
-                onChange={(e) => setVehicleYear(e.target.value)}  className={inputClass} />
-              <input type="text" placeholder="Make"  value={vehicleMake}
-                onChange={(e) => setVehicleMake(e.target.value)}  className={inputClass} />
-              <input type="text" placeholder="Model" value={vehicleModel}
-                onChange={(e) => setVehicleModel(e.target.value)} className={inputClass} />
-              <input type="text" placeholder="Trim (optional)"           value={vehicleTrim}
-                onChange={(e) => setVehicleTrim(e.target.value)}         className={inputClass} />
-              <input type="text" placeholder="Color (optional)"          value={vehicleColor}
-                onChange={(e) => setVehicleColor(e.target.value)}        className={inputClass} />
-              <input type="text" placeholder="License Plate (optional)"  value={vehicleLicensePlate}
-                onChange={(e) => setVehicleLicensePlate(e.target.value)} className={inputClass} />
-              <input type="text" placeholder="VIN (optional)"            value={vehicleVin}
-                onChange={(e) => setVehicleVin(e.target.value)}          className={inputClass} />
-            </div>
+            {/* VEHICLE LIST */}
+            {isLoaded && (
+              <div className="mt-4 border-t border-slate-800 pt-2">
+                {vehicles.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-500">No vehicles yet. Add one to get started.</p>
+                ) : (
+                  vehicles.map((vehicle) => (
+                    <div
+                      key={vehicle.id}
+                      className={`mt-3 rounded-2xl border p-4 ${
+                        vehicle.isPrimary
+                          ? "border-blue-500/50 bg-blue-950/20"
+                          : "border-slate-700 bg-slate-900/40"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-base">
+                          🚗
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-white">
+                              {vehicle.year} {vehicle.make} {vehicle.model}
+                            </p>
+                            {vehicle.isPrimary && (
+                              <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
+                                PRIMARY
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-400">
+                            {vehicleOdometers[vehicle.id]
+                              ? `${parseInt(vehicleOdometers[vehicle.id]).toLocaleString()} mi`
+                              : "—"}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <button
+                            onClick={() => handleArchiveVehicle(vehicle.id)}
+                            className="flex items-center gap-1 text-xs text-red-400"
+                          >
+                            <Archive size={14} />
+                          </button>
+                          <button onClick={() => router.push(`/settings/vehicle/${vehicle.id}`)}>
+                            <ChevronRight className="h-5 w-5 text-slate-500" />
+                          </button>
+                        </div>
+                      </div>
+                      {!vehicle.isPrimary && (
+                        <button
+                          onClick={() => handleSetPrimary(vehicle.id)}
+                          className="mt-2 text-xs text-blue-400"
+                        >
+                          Set as Primary
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
 
-            <button
-              onClick={handleSaveVehicle}
-              disabled={vehicleSaving}
-              className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
-            >
-              {vehicleSaving ? "Saving…" : "Save Vehicle"}
-            </button>
+            {/* INFO NOTE */}
+            <p className="mt-4 flex items-center gap-1 text-xs text-slate-500">
+              ℹ️ Primary vehicle is used for default views and calculations.
+            </p>
           </section>
         </div>
 
         {/* =====================================================
-            SECTION 2 — SERVICE INTERVALS
-            Each row shows the service name, its threshold
-            (miles or months), and where / when it was last done.
-            isMileageBased determines which inputs to show.
+            SECTION 2 — SERVICE INTERVALS (navigation row)
            ===================================================== */}
-
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-amber-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-            <div className="mb-1 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-950/60 text-xl">
+            <button
+              className="flex w-full items-center gap-3"
+              onClick={() => router.push("/settings/intervals")}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-950/60">
                 <Wrench className="h-5 w-5 text-amber-400" />
               </div>
-              <h2 className="text-xl font-bold">Service Intervals</h2>
-            </div>
-            <p className="mb-5 text-sm text-slate-400">Set your default maintenance intervals.</p>
-
-            <div>
-              {intervalRows.map((row, index) => {
-                const isMileageBased = DEFAULT_INTERVALS[index].intervalMiles !== null;
-                return (
-                  <div
-                    key={row.serviceType}
-                    className={index > 0 ? "mt-4 border-t border-slate-800 pt-4" : ""}
-                  >
-                    {/* SERVICE NAME */}
-                    <p className="mb-2 text-sm font-semibold text-white">{row.serviceType}</p>
-
-                    {/* ROW 1: INTERVAL THRESHOLD */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-400">Interval</span>
-                      <div className="flex items-center gap-1">
-                        {isMileageBased ? (
-                          <>
-                            <input
-                              type="number"
-                              value={row.intervalMiles}
-                              onChange={(e) => updateIntervalRow(index, "intervalMiles", e.target.value)}
-                              className={`w-24 text-right ${smallInputClass}`}
-                            />
-                            <span className="text-xs text-slate-400">mi</span>
-                          </>
-                        ) : (
-                          <>
-                            <input
-                              type="number"
-                              value={row.intervalMonths}
-                              onChange={(e) => updateIntervalRow(index, "intervalMonths", e.target.value)}
-                              className={`w-24 text-right ${smallInputClass}`}
-                            />
-                            <span className="text-xs text-slate-400">mo</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* ROW 2: LAST DONE — odometer for mileage-based, date for time-based */}
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-400">
-                        {isMileageBased ? "Last done at" : "Last done"}
-                      </span>
-                      {isMileageBased ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            placeholder="—"
-                            value={row.lastDoneOdometer}
-                            onChange={(e) => updateIntervalRow(index, "lastDoneOdometer", e.target.value)}
-                            className={`w-24 text-right ${smallInputClass}`}
-                          />
-                          <span className="text-xs text-slate-400">mi</span>
-                        </div>
-                      ) : (
-                        <input
-                          type="date"
-                          value={row.lastDoneDate}
-                          onChange={(e) => updateIntervalRow(index, "lastDoneDate", e.target.value)}
-                          className={`${smallInputClass} [color-scheme:dark]`}
-                        />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* SUCCESS CONFIRMATION — auto-clears after 3 s */}
-            {intervalsSaved && (
-              <p className="mt-4 text-sm text-emerald-400">Intervals saved.</p>
-            )}
-
-            <button
-              onClick={handleSaveIntervals}
-              disabled={intervalsSaving}
-              className="mt-5 w-full rounded-2xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-60"
-            >
-              {intervalsSaving ? "Saving…" : "Save Intervals"}
+              <div className="flex-1 text-left">
+                <p className="text-xs font-bold tracking-wider text-slate-400">SERVICE INTERVALS</p>
+                <p className="text-sm text-slate-500">Manage maintenance items and intervals.</p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-500" />
             </button>
           </section>
         </div>
 
         {/* =====================================================
-            SECTION 3 — GENERAL PREFERENCES
+            SECTION 3 — WORK & PAY
            ===================================================== */}
-
         <div className="relative mt-6">
-          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-slate-500" />
+          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-emerald-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-            <div className="mb-5 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-800 text-xl">
-                <Settings className="h-5 w-5 text-slate-400" />
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-950/60 text-lg font-bold text-emerald-400">
+                $
               </div>
-              <h2 className="text-xl font-bold">General</h2>
+              <div>
+                <p className="text-xs font-bold tracking-wider text-slate-400">WORK & PAY</p>
+                <p className="text-sm text-slate-500">Configure work week and default platform.</p>
+              </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="mt-4 space-y-4 border-t border-slate-800 pt-4">
 
-              {/* WEEK START DAY */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-300">Week starts on</span>
+              <div>
+                <p className="mb-1 text-sm text-slate-300">Week starts on</p>
                 <select
-                  value={weekStartsOn}
-                  onChange={(e) => setWeekStartsOn(e.target.value)}
-                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                  value="Monday"
+                  disabled
+                  className="rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-white"
                 >
                   <option value="Monday">Monday</option>
                 </select>
               </div>
 
-              {/* NOTIFICATIONS TOGGLE */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-300">Notifications</span>
-                <button
-                  onClick={() => setNotificationsEnabled((v) => !v)}
-                  className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
-                    notificationsEnabled ? "bg-blue-500" : "bg-slate-700"
-                  }`}
+              <div>
+                <p className="mb-1 text-sm text-slate-300">Default platform</p>
+                <select
+                  value={defaultPlatform}
+                  onChange={(e) => setDefaultPlatform(e.target.value)}
+                  className="rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-white"
                 >
-                  <span
-                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
-                      notificationsEnabled ? "translate-x-5" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
+                  <option value="GoPuff">GoPuff</option>
+                  <option value="DoorDash">DoorDash</option>
+                  <option value="Amazon Flex">Amazon Flex</option>
+                  <option value="Shipt">Shipt</option>
+                  <option value="Uber Eats">Uber Eats</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <p className="mb-1 text-sm text-slate-300">Pay period</p>
+                <p className="text-sm text-white">
+                  Weekly <span className="text-slate-400">Monday – Sunday</span>
+                </p>
               </div>
 
             </div>
 
-            <button className="mt-5 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-white">
+            {workPaySaved && <p className="mt-3 text-sm text-emerald-400">Saved.</p>}
+
+            <button
+              onClick={handleSaveWorkPay}
+              className="mt-5 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950"
+            >
               Save
             </button>
           </section>
         </div>
 
-        {/* SIGN OUT */}
-        <button
-          onClick={handleSignOut}
-          className="mt-8 w-full rounded-2xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-300"
-        >
-          Sign Out
-        </button>
+        {/* =====================================================
+            SECTION 4 — NOTIFICATIONS
+           ===================================================== */}
+        <div className="relative mt-6">
+          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-purple-500" />
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-purple-950/60 text-lg">
+                🔔
+              </div>
+              <div>
+                <p className="text-xs font-bold tracking-wider text-slate-400">NOTIFICATIONS</p>
+                <p className="text-sm text-slate-500">Choose what notifications you want to receive.</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4 border-t border-slate-800 pt-4">
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-300">Maintenance reminders</span>
+                <Toggle on={notifMaintenance} onToggle={() => setNotifMaintenance((v) => !v)} />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-300">Weekly summary</span>
+                  <span className="text-xs text-slate-500">(coming soon)</span>
+                </div>
+                <Toggle on={notifWeeklySummary} onToggle={() => setNotifWeeklySummary((v) => !v)} />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-300">Low fuel warning</span>
+                  <span className="text-xs text-slate-500">(coming soon)</span>
+                </div>
+                <Toggle on={notifLowFuel} onToggle={() => setNotifLowFuel((v) => !v)} />
+              </div>
+
+            </div>
+
+            {notifSaved && <p className="mt-3 text-sm text-emerald-400">Saved.</p>}
+
+            <button
+              onClick={handleSaveNotifications}
+              className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white"
+            >
+              Save
+            </button>
+          </section>
+        </div>
+
+        {/* =====================================================
+            SECTION 5 — ACCOUNT
+           ===================================================== */}
+        <div className="relative mt-6">
+          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-slate-500" />
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-800">
+                <User className="h-5 w-5 text-slate-400" />
+              </div>
+              <div>
+                <p className="text-xs font-bold tracking-wider text-slate-400">ACCOUNT</p>
+                <p className="text-sm text-slate-500">Manage your account and access.</p>
+              </div>
+            </div>
+
+            <div className="mt-4 border-t border-slate-800 pt-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-300">Email address</span>
+                <span className="max-w-[55%] truncate text-right text-sm text-slate-400">{userEmail}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSignOut}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-300"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign Out
+            </button>
+          </section>
+        </div>
+
+        {/* =====================================================
+            SECTION 6 — TAX INFORMATION (stub)
+           ===================================================== */}
+        <div className="mt-6 opacity-60">
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-800 text-lg">
+                📄
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-bold tracking-wider text-slate-400">TAX INFORMATION</p>
+                  <span className="rounded-full bg-slate-700 px-2 py-0.5 text-xs text-slate-400">
+                    coming soon
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 text-slate-500" />
+            </div>
+          </section>
+        </div>
 
       </div>
       <BottomNav />

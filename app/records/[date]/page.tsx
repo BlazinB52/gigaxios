@@ -34,14 +34,6 @@ function getWorkMilePercentage(workMiles: number, totalOdometerMiles: number): n
   return Math.min(workMiles / totalOdometerMiles, 1);
 }
 
-function formatTime(timeStr: string) {
-  if (!timeStr) return "";
-  const [h, m] = timeStr.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const hour = h % 12 || 12;
-  return `${hour}:${String(m).padStart(2, "0")} ${ampm}`;
-}
-
 const PLATFORMS = ["GoPuff", "Amazon Flex", "Uber Eats", "DoorDash", "Other"];
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -137,13 +129,6 @@ export default function DayDetailPage() {
   const workMilePct = getWorkMilePercentage(totalMileage, totalMilesDriven);
   const workFuelCost = totalFuelCost * workMilePct;
 
-  const displayDate = new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   async function reloadDateData(uid: string) {
@@ -172,8 +157,6 @@ export default function DayDetailPage() {
   }
 
   async function handleUpdateShift(shift: SavedShift) {
-    console.log("[editShift] saving vehicle_id:", editShiftVehicleId);
-
     const grossPay = (
       Number(editBasePay || 0) +
       Number(editTips || 0) +
@@ -193,8 +176,6 @@ export default function DayDetailPage() {
       grossPay,
     };
 
-    console.log("[editShift] about to update with:", { vehicle_id: editShiftVehicleId });
-
     const { error } = await supabase
       .from("shifts")
       .update({
@@ -210,8 +191,6 @@ export default function DayDetailPage() {
         gross_pay: updated.grossPay,
       })
       .eq("id", shift.id);
-
-    console.log("[editShift] update result:", error);
 
     if (error) { alert(error.message); return; }
 

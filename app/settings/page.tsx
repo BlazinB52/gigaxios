@@ -34,7 +34,6 @@ export default function SettingsPage() {
   const [notifWeeklySummary, setNotifWeeklySummary] = useState(false);
   const [notifLowFuel, setNotifLowFuel] = useState(false);
   const [workPaySaved, setWorkPaySaved] = useState(false);
-  const [notifSaved, setNotifSaved] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   async function fetchVehicles(uid: string) {
@@ -96,18 +95,6 @@ export default function SettingsPage() {
     }
     await supabase.from("vehicles").update({ status: "archived" }).eq("id", vehicleId);
     if (userId) await fetchVehicles(userId);
-  }
-
-  function handleSaveWorkPay() {
-    localStorage.setItem("gigaxios-default-platform", defaultPlatform);
-    setWorkPaySaved(true);
-    setTimeout(() => setWorkPaySaved(false), 2000);
-  }
-
-  function handleSaveNotifications() {
-    localStorage.setItem("gigaxios-notif-maintenance", String(notifMaintenance));
-    setNotifSaved(true);
-    setTimeout(() => setNotifSaved(false), 2000);
   }
 
   async function handleSignOut() {
@@ -283,7 +270,12 @@ export default function SettingsPage() {
                 <p className="mb-1 text-sm text-slate-300">Default platform</p>
                 <select
                   value={defaultPlatform}
-                  onChange={(e) => setDefaultPlatform(e.target.value)}
+                  onChange={(e) => {
+                    setDefaultPlatform(e.target.value);
+                    localStorage.setItem("gigaxios-default-platform", e.target.value);
+                    setWorkPaySaved(true);
+                    setTimeout(() => setWorkPaySaved(false), 1500);
+                  }}
                   className="rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-white"
                 >
                   <option value="GoPuff">GoPuff</option>
@@ -305,13 +297,6 @@ export default function SettingsPage() {
             </div>
 
             {workPaySaved && <p className="mt-3 text-sm text-emerald-400">Saved.</p>}
-
-            <button
-              onClick={handleSaveWorkPay}
-              className="mt-5 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950"
-            >
-              Save
-            </button>
           </section>
         </div>
 
@@ -335,7 +320,14 @@ export default function SettingsPage() {
 
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-300">Maintenance reminders</span>
-                <Toggle on={notifMaintenance} onToggle={() => setNotifMaintenance((v) => !v)} />
+                <Toggle
+                  on={notifMaintenance}
+                  onToggle={() => {
+                    const next = !notifMaintenance;
+                    setNotifMaintenance(next);
+                    localStorage.setItem("gigaxios-notif-maintenance", String(next));
+                  }}
+                />
               </div>
 
               <div className="flex items-center justify-between">
@@ -355,15 +347,6 @@ export default function SettingsPage() {
               </div>
 
             </div>
-
-            {notifSaved && <p className="mt-3 text-sm text-emerald-400">Saved.</p>}
-
-            <button
-              onClick={handleSaveNotifications}
-              className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white"
-            >
-              Save
-            </button>
           </section>
         </div>
 

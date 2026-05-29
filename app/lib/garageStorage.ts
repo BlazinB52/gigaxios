@@ -69,13 +69,20 @@ export async function deleteServiceEntryFromSupabase(id: string) {
 }
 
 export async function loadServiceEntriesFromSupabase(
-  userId: string
+  userId: string,
+  vehicleId?: string
 ): Promise<ServiceEntry[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("service_entries")
     .select("*")
     .eq("user_id", userId)
     .order("date", { ascending: false });
+
+  if (vehicleId) {
+    query = query.eq("vehicle_id", vehicleId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Supabase service load error:", error.message);
@@ -111,13 +118,20 @@ export async function saveServiceEntryToSupabase(entry: ServiceEntry) {
 }
 
 export async function loadMaintenanceRemindersFromSupabase(
-  userId: string
+  userId: string,
+  vehicleId?: string
 ): Promise<MaintenanceReminder[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("maintenance_reminders")
     .select("*")
     .eq("user_id", userId)
     .order("due_odometer", { ascending: true, nullsFirst: false });
+
+  if (vehicleId) {
+    query = query.eq("vehicle_id", vehicleId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Supabase reminder load error:", error.message);
@@ -215,8 +229,8 @@ export async function loadPrimaryVehicleFromSupabase(userId: string): Promise<Ve
   };
 }
 
-export async function loadCurrentOdometer(userId: string): Promise<number> {
-  const { data, error } = await supabase
+export async function loadCurrentOdometer(userId: string, vehicleId?: string): Promise<number> {
+  let query = supabase
     .from("shifts")
     .select("ending_mileage")
     .eq("user_id", userId)
@@ -224,6 +238,11 @@ export async function loadCurrentOdometer(userId: string): Promise<number> {
     .order("created_at", { ascending: false })
     .limit(1);
 
+  if (vehicleId) {
+    query = query.eq("vehicle_id", vehicleId);
+  }
+
+  const { data, error } = await query;
   if (error || !data || data.length === 0) return 0;
   return parseFloat(data[0].ending_mileage) || 0;
 }

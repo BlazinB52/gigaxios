@@ -25,7 +25,7 @@ import {
   ServiceInterval,
   loadServiceEntriesFromSupabase,
   loadMaintenanceRemindersFromSupabase,
-  loadPrimaryVehicleFromSupabase,
+  loadVehiclesFromSupabase,
   loadCurrentOdometer,
   loadServiceIntervalsFromSupabase,
   computeServiceStats,
@@ -153,6 +153,8 @@ export default function GaragePage() {
      ========================================================= */
 
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [maintenanceReminders, setMaintenanceReminders] = useState<MaintenanceReminder[]>([]);
   const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
@@ -174,23 +176,54 @@ export default function GaragePage() {
         return;
       }
 
-      const [services, reminders, vehicleData, odo, intervals] = await Promise.all([
-        loadServiceEntriesFromSupabase(user.id),
-        loadMaintenanceRemindersFromSupabase(user.id),
-        loadPrimaryVehicleFromSupabase(user.id),
-        loadCurrentOdometer(user.id),
+      const loadedVehicles = await loadVehiclesFromSupabase(user.id);
+      setVehicles(loadedVehicles);
+      const primary = loadedVehicles.find((v) => v.isPrimary) || loadedVehicles[0] || null;
+      setVehicle(primary);
+      setSelectedVehicleId(primary?.id || "");
+
+      const primaryVehicleId = primary?.id;
+
+      const [services, reminders, odo, intervals] = await Promise.all([
+        loadServiceEntriesFromSupabase(user.id, primaryVehicleId),
+        loadMaintenanceRemindersFromSupabase(user.id, primaryVehicleId),
+        loadCurrentOdometer(user.id, primaryVehicleId),
         loadServiceIntervalsFromSupabase(user.id),
       ]);
 
       setServiceEntries(services);
       setMaintenanceReminders(reminders);
-      setVehicle(vehicleData);
       setCurrentOdometer(odo);
       setServiceIntervals(intervals);
     }
 
     loadGarageData();
   }, [router]);
+
+  /* =========================================================
+     VEHICLE SWITCH HANDLER
+     Re-fetches service entries, reminders, and odometer for
+     the newly selected vehicle without reloading everything.
+     ========================================================= */
+
+  async function handleVehicleSwitch(vehicleId: string) {
+    setSelectedVehicleId(vehicleId);
+    const selected = vehicles.find((v) => v.id === vehicleId) || null;
+    setVehicle(selected);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const [services, reminders, odometer] = await Promise.all([
+      loadServiceEntriesFromSupabase(user.id, vehicleId),
+      loadMaintenanceRemindersFromSupabase(user.id, vehicleId),
+      loadCurrentOdometer(user.id, vehicleId),
+    ]);
+
+    setServiceEntries(services);
+    setMaintenanceReminders(reminders);
+    setCurrentOdometer(odometer);
+  }
 
   /* Derive aggregate service stats for the Service card */
   const { totalServices, totalSpent, lastServiceOdometer } = computeServiceStats(serviceEntries);
@@ -239,6 +272,29 @@ export default function GaragePage() {
             </button>
           )}
         </div>
+
+        {/* =====================================================
+            VEHICLE TOGGLE
+            Only shown when the user has 2+ active vehicles.
+           ===================================================== */}
+
+        {vehicles.length > 1 && (
+          <div className="mt-4 flex gap-2">
+            {vehicles.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => handleVehicleSwitch(v.id)}
+                className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold transition-colors ${
+                  selectedVehicleId === v.id
+                    ? "border-blue-500 bg-blue-950/40 text-blue-400"
+                    : "border-slate-700 bg-slate-900/40 text-slate-400"
+                }`}
+              >
+                {v.year} {v.make} {v.model}{v.isPrimary ? " ★" : ""}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* =====================================================
             SERVICE CARD

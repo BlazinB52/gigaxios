@@ -51,6 +51,7 @@ export default function DayDetailPage() {
   const params = useParams();
   const dateStr = params.date as string;
 
+  const [userId, setUserId] = useState<string | null>(null);
   const [shifts, setShifts] = useState<SavedShift[]>([]);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +87,7 @@ export default function DayDetailPage() {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/login"); return; }
+      setUserId(user.id);
 
       const [allShifts, allFuel] = await Promise.all([
         loadShiftsFromSupabase(user.id),
@@ -142,6 +144,17 @@ export default function DayDetailPage() {
     year: "numeric",
   });
 
+  // ─── Helpers ────────────────────────────────────────────────────────────────
+
+  async function reloadDateData(uid: string) {
+    const [allShifts, allFuel] = await Promise.all([
+      loadShiftsFromSupabase(uid),
+      loadFuelEntriesFromSupabase(uid),
+    ]);
+    setShifts(allShifts.filter((s) => toISODate(s.date) === dateStr));
+    setFuelEntries(allFuel.filter((f) => toISODate(f.date) === dateStr));
+  }
+
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
   function openEditShift(shift: SavedShift) {
@@ -159,6 +172,8 @@ export default function DayDetailPage() {
   }
 
   async function handleUpdateShift(shift: SavedShift) {
+    console.log("[editShift] saving vehicle_id:", editShiftVehicleId);
+
     const grossPay = (
       Number(editBasePay || 0) +
       Number(editTips || 0) +
@@ -178,6 +193,8 @@ export default function DayDetailPage() {
       grossPay,
     };
 
+    console.log("[editShift] about to update with:", { vehicle_id: editShiftVehicleId });
+
     const { error } = await supabase
       .from("shifts")
       .update({
@@ -194,9 +211,11 @@ export default function DayDetailPage() {
       })
       .eq("id", shift.id);
 
+    console.log("[editShift] update result:", error);
+
     if (error) { alert(error.message); return; }
 
-    setShifts((prev) => prev.map((s) => (s.id === shift.id ? updated : s)));
+    await reloadDateData(userId!);
     setEditingShiftId(null);
   }
 
@@ -246,7 +265,7 @@ export default function DayDetailPage() {
 
     if (error) { alert(error.message); return; }
 
-    setFuelEntries((prev) => prev.map((f) => (f.id === fuel.id ? updated : f)));
+    await reloadDateData(userId!);
     setEditingFuelId(null);
   }
 

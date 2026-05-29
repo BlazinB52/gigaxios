@@ -169,6 +169,11 @@ export default function MetricsPage() {
     const vehicleFuel = selectedVehicleId === "all" ? fuelEntries : fuelEntries.filter((f) => f.vehicleId === selectedVehicleId);
     const vehicleServices = selectedVehicleId === "all" ? serviceEntries : serviceEntries.filter((sv) => sv.vehicleId === selectedVehicleId);
 
+    console.log("[metrics] selectedVehicleId:", selectedVehicleId);
+    console.log("[metrics] total shifts:", shifts.length);
+    console.log("[metrics] vehicleShifts after filter:", vehicleShifts.length);
+    console.log("[metrics] shifts with null/undefined vehicleId:", shifts.filter((s) => !s.vehicleId).length);
+
     const yearShifts = vehicleShifts.filter(
       (s) => parseShiftDate(s.date).getFullYear() === selectedYear
     );

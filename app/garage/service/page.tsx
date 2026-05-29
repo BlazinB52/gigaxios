@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Trash2 } from "lucide-react";
 import BottomNav from "../../components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
@@ -45,10 +45,14 @@ function formatDate(dateStr: string): string {
   });
 }
 
-export default function ServicePage() {
+function ServicePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const vehicleIdParam = searchParams.get("vehicleId") || "";
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [vehicleId, setVehicleId] = useState("");
+  const [vehicleLabel, setVehicleLabel] = useState("");
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [vehicles, setVehicles] = useState<Array<{
     id: string; year: string; make: string; model: string; is_primary: boolean;
@@ -75,7 +79,22 @@ export default function ServicePage() {
       }
 
       setUserId(user.id);
-      const entries = await loadServiceEntriesFromSupabase(user.id);
+
+      const vid = vehicleIdParam;
+      setVehicleId(vid);
+
+      if (vid) {
+        const { data: vd } = await supabase
+          .from("vehicles")
+          .select("year, make, model")
+          .eq("id", vid)
+          .single();
+        if (vd) {
+          setVehicleLabel(`${vd.year} ${vd.make} ${vd.model}`);
+        }
+      }
+
+      const entries = await loadServiceEntriesFromSupabase(user.id, vid || undefined);
       setServiceEntries(entries);
 
       const { data: vehicleData } = await supabase
@@ -88,16 +107,21 @@ export default function ServicePage() {
       const loadedVehicles = vehicleData || [];
       setVehicles(loadedVehicles);
       const primary = loadedVehicles.find((v) => v.is_primary) || loadedVehicles[0] || null;
-      setSelectedVehicleId(primary?.id || "");
+      setSelectedVehicleId(vid || primary?.id || "");
     }
 
     load();
-  }, [router]);
+  }, [router, vehicleIdParam]);
 
   async function handleDeleteEntry(id: string) {
     if (!userId) return;
 
     const deletedEntry = serviceEntries.find((e) => e.id === id);
+    const confirmed = window.confirm(
+      `Delete this ${deletedEntry?.serviceType ?? "service"} record? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
     await deleteServiceEntryFromSupabase(id);
 
     if (deletedEntry) {
@@ -135,8 +159,8 @@ export default function ServicePage() {
       }
     }
 
-    const entries = await loadServiceEntriesFromSupabase(userId);
-    setServiceEntries(entries);
+    const updated = await loadServiceEntriesFromSupabase(userId, vehicleId || undefined);
+    setServiceEntries(updated);
   }
 
   async function handleSaveService() {
@@ -166,8 +190,8 @@ export default function ServicePage() {
       );
     }
 
-    const entries = await loadServiceEntriesFromSupabase(userId);
-    setServiceEntries(entries);
+    const updated = await loadServiceEntriesFromSupabase(userId, vehicleId || undefined);
+    setServiceEntries(updated);
 
     setServiceDate(getTodayLocal());
     setServiceType("");
@@ -197,6 +221,16 @@ export default function ServicePage() {
             <p className="mt-1 text-sm text-slate-400">Your maintenance history.</p>
           </div>
         </div>
+
+        {vehicleLabel && (
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3">
+            <span className="text-xl">🚗</span>
+            <div>
+              <p className="text-sm font-semibold text-white">{vehicleLabel}</p>
+              <p className="text-xs text-slate-400">Showing service history for this vehicle</p>
+            </div>
+          </div>
+        )}
 
         {/* ADD SERVICE FORM */}
         <div className="relative mt-6">
@@ -359,5 +393,17 @@ export default function ServicePage() {
       </div>
       <BottomNav />
     </main>
+  );
+}
+
+export default function ServicePage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen bg-[#020814] flex items-center justify-center">
+        <p className="text-slate-400">Loading...</p>
+      </main>
+    }>
+      <ServicePageInner />
+    </Suspense>
   );
 }

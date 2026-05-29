@@ -316,7 +316,7 @@ export default function GaragePage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold">Service</h2>
-                  <button onClick={() => router.push("/garage/service")}>
+                  <button onClick={() => router.push(`/garage/service?vehicleId=${selectedVehicleId}`)}>
                     <ChevronRight className="h-5 w-5 text-slate-500" />
                   </button>
                 </div>

@@ -74,7 +74,10 @@ function formatDate(dateStr: string): string {
 function getDueText(reminder: MaintenanceReminder, currentOdometer: number): string {
   const dueOdo = parseFloat(reminder.dueOdometer) || 0;
   if (dueOdo > 0) {
-    const miles = Math.round(dueOdo - currentOdometer);
+    const effectiveOdometer = currentOdometer > 0
+      ? currentOdometer
+      : (reminder.lastDoneOdometer ? Number(reminder.lastDoneOdometer) : 0);
+    const miles = Math.round(dueOdo - effectiveOdometer);
     if (miles < 0) return `${Math.abs(miles).toLocaleString()} mi overdue`;
     return `Due in ${miles.toLocaleString()} mi`;
   }

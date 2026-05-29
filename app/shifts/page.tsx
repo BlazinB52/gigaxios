@@ -9,7 +9,12 @@ import { supabase } from "@/app/lib/supabaseClient";
 
 
 export default function ShiftsPage() {
-    const [platform, setPlatform] = useState("GoPuff");
+    const [platform, setPlatform] = useState(() => {
+      if (typeof window !== "undefined") {
+        return localStorage.getItem("gigaxios-default-platform") || "GoPuff";
+      }
+      return "GoPuff";
+    });
     const [shiftDate, setShiftDate] = useState("");
     const [beginningMileage, setBeginningMileage] = useState("");
     const [endingMileage, setEndingMileage] = useState("");

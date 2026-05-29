@@ -169,11 +169,6 @@ export default function MetricsPage() {
     const vehicleFuel = selectedVehicleId === "all" ? fuelEntries : fuelEntries.filter((f) => f.vehicleId === selectedVehicleId);
     const vehicleServices = selectedVehicleId === "all" ? serviceEntries : serviceEntries.filter((sv) => sv.vehicleId === selectedVehicleId);
 
-    console.log("[metrics] selectedVehicleId:", selectedVehicleId);
-    console.log("[metrics] total shifts:", shifts.length);
-    console.log("[metrics] vehicleShifts after filter:", vehicleShifts.length);
-    console.log("[metrics] shifts with null/undefined vehicleId:", shifts.filter((s) => !s.vehicleId).length);
-
     const yearShifts = vehicleShifts.filter(
       (s) => parseShiftDate(s.date).getFullYear() === selectedYear
     );
@@ -184,11 +179,14 @@ export default function MetricsPage() {
       (sv) => parseShiftDate(sv.date).getFullYear() === selectedYear
     );
 
-    /* Pay adjustments (MGA, bonuses, etc.) */
+    /* Pay adjustments (MGA, bonuses, etc.) — excluded when vehicle has no shifts,
+       since adjustments are driver-level and cannot be attributed to a specific vehicle */
     const yearAdjustments = adjustments.filter(
       (a) => new Date(a.week_start + "T12:00:00").getFullYear() === selectedYear
     );
-    const totalAdjustments = yearAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+    const totalAdjustments = vehicleShifts.length === 0
+      ? 0
+      : yearAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0);
 
     /* Basic shift totals */
     const totalDeliveries = yearShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);

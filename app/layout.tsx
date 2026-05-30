@@ -9,7 +9,6 @@
 
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import BottomNav from "@/app/components/BottomNav";
 // import GigHeader from "@/app/components/GigHeader";
 import "./globals.css";
 
@@ -100,14 +99,6 @@ export default function RootLayout({
            ===================================================== */}
         <div className="min-h-screen pb-24 pt-24">
           {children}
-        </div>
-
-        {/* =====================================================
-            BOTTOM NAV
-            Rendered here so every page gets it automatically.
-           ===================================================== */}
-        <div className="hide-on-landing">
-          <BottomNav />
         </div>
 
       </body>

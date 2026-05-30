@@ -47,7 +47,7 @@ export default function LandingPage() {
 
           {/* NAV — Logo left, links + CTA right (desktop only) */}
           <nav className="flex items-center justify-between">
-            <Link href="/landing" className="flex items-center">
+            <Link href="/" className="flex items-center">
               <Image src="/Full_Logo.png" alt="GigAxios" width={220} height={70} priority />
             </Link>
 

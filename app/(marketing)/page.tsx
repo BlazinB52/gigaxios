@@ -87,15 +87,15 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="relative mx-auto w-full max-w-[360px] md:max-w-[430px]">
-              <div className="absolute left-1/2 top-1/2 h-[78%] w-[82%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(37,99,235,0.32),transparent_68%)] blur-3xl" />
+            <div className="relative mx-auto w-full max-w-[360px] md:max-w-[480px]">
+              <div className="absolute left-1/2 top-1/2 h-[82%] w-[86%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(37,99,235,0.36)_0%,rgba(14,165,233,0.18)_42%,transparent_72%)] blur-3xl" />
               <Image
                 src="/landing_phone.png"
                 alt="GigAxios app dashboard preview"
                 width={430}
                 height={860}
                 priority
-                className="relative z-10 h-auto w-full drop-shadow-[0_30px_80px_rgba(37,99,235,0.35)]"
+                className="relative z-10 h-auto w-full scale-100 drop-shadow-[0_30px_80px_rgba(37,99,235,0.35)] md:scale-110 md:drop-shadow-[0_35px_90px_rgba(37,99,235,0.40)]"
               />
             </div>
           </div>

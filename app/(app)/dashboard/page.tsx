@@ -23,7 +23,7 @@ import { useEffect, useState } from "react";
    ========================================================= */
 
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
-import { SavedShift } from "./lib/types";
+import { SavedShift } from "@/app/lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
 
 /* =========================================================

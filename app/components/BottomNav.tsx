@@ -25,7 +25,7 @@ import { usePathname } from "next/navigation";
    ========================================================= */
 
 const navItems = [
-  { href: "/",        label: "Home",    icon: "🏠", color: "text-blue-400"    },
+  { href: "/dashboard", label: "Home",    icon: "🏠", color: "text-blue-400"    },
   { href: "/fuel",    label: "Fuel",    icon: "⛽", color: "text-emerald-300" },
   { href: "/records", label: "Records", icon: "📅", color: "text-cyan-300"    },
   { href: "/metrics", label: "Metrics", icon: "↗",  color: "text-blue-300"    },
@@ -63,8 +63,7 @@ export default function BottomNav() {
              Home uses strict equality; all others use startsWith
              so child routes (e.g. /garage/maintenance) keep the
              Garage tab lit. */
-          const isActive =
-            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const isActive = pathname.startsWith(item.href);
 
           return (
             <Link

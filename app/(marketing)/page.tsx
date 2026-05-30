@@ -88,17 +88,15 @@ export default function LandingPage() {
             </div>
 
             <div className="relative mx-auto w-full max-w-[360px] md:max-w-[430px]">
-              <div className="absolute inset-8 rounded-[3rem] bg-blue-500/30 blur-3xl" />
-              <div className="relative rounded-[2.5rem] border border-white/10 bg-white/[0.06] p-3 shadow-2xl shadow-black/40">
-                <Image
-                  src="/landing_phone.png"
-                  alt="GigAxios app dashboard preview"
-                  width={430}
-                  height={860}
-                  priority
-                  className="h-auto w-full rounded-[2rem]"
-                />
-              </div>
+              <div className="absolute left-1/2 top-1/2 h-[78%] w-[82%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(37,99,235,0.32),transparent_68%)] blur-3xl" />
+              <Image
+                src="/landing_phone.png"
+                alt="GigAxios app dashboard preview"
+                width={430}
+                height={860}
+                priority
+                className="relative z-10 h-auto w-full drop-shadow-[0_30px_80px_rgba(37,99,235,0.35)]"
+              />
             </div>
           </div>
         </div>

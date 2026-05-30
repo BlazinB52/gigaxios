@@ -6,6 +6,25 @@ import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench } from "lucide
 import BottomNav from "../components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import { Vehicle, loadVehiclesFromSupabase } from "@/app/lib/garageStorage";
+import JSZip from "jszip";
+
+function toCSV(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return "";
+  const headers = Object.keys(rows[0]);
+  const escape = (val: unknown): string => {
+    if (val === null || val === undefined) return "";
+    const str = String(val);
+    if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+  const headerRow = headers.join(",");
+  const dataRows = rows.map((row) =>
+    headers.map((h) => escape(row[h])).join(",")
+  );
+  return [headerRow, ...dataRows].join("\n");
+}
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -35,6 +54,7 @@ export default function SettingsPage() {
   const [notifLowFuel, setNotifLowFuel] = useState(false);
   const [workPaySaved, setWorkPaySaved] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   async function fetchVehicles(uid: string) {
     const loaded = await loadVehiclesFromSupabase(uid);
@@ -95,6 +115,61 @@ export default function SettingsPage() {
     }
     await supabase.from("vehicles").update({ status: "archived" }).eq("id", vehicleId);
     if (userId) await fetchVehicles(userId);
+  }
+
+  async function handleExportData() {
+    setExporting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const [
+        shiftsRes,
+        fuelRes,
+        serviceRes,
+        remindersRes,
+        periodsRes,
+        adjustmentsRes,
+      ] = await Promise.all([
+        supabase.from("shifts").select("*").eq("user_id", user.id),
+        supabase.from("fuel_entries").select("*").eq("user_id", user.id),
+        supabase.from("service_entries").select("*").eq("user_id", user.id),
+        supabase.from("maintenance_reminders").select("*").eq("user_id", user.id),
+        supabase.from("pay_periods").select("*").eq("user_id", user.id),
+        supabase.from("pay_adjustments").select("*").eq("user_id", user.id),
+      ]);
+
+      const zip = new JSZip();
+      const date = new Date().toISOString().split("T")[0];
+
+      const files: [string, unknown[]][] = [
+        ["shifts.csv", shiftsRes.data || []],
+        ["fuel_entries.csv", fuelRes.data || []],
+        ["service_entries.csv", serviceRes.data || []],
+        ["maintenance_reminders.csv", remindersRes.data || []],
+        ["pay_periods.csv", periodsRes.data || []],
+        ["pay_adjustments.csv", adjustmentsRes.data || []],
+      ];
+
+      files.forEach(([filename, data]) => {
+        zip.file(filename, toCSV(data as Record<string, unknown>[]));
+      });
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `gigaxios-export-${date}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function handleSignOut() {
@@ -372,6 +447,17 @@ export default function SettingsPage() {
                 <span className="max-w-[55%] truncate text-right text-sm text-slate-400">{userEmail}</span>
               </div>
             </div>
+
+            <button
+              onClick={handleExportData}
+              disabled={exporting}
+              className="mt-3 w-full rounded-2xl border border-slate-700 bg-slate-900/60 px-4 py-3 text-sm font-semibold text-slate-300 disabled:opacity-50"
+            >
+              {exporting ? "Preparing export..." : "⬇️ Export My Data"}
+            </button>
+            <p className="mt-1 text-center text-xs text-slate-500">
+              Downloads a ZIP file with all your data as CSV files
+            </p>
 
             <button
               onClick={handleSignOut}

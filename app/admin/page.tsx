@@ -59,6 +59,7 @@ export default function AdminPage() {
     const [fuelEntries, setFuelEntries] = useState<any[]>([]);
     const [payEntries, setPayEntries] = useState<any[]>([]);
     const [supabaseStatus, setSupabaseStatus] = useState("Checking Supabase...");
+    const [isAuthorized, setIsAuthorized] = useState(false);
 
   /* =========================================================
      DATA LOADING
@@ -81,6 +82,8 @@ export default function AdminPage() {
                 router.push("/");
                 return;
             }
+
+            setIsAuthorized(true);
 
             const shifts = await loadShiftsFromSupabase(user.id);
             const fuel = await loadFuelEntriesFromSupabase(user.id);
@@ -231,6 +234,12 @@ export default function AdminPage() {
   /* =========================================================
      RENDER
      ========================================================= */
+
+    if (!isAuthorized) {
+        return (
+            <main className="min-h-screen bg-[#020814]" />
+        );
+    }
 
     return (
 

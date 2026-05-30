@@ -66,7 +66,6 @@ export type PayAdjustment = {
 // ======================================================
 // PayPeriod
 // The settlement layer for a work week
-// Replaces pay_entries entirely
 // ======================================================
 
 export type PayPeriod = {

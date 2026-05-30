@@ -5,11 +5,10 @@
    ---------------------------------------------------------
    Internal maintenance panel for GigAxios data.  Provides:
      • Supabase connection status indicator
-     • Full data export (shifts, fuel, pay) as a dated JSON
+     • Full data export (shifts, fuel) as a dated JSON
        backup file downloaded directly to the browser
      • LocalStorage purge (wipes browser-cached keys)
-     • Raw record viewer for shifts, pay entries, fuel entries
-     • Per-record pay entry deletion (targets Supabase row)
+     • Raw record viewer for shifts and fuel entries
 
    Route protection is handled by proxy.ts — no client-side
    auth redirect needed here.  Auth is checked inside each
@@ -30,7 +29,6 @@ function getTodayLocal(): string {
 }
 import { SavedShift } from "@/app/lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
-import { PayEntry, loadPayEntriesFromSupabase } from "@/app/lib/payStorage";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 
 const ADMIN_USER_ID = "b1ac6152-bee8-47a9-9bcd-d44deee99116";
@@ -44,7 +42,6 @@ const ADMIN_USER_ID = "b1ac6152-bee8-47a9-9bcd-d44deee99116";
 const GIGAXIOS_KEYS = [
     "savedShifts",
     "gigaxios-fuel",
-    "gigaxios-pay",
     "gigaxios-expenses",
 ];
 
@@ -57,7 +54,6 @@ export default function AdminPage() {
 
     const [savedShifts, setSavedShifts] = useState<any[]>([]);
     const [fuelEntries, setFuelEntries] = useState<any[]>([]);
-    const [payEntries, setPayEntries] = useState<any[]>([]);
     const [supabaseStatus, setSupabaseStatus] = useState("Checking Supabase...");
     const [isAuthorized, setIsAuthorized] = useState(false);
 
@@ -87,11 +83,9 @@ export default function AdminPage() {
 
             const shifts = await loadShiftsFromSupabase(user.id);
             const fuel = await loadFuelEntriesFromSupabase(user.id);
-            const pay = await loadPayEntriesFromSupabase(user.id);
 
             setSavedShifts(shifts);
             setFuelEntries(fuel);
-            setPayEntries(pay);
             setSupabaseStatus("Supabase connected successfully.");
         }
 
@@ -122,22 +116,17 @@ export default function AdminPage() {
             .select("*")
             .eq("user_id", user.id);
 
-        const { data: payEntries, error: payError } = await supabase
-            .from("pay_entries")
-            .select("*")
-            .eq("user_id", user.id);
-
-        if (shiftsError || fuelError || payError) {
+        if (shiftsError || fuelError) {
             alert("Could not export Supabase backup. Check console for details.");
-            console.error({ shiftsError, fuelError, payError });
+            console.error({ shiftsError, fuelError });
             return;
         }
 
         /* -------------------------------------------------------
            BUILD BACKUP OBJECT
            Includes export timestamp, source tag, user ID, and
-           all three datasets.  Nullish-coalesces to [] so the
-           file is always valid JSON even if a table is empty.
+           both datasets.  Nullish-coalesces to [] so the file
+           is always valid JSON even if a table is empty.
            ------------------------------------------------------- */
 
         const backup = {
@@ -146,7 +135,6 @@ export default function AdminPage() {
             user_id: user.id,
             shifts: shifts ?? [],
             fuel_entries: fuelEntries ?? [],
-            pay_entries: payEntries ?? [],
         };
 
         /* -------------------------------------------------------
@@ -192,43 +180,6 @@ export default function AdminPage() {
 
         alert("GigAxios data has been purged.");
         window.location.reload();
-    }
-
-  /* =========================================================
-     DELETE PAY ENTRY
-     Confirms with the user, then deletes the row from the
-     pay_entries table by ID and removes it from local state
-     so the list updates without a full reload.
-     ========================================================= */
-
-    async function handleDeletePayEntry(payId: string) {
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
-        if (!user || user.id !== ADMIN_USER_ID) return;
-
-        const confirmed = window.confirm(
-            "Delete this pay entry? This cannot be undone."
-        );
-
-        if (!confirmed) return;
-
-        const { error } = await supabase
-            .from("pay_entries")
-            .delete()
-            .eq("id", payId);
-
-        if (error) {
-            alert("Could not delete pay entry. Check console.");
-            console.error(error);
-            return;
-        }
-
-        setPayEntries((currentEntries) =>
-            currentEntries.filter((entry) => entry.id !== payId)
-        );
-
-        alert("Pay entry deleted.");
     }
 
   /* =========================================================
@@ -338,48 +289,6 @@ export default function AdminPage() {
                               <p>Other Pay: {shift.otherPay ? `$${shift.otherPay}` : "Not entered"}</p>
                               <p>Total: {shift.grossPay ? `$${shift.grossPay}` : "Not entered"}</p>
                           </div>
-                      </div>
-                  ))}
-
-                </div>
-            </section>
-
-            {/* =====================================================
-                PAY ENTRIES
-                Raw pay_entries records.  Each row can be deleted
-                individually via handleDeletePayEntry.
-               ===================================================== */}
-
-            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg">
-                <h2 className="text-lg font-semibold">Pay Entries</h2>
-
-                <div className="mt-4 space-y-3">
-
-                  {/* EMPTY STATE */}
-                  {payEntries.length === 0 && (
-                      <p className="text-sm text-slate-400">No pay entries saved.</p>
-                  )}
-
-                  {/* PAY ENTRY ROWS */}
-                  {payEntries.map((entry) => (
-                      <div
-                          key={entry.id}
-                          className="rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm"
-                      >
-                          <p>Date: {entry.date}</p>
-                          <p>Platform: {entry.platform}</p>
-                          <p>Deliveries: {entry.deliveries}</p>
-                          <p>Base Pay: ${entry.basePay}</p>
-                          <p>Tips: ${entry.tips}</p>
-                          <p>Total: ${entry.grossPay}</p>
-
-                          {/* DELETE BUTTON — removes the row from Supabase */}
-                          <button
-                              onClick={() => handleDeletePayEntry(entry.id)}
-                              className="mt-3 w-full rounded-xl bg-red-600 p-2 text-sm font-bold text-white"
-                          >
-                              Delete Pay Entry
-                          </button>
                       </div>
                   ))}
 

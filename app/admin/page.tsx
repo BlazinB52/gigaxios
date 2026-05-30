@@ -17,6 +17,7 @@
    ========================================================= */
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { supabase } from "../lib/supabaseClient";
 
@@ -32,6 +33,8 @@ import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
 import { PayEntry, loadPayEntriesFromSupabase } from "@/app/lib/payStorage";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 
+const ADMIN_USER_ID = "b1ac6152-bee8-47a9-9bcd-d44deee99116";
+
 /* =========================================================
    LOCAL STORAGE KEYS
    All keys written by GigAxios that should be cleared on a
@@ -46,6 +49,7 @@ const GIGAXIOS_KEYS = [
 ];
 
 export default function AdminPage() {
+    const router = useRouter();
 
   /* =========================================================
      STATE VARIABLES
@@ -68,7 +72,15 @@ export default function AdminPage() {
                 data: { user },
             } = await supabase.auth.getUser();
 
-            if (!user) return;
+            if (!user) {
+                router.push("/login");
+                return;
+            }
+
+            if (user.id !== ADMIN_USER_ID) {
+                router.push("/");
+                return;
+            }
 
             const shifts = await loadShiftsFromSupabase(user.id);
             const fuel = await loadFuelEntriesFromSupabase(user.id);
@@ -81,7 +93,7 @@ export default function AdminPage() {
         }
 
         loadAdminData();
-    }, []);
+    }, [router]);
 
   /* =========================================================
      EXPORT BACKUP
@@ -187,6 +199,11 @@ export default function AdminPage() {
      ========================================================= */
 
     async function handleDeletePayEntry(payId: string) {
+        const {
+            data: { user },
+        } = await supabase.auth.getUser();
+        if (!user || user.id !== ADMIN_USER_ID) return;
+
         const confirmed = window.confirm(
             "Delete this pay entry? This cannot be undone."
         );
@@ -230,6 +247,9 @@ export default function AdminPage() {
             <div>
                 <p className="text-sm text-slate-400">GigAxios maintenance</p>
                 <h1 className="text-2xl font-bold">Admin</h1>
+                <p className="text-xs text-amber-400 mt-1">
+                    🔒 Admin access only
+                </p>
             </div>
 
             {/* =====================================================

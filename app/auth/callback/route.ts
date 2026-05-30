@@ -7,8 +7,6 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
 
-  console.log('AUTH CALLBACK HIT - code:', !!code)
-
   if (code) {
     const cookieStore = await cookies()
 
@@ -30,8 +28,6 @@ export async function GET(request: NextRequest) {
     )
 
     const { error } = await supabase.auth.exchangeCodeForSession(code)
-
-    console.log('AUTH EXCHANGE RESULT - error:', error?.message)
 
     if (!error) {
       return NextResponse.redirect(new URL('/dashboard', origin))

@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Settings } from "lucide-react";
-import BottomNav from "../components/BottomNav";
+import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
   ServiceEntry,

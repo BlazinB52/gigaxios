@@ -22,7 +22,7 @@ import {
   ServiceEntry,
   loadServiceEntriesFromSupabase,
 } from "@/app/lib/garageStorage";
-import BottomNav from "../components/BottomNav";
+import BottomNav from "@/app/components/BottomNav";
 
 /* =========================================================
    FORMATTING HELPERS

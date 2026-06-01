@@ -6,9 +6,19 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 
+const getDevice = () => {
+  if (typeof window === "undefined") return "unknown";
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua)) return "ios";
+  if (/Android/.test(ua)) return "android";
+  if (/Windows|Macintosh|Linux/.test(ua)) return "desktop";
+  return "unknown";
+};
+
 export default function WelcomePage() {
   const router = useRouter();
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [device, setDevice] = useState("unknown");
 
   useEffect(() => {
     async function checkUser() {
@@ -21,6 +31,13 @@ export default function WelcomePage() {
         return;
       }
 
+      const seen = localStorage.getItem("gigaxios_welcome_seen");
+      if (seen === "true") {
+        router.replace("/dashboard");
+        return;
+      }
+
+      setDevice(getDevice());
       setCheckingAuth(false);
     }
 
@@ -63,105 +80,119 @@ export default function WelcomePage() {
           </p>
         </header>
 
-        <section className="rounded-3xl border border-blue-500/20 bg-slate-950/70 p-5 shadow-[0_0_35px_rgba(59,130,246,0.12)]">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 text-2xl">
-              📱
+        {(device === "ios" || device === "unknown") && (
+          <section className="rounded-3xl border border-blue-500/20 bg-slate-950/70 p-5 shadow-[0_0_35px_rgba(59,130,246,0.12)]">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 text-2xl">
+                📱
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">iPhone Safari</h2>
+                <p className="text-sm text-slate-400">Best for iPhone users</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-bold">iPhone Safari</h2>
-              <p className="text-sm text-slate-400">Best for iPhone users</p>
-            </div>
-          </div>
 
-          <ol className="space-y-3 text-sm leading-6 text-slate-300">
-            <li>
-              <span className="font-semibold text-white">1.</span> Open
-              GigAxios in Safari.
-            </li>
-            <li>
-              <span className="font-semibold text-white">2.</span> Tap the
-              Share button.
-            </li>
-            <li>
-              <span className="font-semibold text-white">3.</span> Tap{" "}
-              <span className="font-semibold text-white">
-                Add to Home Screen
-              </span>
-              .
-            </li>
-            <li>
-              <span className="font-semibold text-white">4.</span> Tap{" "}
-              <span className="font-semibold text-white">Add</span>.
-            </li>
-          </ol>
-        </section>
+            {device === "ios" && (
+              <p className="mb-4 rounded-xl bg-blue-500/10 border border-blue-500/20 px-4 py-3 text-sm text-blue-200">
+                Make sure you are viewing this page in Safari before following
+                these steps. The Add to Home Screen option is only available in
+                Safari.
+              </p>
+            )}
 
-        <section className="rounded-3xl border border-blue-500/20 bg-slate-950/70 p-5">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 text-2xl">
-              🤖
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Android Chrome</h2>
-              <p className="text-sm text-slate-400">Fastest install option</p>
-            </div>
-          </div>
+            <ol className="space-y-3 text-sm leading-6 text-slate-300">
+              <li>
+                <span className="font-semibold text-white">1.</span> Open
+                GigAxios in Safari.
+              </li>
+              <li>
+                <span className="font-semibold text-white">2.</span> Tap the
+                Share button.
+              </li>
+              <li>
+                <span className="font-semibold text-white">3.</span> Tap{" "}
+                <span className="font-semibold text-white">
+                  Add to Home Screen
+                </span>
+                .
+              </li>
+              <li>
+                <span className="font-semibold text-white">4.</span> Tap{" "}
+                <span className="font-semibold text-white">Add</span>.
+              </li>
+            </ol>
+          </section>
+        )}
 
-          <ol className="space-y-3 text-sm leading-6 text-slate-300">
-            <li>
-              <span className="font-semibold text-white">1.</span> Open
-              GigAxios in Chrome.
-            </li>
-            <li>
-              <span className="font-semibold text-white">2.</span> Tap the menu
-              button.
-            </li>
-            <li>
-              <span className="font-semibold text-white">3.</span> Tap{" "}
-              <span className="font-semibold text-white">Install app</span> or{" "}
-              <span className="font-semibold text-white">
-                Add to Home Screen
-              </span>
-              .
-            </li>
-            <li>
-              <span className="font-semibold text-white">4.</span> Confirm the
-              install.
-            </li>
-          </ol>
-        </section>
-
-        <section className="rounded-3xl border border-blue-500/20 bg-slate-950/70 p-5">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 text-2xl">
-              💻
+        {(device === "android" || device === "unknown") && (
+          <section className="rounded-3xl border border-blue-500/20 bg-slate-950/70 p-5">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 text-2xl">
+                🤖
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">Android Chrome</h2>
+                <p className="text-sm text-slate-400">Fastest install option</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-bold">Desktop Chrome</h2>
-              <p className="text-sm text-slate-400">Windows or Mac</p>
-            </div>
-          </div>
 
-          <ol className="space-y-3 text-sm leading-6 text-slate-300">
-            <li>
-              <span className="font-semibold text-white">1.</span> Open
-              GigAxios in Chrome.
-            </li>
-            <li>
-              <span className="font-semibold text-white">2.</span> Look for the
-              install icon in the address bar.
-            </li>
-            <li>
-              <span className="font-semibold text-white">3.</span> Click{" "}
-              <span className="font-semibold text-white">Install</span>.
-            </li>
-            <li>
-              <span className="font-semibold text-white">4.</span> GigAxios
-              will open like a desktop app.
-            </li>
-          </ol>
-        </section>
+            <ol className="space-y-3 text-sm leading-6 text-slate-300">
+              <li>
+                <span className="font-semibold text-white">1.</span> Open
+                GigAxios in Chrome.
+              </li>
+              <li>
+                <span className="font-semibold text-white">2.</span> Tap the menu
+                button.
+              </li>
+              <li>
+                <span className="font-semibold text-white">3.</span> Tap{" "}
+                <span className="font-semibold text-white">Install app</span> or{" "}
+                <span className="font-semibold text-white">
+                  Add to Home Screen
+                </span>
+                .
+              </li>
+              <li>
+                <span className="font-semibold text-white">4.</span> Confirm the
+                install.
+              </li>
+            </ol>
+          </section>
+        )}
+
+        {(device === "desktop" || device === "unknown") && (
+          <section className="rounded-3xl border border-blue-500/20 bg-slate-950/70 p-5">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/15 text-2xl">
+                💻
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">Desktop Chrome</h2>
+                <p className="text-sm text-slate-400">Windows or Mac</p>
+              </div>
+            </div>
+
+            <ol className="space-y-3 text-sm leading-6 text-slate-300">
+              <li>
+                <span className="font-semibold text-white">1.</span> Open
+                GigAxios in Chrome.
+              </li>
+              <li>
+                <span className="font-semibold text-white">2.</span> Look for the
+                install icon in the address bar.
+              </li>
+              <li>
+                <span className="font-semibold text-white">3.</span> Click{" "}
+                <span className="font-semibold text-white">Install</span>.
+              </li>
+              <li>
+                <span className="font-semibold text-white">4.</span> GigAxios
+                will open like a desktop app.
+              </li>
+            </ol>
+          </section>
+        )}
 
         <div className="rounded-3xl border border-emerald-400/20 bg-emerald-400/5 p-5 shadow-[0_0_30px_rgba(74,222,128,0.10)]">
           <p className="text-center text-sm leading-6 text-slate-300">
@@ -172,6 +203,7 @@ export default function WelcomePage() {
 
         <Link
           href="/dashboard"
+          onClick={() => localStorage.setItem("gigaxios_welcome_seen", "true")}
           className="flex min-h-[56px] items-center justify-center rounded-2xl bg-blue-500 px-6 py-4 text-center text-base font-bold text-white shadow-[0_0_25px_rgba(59,130,246,0.35)] transition active:scale-[0.98]"
         >
           Continue to App

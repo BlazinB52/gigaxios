@@ -25,7 +25,7 @@ export default function LandingPage() {
   const pricingPoints = [
     "14-day free trial",
     "No credit card required",
-    "$3.99/month limited-time rate",
+    "$4.99/month after trial",
     "Cancel anytime",
   ];
 
@@ -142,31 +142,22 @@ export default function LandingPage() {
           <div>
             <p className="text-sm font-extrabold uppercase text-blue-600">Simple Pricing</p>
             <h2 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">
-              Start free. Lock in $3.99/month.
+              Start free. Keep clarity for $4.99/month.
             </h2>
             <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
-              Try GigAxios free first. Subscribe while the limited-time offer is active to lock in the discounted rate.
+              Try GigAxios with full access for 14 days. No card, no pressure, and no surprise upgrade wall.
             </p>
           </div>
 
           <div className="rounded-3xl border border-blue-100 bg-[#041227] p-6 text-white shadow-2xl shadow-blue-950/20 sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-sm font-bold text-sky-200">Limited Time Offer</p>
-                <p className="mt-3 text-sm font-bold text-slate-300">
-                  Regular price <span className="line-through">$4.99/month</span>
-                </p>
-                <p className="mt-2 text-5xl font-extrabold">$3.99<span className="text-lg font-bold text-slate-300">/month</span></p>
+                <p className="text-sm font-bold text-sky-200">14-day free trial</p>
+                <p className="mt-3 text-5xl font-extrabold">$4.99<span className="text-lg font-bold text-slate-300">/month</span></p>
               </div>
               <p className="rounded-full bg-blue-500/15 px-4 py-2 text-sm font-bold text-sky-100">
-                14-day free trial
+                No credit card required
               </p>
-            </div>
-
-            <div className="mt-6 space-y-2 text-sm font-bold leading-6 text-slate-200">
-              <p>Try GigAxios free first.</p>
-              <p>Lock in the discounted rate when you subscribe.</p>
-              <p>Cancel anytime.</p>
             </div>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -193,7 +184,7 @@ export default function LandingPage() {
                 Know what you make before you pay a dollar.
               </h2>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-200">
-                Track every shift free first. After your trial, continue with the limited-time discounted rate of $3.99/month. Regular price is $4.99/month. Cancel anytime.
+                Track every shift for 14 days, then continue for $4.99/month after trial. Cancel anytime.
               </p>
             </div>
 

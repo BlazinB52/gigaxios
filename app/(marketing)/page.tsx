@@ -159,7 +159,7 @@ export default function LandingPage() {
                 <p className="mt-2 text-5xl font-extrabold">$3.99<span className="text-lg font-bold text-slate-300">/month</span></p>
               </div>
               <p className="rounded-full bg-blue-500/15 px-4 py-2 text-sm font-bold text-sky-100">
-                14-day free trial
+                Full access included
               </p>
             </div>
 

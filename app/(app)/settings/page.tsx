@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench } from "lucide-react";
 import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
@@ -447,6 +448,16 @@ export default function SettingsPage() {
                 <span className="max-w-[55%] truncate text-right text-sm text-slate-400">{userEmail}</span>
               </div>
             </div>
+
+            <Link
+              href="/guide"
+              className="mt-3 flex w-full items-center justify-between rounded-xl border border-slate-700 bg-slate-900/50 px-5 py-4 text-sm font-bold text-white transition hover:border-blue-500"
+            >
+              <span>User Guide</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </Link>
 
             <button
               onClick={handleExportData}

@@ -30,6 +30,11 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
+      const { data: { user } } = await supabase.auth.getUser()
+      const welcomeSeen = user?.user_metadata?.welcome_seen
+      if (!welcomeSeen) {
+        return NextResponse.redirect(new URL('/welcome', origin))
+      }
       return NextResponse.redirect(new URL('/dashboard', origin))
     }
   }

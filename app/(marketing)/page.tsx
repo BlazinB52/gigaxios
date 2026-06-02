@@ -1,7 +1,8 @@
-"use client";
-
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 /* =========================================================
    LANDING PAGE
@@ -15,7 +16,39 @@ import Link from "next/link";
    BottomNav exists only within app/(app)/layout.tsx.
    ========================================================= */
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const cookieStore = await cookies();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // Server Components can read cookies for auth, but may not always
+            // be able to write refreshed cookies during render.
+          }
+        },
+      },
+    }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    redirect("/dashboard");
+  }
+
   const benefits = [
     ["Real profit", "See earnings, fuel, mileage, tips, and expenses together."],
     ["Shift clarity", "Understand which days, apps, and routes are actually worth it."],

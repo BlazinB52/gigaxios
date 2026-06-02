@@ -1,7 +1,7 @@
 "use client";
 
 /* =========================================================
-   FUEL PAGE
+   FUEL PAGE---
    ---------------------------------------------------------
    Lets the user log fuel fill-ups (date, odometer, gallons,
    price per gallon, optional notes).  Saves to Supabase and
@@ -22,7 +22,7 @@ import {
 export default function FuelPage() {
 
   /* =========================================================
-     ROUTER
+     ROUTER  no changes made
      Used for redirecting after save or cancel
      ========================================================= */
 

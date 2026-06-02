@@ -3,48 +3,95 @@
 /* =========================================================
    LOGIN PAGE
    ---------------------------------------------------------
-   Magic-link authentication using Supabase OTP.
-   On submit, Supabase emails a secure link that redirects
-   to /auth/callback where the PKCE code is exchanged for
-   a session cookie.
+   Code-first email authentication using Supabase OTP.
+   Supabase may still include a magic link in the email; that
+   remains supported through /auth/callback as a fallback.
    ========================================================= */
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 
 export default function LoginPage() {
+  const router = useRouter();
 
   /* =========================================================
      STATE VARIABLES
      ========================================================= */
 
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState<"email" | "code">("email");
   const [message, setMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   /* =========================================================
-     HANDLE LOGIN
-     Sends a magic link to the entered email address.
-     emailRedirectTo must point to /auth/callback so the
-     PKCE code exchange happens before the user lands on /.
+     SEND CODE
+     Sends a 6-digit email code. Supabase may also include a
+     magic link; emailRedirectTo keeps that fallback working.
      ========================================================= */
 
-  async function handleLogin(event: { preventDefault(): void }) {
-    event.preventDefault();
+  async function sendCode() {
     setMessage("");
+    setIsSending(true);
 
     const { error } = await supabase.auth.signInWithOtp({
-      email,
+      email: email.trim(),
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
 
+    setIsSending(false);
+
     if (error) {
-      setMessage(error.message);
+      setMessage("We could not send a code. Please check your email and try again.");
       return;
     }
 
-    setMessage("Check your email for the login link.");
+    setStep("code");
+    setCode("");
+    setMessage("We sent a 6-digit code to your email.");
+  }
+
+  async function handleSendCode(event: { preventDefault(): void }) {
+    event.preventDefault();
+    await sendCode();
+  }
+
+  /* =========================================================
+     VERIFY CODE
+     Confirms the 6-digit code, then routes the user to the
+     welcome page if they have not seen it, otherwise dashboard.
+     ========================================================= */
+
+  async function handleVerifyCode(event: { preventDefault(): void }) {
+    event.preventDefault();
+    setMessage("");
+    setIsVerifying(true);
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: code.trim(),
+      type: "email",
+    });
+
+    setIsVerifying(false);
+
+    if (error) {
+      setMessage("That code did not work. Please check it and try again.");
+      return;
+    }
+
+    const seenWelcome = localStorage.getItem("gigaxios_welcome_seen") === "true";
+    router.replace(seenWelcome ? "/dashboard" : "/welcome");
+  }
+
+  function handleChangeEmail() {
+    setStep("email");
+    setCode("");
+    setMessage("");
   }
 
   /* =========================================================
@@ -59,33 +106,86 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold">Log in to GigAxios</h1>
 
         <p className="mt-2 text-sm text-slate-400">
-          Enter your email and we&apos;ll send you a secure login link.
+          {step === "email"
+            ? "Enter your email and we'll send you a secure login code."
+            : "Enter the code below."}
         </p>
 
-        {/* EMAIL FORM */}
-        <form onSubmit={handleLogin} className="mt-6 space-y-4">
+        {step === "email" ? (
+          <form onSubmit={handleSendCode} className="mt-6 space-y-4">
 
-          {/* EMAIL INPUT */}
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="Email address"
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-500"
-          />
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Email address"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-500"
+            />
 
-          {/* SUBMIT BUTTON */}
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-blue-500 px-4 py-3 font-semibold text-white"
-          >
-            Send login link
-          </button>
+            <button
+              type="submit"
+              disabled={isSending}
+              className="w-full rounded-xl bg-blue-500 px-4 py-3 font-semibold text-white disabled:opacity-60"
+            >
+              {isSending ? "Sending code..." : "Send code"}
+            </button>
 
-        </form>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyCode} className="mt-6 space-y-4">
 
-        {/* STATUS MESSAGE — shows success or error after submit */}
+            <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
+              We sent a 6-digit code to <span className="font-semibold text-white">{email}</span>.
+            </div>
+
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+              maxLength={6}
+              value={code}
+              onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="6-digit code"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-center text-2xl font-bold tracking-[0.35em] text-white placeholder:text-base placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-500"
+            />
+
+            <button
+              type="submit"
+              disabled={isVerifying || code.length !== 6}
+              className="w-full rounded-xl bg-blue-500 px-4 py-3 font-semibold text-white disabled:opacity-60"
+            >
+              {isVerifying ? "Checking code..." : "Log in"}
+            </button>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={sendCode}
+                disabled={isSending}
+                className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-300 disabled:opacity-60"
+              >
+                {isSending ? "Sending..." : "Send another code"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleChangeEmail}
+                className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-300"
+              >
+                Change email
+              </button>
+            </div>
+
+            <p className="text-center text-xs text-slate-500">
+              Didn't get it? Send another code.
+            </p>
+
+          </form>
+        )}
+
+        {/* STATUS MESSAGE - shows success or error after submit */}
         {message && (
           <p className="mt-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
             {message}
@@ -95,7 +195,7 @@ export default function LoginPage() {
         {/* PRIVACY STATEMENT */}
         <p className="mt-4 text-center text-xs leading-relaxed text-slate-500">
           Your data belongs to you. GigAxios uses your email only for
-          secure account access — never for spam or data sales.
+          secure account access - never for spam or data sales.
         </p>
 
         {/* LEGAL LINKS */}
@@ -106,7 +206,7 @@ export default function LoginPage() {
 
         {/* COPYRIGHT */}
         <p className="mt-6 text-center text-[11px] text-slate-600">
-          © 2026 GigAxios. All rights reserved.
+          Copyright 2026 GigAxios. All rights reserved.
         </p>
 
       </section>

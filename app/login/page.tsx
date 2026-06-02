@@ -4,8 +4,6 @@
    LOGIN PAGE
    ---------------------------------------------------------
    Code-first email authentication using Supabase OTP.
-   Supabase may still include a magic link in the email; that
-   remains supported through /auth/callback as a fallback.
    ========================================================= */
 
 import { useState } from "react";
@@ -28,8 +26,7 @@ export default function LoginPage() {
 
   /* =========================================================
      SEND CODE
-     Sends a 6-digit email code. Supabase may also include a
-     magic link; emailRedirectTo keeps that fallback working.
+     Sends a 6-digit code.
      ========================================================= */
 
   async function sendCode() {
@@ -38,9 +35,6 @@ export default function LoginPage() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
     });
 
     setIsSending(false);
@@ -107,8 +101,8 @@ export default function LoginPage() {
 
         <p className="mt-2 text-sm text-slate-400">
           {step === "email"
-            ? "Enter your email and we'll send you a secure login code."
-            : "Enter the code below."}
+            ? "Enter your email and we'll send you a 6-digit code."
+            : "Enter the 6-digit code from your email."}
         </p>
 
         {step === "email" ? (

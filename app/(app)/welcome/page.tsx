@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
@@ -31,8 +30,8 @@ export default function WelcomePage() {
         return;
       }
 
-      const seen = localStorage.getItem("gigaxios_welcome_seen");
-      if (seen === "true") {
+      const seen = user.user_metadata?.welcome_seen;
+      if (seen) {
         router.replace("/dashboard");
         return;
       }
@@ -201,13 +200,15 @@ export default function WelcomePage() {
           </p>
         </div>
 
-        <Link
-          href="/dashboard"
-          onClick={() => localStorage.setItem("gigaxios_welcome_seen", "true")}
+        <button
+          onClick={async () => {
+            await supabase.auth.updateUser({ data: { welcome_seen: true } });
+            router.push("/dashboard");
+          }}
           className="flex min-h-[56px] items-center justify-center rounded-2xl bg-blue-500 px-6 py-4 text-center text-base font-bold text-white shadow-[0_0_25px_rgba(59,130,246,0.35)] transition active:scale-[0.98]"
         >
           Continue to App
-        </Link>
+        </button>
       </div>
     </main>
   );

@@ -175,6 +175,7 @@ export default function SettingsPage() {
 
   async function handleSignOut() {
     await supabase.auth.signOut();
+    localStorage.removeItem("gigaxios_welcome_seen");
     router.push("/login");
   }
 

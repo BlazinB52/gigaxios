@@ -2,9 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/app/lib/supabaseClient";
 
 /* =========================================================
    LANDING PAGE
@@ -19,16 +16,6 @@ import { supabase } from "@/app/lib/supabaseClient";
    ========================================================= */
 
 export default function LandingPage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.replace("/dashboard");
-      }
-    });
-  }, [router]);
-
   const benefits = [
     ["Real profit", "See earnings, fuel, mileage, tips, and expenses together."],
     ["Shift clarity", "Understand which days, apps, and routes are actually worth it."],

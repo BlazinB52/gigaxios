@@ -3,85 +3,48 @@
 /* =========================================================
    LOGIN PAGE
    ---------------------------------------------------------
-   Email code authentication using Supabase OTP.
-   The user requests a code, enters it in the same browser,
-   and Supabase verifies the token without a magic-link click.
+   Magic-link authentication using Supabase OTP.
+   On submit, Supabase emails a secure link that redirects
+   to /auth/callback where the PKCE code is exchanged for
+   a session cookie.
    ========================================================= */
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { supabase } from "@/app/lib/supabaseClient";
 
 export default function LoginPage() {
-  const router = useRouter();
 
   /* =========================================================
      STATE VARIABLES
      ========================================================= */
 
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
-  const [sendingCode, setSendingCode] = useState(false);
-  const [verifyingCode, setVerifyingCode] = useState(false);
 
   /* =========================================================
-     HANDLE CODE REQUEST
-     Sends a six-digit email verification code.
+     HANDLE LOGIN
+     Sends a magic link to the entered email address.
+     emailRedirectTo must point to /auth/callback so the
+     PKCE code exchange happens before the user lands on /.
      ========================================================= */
 
-  async function handleSendCode(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: { preventDefault(): void }) {
     event.preventDefault();
-    setSendingCode(true);
     setMessage("");
-    setErrorMessage("");
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        shouldCreateUser: true,
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
 
-    setSendingCode(false);
-
     if (error) {
-      setErrorMessage("We could not send a verification code. Please check your email and try again.");
+      setMessage(error.message);
       return;
     }
 
-    setCodeSent(true);
-    setMessage("Check your email for the 6-digit code.");
-  }
-
-  /* =========================================================
-     HANDLE CODE VERIFY
-     Verifies the six-digit email code in the same browser.
-     ========================================================= */
-
-  async function handleVerifyCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setVerifyingCode(true);
-    setMessage("");
-    setErrorMessage("");
-
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token: code.trim(),
-      type: "email",
-    });
-
-    setVerifyingCode(false);
-
-    if (error) {
-      setErrorMessage("That code did not work. Please check it and try again.");
-      return;
-    }
-
-    const welcomeComplete = localStorage.getItem("gigaxios_welcome_complete") === "true";
-    router.replace(welcomeComplete ? "/dashboard" : "/welcome");
+    setMessage("Check your email for the login link.");
   }
 
   /* =========================================================
@@ -96,91 +59,43 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold">Log in to GigAxios</h1>
 
         <p className="mt-2 text-sm text-slate-400">
-          Enter your email and we&apos;ll send you a 6-digit verification code.
+          Enter your email and we&apos;ll send you a secure login link.
         </p>
 
         {/* EMAIL FORM */}
-        <form onSubmit={handleSendCode} className="mt-6 space-y-4">
+        <form onSubmit={handleLogin} className="mt-6 space-y-4">
 
           {/* EMAIL INPUT */}
           <input
             type="email"
             required
             value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setCodeSent(false);
-              setCode("");
-              setMessage("");
-              setErrorMessage("");
-            }}
+            onChange={(event) => setEmail(event.target.value)}
             placeholder="Email address"
-            disabled={sendingCode || verifyingCode}
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-500 disabled:opacity-60"
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-500"
           />
 
           {/* SUBMIT BUTTON */}
           <button
             type="submit"
-            disabled={sendingCode || verifyingCode}
-            className="w-full rounded-xl bg-blue-500 px-4 py-3 font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-xl bg-blue-500 px-4 py-3 font-semibold text-white"
           >
-            {sendingCode ? "Sending code..." : codeSent ? "Send a new code" : "Send verification code"}
+            Send login link
           </button>
 
         </form>
 
-        {codeSent && (
-          <form onSubmit={handleVerifyCode} className="mt-5 space-y-4 rounded-2xl border border-blue-500/20 bg-slate-950/70 p-4">
-            <div>
-              <p className="text-sm font-semibold text-white">Enter the code below to continue.</p>
-              <p className="mt-1 text-sm text-slate-400">Check your email for the 6-digit code.</p>
-            </div>
-
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              required
-              minLength={6}
-              maxLength={6}
-              value={code}
-              onChange={(event) => {
-                setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
-                setErrorMessage("");
-              }}
-              placeholder="000000"
-              disabled={sendingCode || verifyingCode}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-center text-xl font-bold tracking-[0.35em] text-white placeholder:text-slate-600 disabled:opacity-60"
-            />
-
-            <button
-              type="submit"
-              disabled={verifyingCode || code.length !== 6}
-              className="w-full rounded-xl bg-emerald-500 px-4 py-3 font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {verifyingCode ? "Verifying..." : "Continue"}
-            </button>
-          </form>
-        )}
-
-        {/* STATUS MESSAGE */}
+        {/* STATUS MESSAGE — shows success or error after submit */}
         {message && (
-          <p className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+          <p className="mt-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
             {message}
-          </p>
-        )}
-
-        {errorMessage && (
-          <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
-            {errorMessage}
           </p>
         )}
 
         {/* PRIVACY STATEMENT */}
         <p className="mt-4 text-center text-xs leading-relaxed text-slate-500">
           Your data belongs to you. GigAxios uses your email only for
-          secure account access - never for spam or data sales.
+          secure account access — never for spam or data sales.
         </p>
 
         {/* LEGAL LINKS */}
@@ -191,7 +106,7 @@ export default function LoginPage() {
 
         {/* COPYRIGHT */}
         <p className="mt-6 text-center text-[11px] text-slate-600">
-          Copyright 2026 GigAxios. All rights reserved.
+          © 2026 GigAxios. All rights reserved.
         </p>
 
       </section>

@@ -57,8 +57,8 @@ export default async function LandingPage() {
 
   const pricingPoints = [
     "14-day free trial",
-    "No credit card required",
-    "$3.99/month limited-time rate",
+    "No charge today",
+    "$3.99/month for your first year",
     "Cancel anytime",
   ];
 
@@ -116,7 +116,7 @@ export default async function LandingPage() {
               </div>
 
               <p className="mt-5 text-sm font-semibold text-slate-300">
-                Full access during trial. No credit card required.
+                14-day free trial. No charge today. Then $3.99/month for your first year.
               </p>
             </div>
 
@@ -178,7 +178,7 @@ export default async function LandingPage() {
               Start free. Lock in $3.99/month.
             </h2>
             <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
-              Try GigAxios free first. Subscribe while the limited-time offer is active to lock in the discounted rate.
+              14-day free trial. No charge today. Then $3.99/month for your first year.
             </p>
           </div>
 

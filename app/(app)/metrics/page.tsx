@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import { SavedShift } from "@/app/lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import {
   ServiceEntry,
@@ -201,8 +202,7 @@ export default function MetricsPage() {
       return begin > 0 && end > begin ? sum + (end - begin) : sum;
     }, 0);
 
-    /* Total miles driven — first to last odometer reading from fuel entries.
-       Falls back to shift miles if fewer than 2 fuel entries exist. */
+    /* Total miles driven — first to last odometer reading from fuel entries. */
     const sortedFuel = [...yearFuel].sort(
       (a, b) => parseShiftDate(a.date).getTime() - parseShiftDate(b.date).getTime()
     );
@@ -211,13 +211,15 @@ export default function MetricsPage() {
       const firstOdo = Number(sortedFuel[0].odometer);
       const lastOdo = Number(sortedFuel[sortedFuel.length - 1].odometer);
       if (lastOdo > firstOdo) totalMilesDriven = lastOdo - firstOdo;
-    } else if (totalShiftMiles > 0) {
-      totalMilesDriven = totalShiftMiles;
     }
 
-    /* Business use % determines what share of fuel & service cost is work-related */
+    /* Business use % determines what share of service cost is work-related */
     const businessUsePct = getWorkMilePercentage(totalShiftMiles, totalMilesDriven);
-    const workFuelCost = totalFuelCost * businessUsePct;
+    const fuelCostResult = calculateWorkFuelCost({
+      workMiles: totalShiftMiles,
+      fuelEntries: yearFuel,
+    });
+    const workFuelCost = fuelCostResult.workFuelCost;
 
     /* Profitability */
     const netProfit = totalGrossPay - workFuelCost;
@@ -240,15 +242,19 @@ export default function MetricsPage() {
       const mShifts = yearShifts.filter(
         (s) => parseShiftDate(s.date).getMonth() === i
       );
-      const mFuel = yearFuel.filter(
-        (f) => parseShiftDate(f.date).getMonth() === i
-      );
       const mAdjTotal = yearAdjustments
         .filter((a) => new Date(a.week_start + "T12:00:00").getMonth() === i)
         .reduce((sum, a) => sum + Number(a.amount || 0), 0);
       const gross = mShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0) + mAdjTotal;
-      const mFuelCostTotal = mFuel.reduce((sum, f) => sum + Number(f.totalCost || 0), 0);
-      const mWorkFuel = mFuelCostTotal * businessUsePct;
+      const mWorkMiles = mShifts.reduce((sum, s) => {
+        const begin = Number(s.beginningMileage);
+        const end = Number(s.endingMileage);
+        return begin > 0 && end > begin ? sum + (end - begin) : sum;
+      }, 0);
+      const mWorkFuel = calculateWorkFuelCost({
+        workMiles: mWorkMiles,
+        fuelEntries: yearFuel,
+      }).workFuelCost;
       const net = Math.max(gross - mWorkFuel, 0);
       return { month, grossPay: gross, netProfit: net, hasData: mShifts.length > 0 || mAdjTotal > 0 };
     }).filter((m) => m.hasData);
@@ -265,6 +271,7 @@ export default function MetricsPage() {
       totalDeliveries, totalHours, totalGrossPay, totalFuelCost, totalAdjustments,
       totalShiftMiles, totalMilesDriven, businessUsePct,
       workFuelCost, netProfit, netProfitPct, fuelPct,
+      fuelCostNeedsMpg: fuelCostResult.needsMpg,
       hourlyRate, profitPerDelivery,
       yearServiceCost, businessServiceCost, trueNetProfit, trueNetPct, serviceCostPct,
       monthlyData, maxMonthlyValue, avgMpg,
@@ -289,7 +296,7 @@ export default function MetricsPage() {
   const {
     totalDeliveries, totalHours, totalGrossPay, totalAdjustments,
     totalShiftMiles, totalMilesDriven, businessUsePct,
-    workFuelCost, netProfit, netProfitPct, fuelPct,
+    workFuelCost, netProfit, netProfitPct, fuelPct, fuelCostNeedsMpg,
     profitPerDelivery,
     yearServiceCost, businessServiceCost, trueNetProfit, trueNetPct,
     monthlyData, maxMonthlyValue, avgMpg,
@@ -367,8 +374,17 @@ export default function MetricsPage() {
                     { label: "Deliveries",    value: totalDeliveries.toLocaleString(),    sub: "Total" },
                     { label: "Hours Worked",  value: totalHours.toFixed(2),               sub: "Total" },
                     { label: "Gross Pay",     value: fmtDollar(totalGrossPay),            sub: "Total" },
-                    { label: "Fuel Cost",     value: fmtDollar(workFuelCost),             sub: "Work miles only" },
-                    { label: "Net Profit",    value: fmtDollar(netProfit),                sub: "After fuel",  emerald: true },
+                    {
+                      label: "Fuel Cost",
+                      value: fuelCostNeedsMpg ? "Pending" : fmtDollar(workFuelCost),
+                      sub: fuelCostNeedsMpg ? "Add MPG history" : "Work miles only",
+                    },
+                    {
+                      label: "Net Profit",
+                      value: fmtDollar(netProfit),
+                      sub: fuelCostNeedsMpg ? "Fuel cost pending" : "After fuel",
+                      emerald: true,
+                    },
                     { label: "Per Delivery",  value: fmtDollar(profitPerDelivery),        sub: "Average" },
                   ].map(({ label, value, sub, emerald }) => (
                     <div
@@ -390,15 +406,27 @@ export default function MetricsPage() {
             <div className="relative mt-6">
               <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-emerald-500" />
               <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-                <p className="text-sm text-slate-400">You keep</p>
-                <p className="text-4xl font-bold text-emerald-400">{fmtPct(netProfitPct)}</p>
-                <p className="mt-0.5 text-sm text-slate-400">of what you earn (after fuel)</p>
+                {fuelCostNeedsMpg ? (
+                  <>
+                    <p className="text-sm text-slate-400">Fuel history needed</p>
+                    <p className="text-3xl font-bold text-amber-400">Fuel cost pending</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Add another fill-up to calculate after-fuel take-home.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-slate-400">You keep</p>
+                    <p className="text-4xl font-bold text-emerald-400">{fmtPct(netProfitPct)}</p>
+                    <p className="mt-0.5 text-sm text-slate-400">of what you earn (after fuel)</p>
+                  </>
+                )}
 
                 {/* PROGRESS BAR */}
                 <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-slate-800">
                   <div
                     className="h-full rounded-full bg-emerald-500 transition-all duration-700"
-                    style={{ width: `${Math.max(0, Math.min(netProfitPct * 100, 100))}%` }}
+                    style={{ width: `${fuelCostNeedsMpg ? 0 : Math.max(0, Math.min(netProfitPct * 100, 100))}%` }}
                   />
                 </div>
 
@@ -407,21 +435,29 @@ export default function MetricsPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 text-slate-400">
                       <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                      Net Profit
+                      {fuelCostNeedsMpg ? "Profit pending fuel" : "Net Profit"}
                     </span>
                     <span className="text-emerald-400">
                       {fmtDollar(netProfit)}{" "}
-                      <span className="text-slate-500">({fmtPct(netProfitPct)})</span>
+                      {!fuelCostNeedsMpg && (
+                        <span className="text-slate-500">({fmtPct(netProfitPct)})</span>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 text-slate-400">
                       <span className="inline-block h-2 w-2 rounded-full bg-blue-400" />
-                      Fuel Cost
+                      {fuelCostNeedsMpg ? "Fuel cost pending" : "Fuel Cost"}
                     </span>
                     <span className="text-blue-400">
-                      {fmtDollar(workFuelCost)}{" "}
-                      <span className="text-slate-500">({fmtPct(fuelPct)})</span>
+                      {fuelCostNeedsMpg ? (
+                        "Add MPG history"
+                      ) : (
+                        <>
+                          {fmtDollar(workFuelCost)}{" "}
+                          <span className="text-slate-500">({fmtPct(fuelPct)})</span>
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -480,7 +516,7 @@ export default function MetricsPage() {
                     </span>
                     <span className="flex items-center gap-1.5 text-xs text-slate-400">
                       <span className="inline-block h-2 w-4 rounded-sm bg-emerald-500" />
-                      Net Profit
+                      {fuelCostNeedsMpg ? "Profit pending fuel" : "Net Profit"}
                     </span>
                   </div>
                 </section>
@@ -545,8 +581,15 @@ export default function MetricsPage() {
                         )}
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-slate-300">− Work Fuel Cost</span>
-                          <span className="text-sm text-red-400">−{fmtDollar(workFuelCost)}</span>
+                          <span className="text-sm text-red-400">
+                            {fuelCostNeedsMpg ? "Pending" : `−${fmtDollar(workFuelCost)}`}
+                          </span>
                         </div>
+                        {fuelCostNeedsMpg && (
+                          <p className="text-right text-xs text-slate-500">
+                            Add MPG history to estimate fuel cost
+                          </p>
+                        )}
                         <div>
                           <div className="flex items-center justify-between">
                             <span className="text-sm text-slate-300">− Service (your share)</span>
@@ -560,7 +603,9 @@ export default function MetricsPage() {
                         {/* TRUE NET PROFIT */}
                         <div className="border-t border-slate-800 pt-3">
                           <div className="flex items-center justify-between">
-                            <span className="font-semibold text-slate-200">True Net Profit</span>
+                            <span className="font-semibold text-slate-200">
+                              {fuelCostNeedsMpg ? "True Net Profit Pending" : "True Net Profit"}
+                            </span>
                             <span className="text-xl font-bold text-emerald-400">
                               {fmtDollar(trueNetProfit)}
                             </span>
@@ -571,17 +616,25 @@ export default function MetricsPage() {
                       {/* TRUE RETENTION BAR */}
                       <div className="mt-5">
                         <p className="mb-2 text-sm text-slate-300">
-                          You truly keep{" "}
-                          <span className="font-semibold text-emerald-400">{fmtPct(trueNetPct)}</span>
+                          {fuelCostNeedsMpg ? (
+                            "Fuel history needed"
+                          ) : (
+                            <>
+                              You truly keep{" "}
+                              <span className="font-semibold text-emerald-400">{fmtPct(trueNetPct)}</span>
+                            </>
+                          )}
                         </p>
                         <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
                           <div
                             className="h-full rounded-full bg-emerald-500 transition-all duration-700"
-                            style={{ width: `${Math.max(0, Math.min(trueNetPct * 100, 100))}%` }}
+                            style={{ width: `${fuelCostNeedsMpg ? 0 : Math.max(0, Math.min(trueNetPct * 100, 100))}%` }}
                           />
                         </div>
                         <p className="mt-1.5 text-xs text-slate-500">
-                          vs {fmtPct(netProfitPct)} fuel-only view
+                          {fuelCostNeedsMpg
+                            ? "Add another fill-up to calculate after-fuel take-home."
+                            : `vs ${fmtPct(netProfitPct)} fuel-only view`}
                         </p>
                       </div>
                     </div>

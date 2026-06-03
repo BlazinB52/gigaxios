@@ -25,6 +25,7 @@ import { useEffect, useState } from "react";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "@/app/lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import {
   SubscriptionAccessState,
   loadSubscriptionAccess,
@@ -182,36 +183,8 @@ export default function Home() {
 
   /* =========================================================
      FUEL_CALCULATIONS
-     Estimated fuel cost by work miles
+     Shared work-mile fuel cost model
      ========================================================= */
-
-  const estimatedMpg = 20;
-
-  const totalFuelSpend = fuelEntries.reduce((total, entry) => {
-    const cost = Number(entry.totalCost);
-
-    if (!cost) {
-      return total;
-    }
-
-    return total + cost;
-  }, 0);
-
-  const totalGallons = fuelEntries.reduce((total, entry) => {
-    const gallons = Number(entry.gallons);
-
-    if (!gallons) {
-      return total;
-    }
-
-    return total + gallons;
-  }, 0);
-
-  const averagePricePerGallon =
-    totalGallons > 0 ? totalFuelSpend / totalGallons : 0;
-
-  const fuelCostPerMile =
-    estimatedMpg > 0 ? averagePricePerGallon / estimatedMpg : 0;
 
   /* =========================================================
      PAY_CALCULATIONS
@@ -225,8 +198,11 @@ export default function Home() {
      NET_PROFIT_CALCULATIONS
      ========================================================= */
 
-  const workFuelCost =
-    totalWorkMiles > 0 ? totalWorkMiles * fuelCostPerMile : 0;
+  const fuelCostResult = calculateWorkFuelCost({
+    workMiles: totalWorkMiles,
+    fuelEntries,
+  });
+  const workFuelCost = fuelCostResult.workFuelCost;
 
   const netProfit = totalGrossPay - workFuelCost;
 
@@ -338,11 +314,15 @@ export default function Home() {
           </p>
 
           <p className="mt-2 text-slate-400">
-            Net Profit
+            {fuelCostResult.needsMpg ? "Fuel cost pending" : "Net Profit"}
           </p>
 
           <p className="mt-1 text-sm text-slate-500">
-            After estimated fuel cost
+            {fuelCostResult.needsMpg
+              ? "Add MPG history to estimate fuel cost"
+              : fuelCostResult.source === "actual_history"
+                ? "After fuel cost"
+                : "After estimated fuel cost"}
           </p>
 
           {/* MAIN_CARD_METRICS */}

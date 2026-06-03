@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { SavedShift, PayPeriod, PayAdjustment } from "@/app/lib/types";
 import { FuelEntry } from "@/app/lib/fuelStorage";
 
@@ -172,17 +173,11 @@ export default function RecordsPage() {
         (sum, s) => sum + (Number(s.endingMileage || 0) - Number(s.beginningMileage || 0)),
         0
     );
-    const recentFuelDesc = [...fuelEntries]
-        .filter((f) => f.mpg && f.mpg > 0 && f.costPerMile && f.costPerMile > 0)
-        .sort((a, b) => Number(b.odometer) - Number(a.odometer))
-        .slice(0, 5);
-    const rollingMpg = recentFuelDesc.length > 0
-        ? recentFuelDesc.reduce((sum, f) => sum + f.mpg!, 0) / recentFuelDesc.length
-        : 0;
-    const rollingCostPerMile = recentFuelDesc.length > 0
-        ? recentFuelDesc.reduce((sum, f) => sum + f.costPerMile!, 0) / recentFuelDesc.length
-        : 0;
-    const workFuelCost = rollingCostPerMile > 0 ? totalMileage * rollingCostPerMile : 0;
+    const fuelCostResult = calculateWorkFuelCost({
+        workMiles: totalMileage,
+        fuelEntries,
+    });
+    const workFuelCost = fuelCostResult.workFuelCost;
 
     // Gross from shifts (operational)
     const shiftGross = weekShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
@@ -360,14 +355,24 @@ export default function RecordsPage() {
                                 { label: "Adjustments", value: displayAdjustments, color: "text-blue-400" },
                                 { label: "Bonuses", value: displayBonuses, color: "text-yellow-400" },
                                 { label: "Reimbursements", value: displayReimbursements, color: "text-purple-400" },
-                                { label: "Fuel Cost", value: -workFuelCost, color: "text-red-400", note: rollingMpg > 0 ? `${rollingMpg.toFixed(1)} MPG rolling avg` : undefined },
+                                {
+                                    label: "Fuel Cost",
+                                    value: -workFuelCost,
+                                    valueText: fuelCostResult.needsMpg ? "Pending" : undefined,
+                                    color: "text-red-400",
+                                    note: fuelCostResult.needsMpg ? "Add MPG history to estimate fuel cost" : undefined,
+                                },
                             ].map((row) => (
                                 <div key={row.label} className="py-2 border-b border-slate-800 last:border-0">
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-slate-400">{row.label}</span>
                                         <span className={`text-sm font-semibold ${row.color}`}>
-                                            {row.label === "Fuel Cost" && workFuelCost > 0 ? "−" : ""}
-                                            {formatCurrency(Math.abs(row.value))}
+                                            {row.valueText ?? (
+                                                <>
+                                                    {row.label === "Fuel Cost" && workFuelCost > 0 ? "−" : ""}
+                                                    {formatCurrency(Math.abs(row.value))}
+                                                </>
+                                            )}
                                         </span>
                                     </div>
                                     {row.note && (

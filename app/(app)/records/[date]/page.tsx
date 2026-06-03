@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { SavedShift } from "@/app/lib/types";
 import { FuelEntry } from "@/app/lib/fuelStorage";
 
@@ -29,11 +30,6 @@ function formatCurrency(val: number) {
   return val.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-function getWorkMilePercentage(workMiles: number, totalOdometerMiles: number): number {
-  if (totalOdometerMiles <= 0) return 1;
-  return Math.min(workMiles / totalOdometerMiles, 1);
-}
-
 const PLATFORMS = ["GoPuff", "Amazon Flex", "Uber Eats", "DoorDash", "Other"];
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -46,6 +42,7 @@ export default function DayDetailPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [shifts, setShifts] = useState<SavedShift[]>([]);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [allFuelEntries, setAllFuelEntries] = useState<FuelEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [vehicles, setVehicles] = useState<Array<{
@@ -87,6 +84,7 @@ export default function DayDetailPage() {
       ]);
 
       setShifts(allShifts.filter((s) => toISODate(s.date) === dateStr));
+      setAllFuelEntries(allFuel);
       setFuelEntries(allFuel.filter((f) => toISODate(f.date) === dateStr));
 
       const { data: vehicleData } = await supabase
@@ -114,20 +112,11 @@ export default function DayDetailPage() {
   const totalTips = shifts.reduce((sum, s) => sum + Number(s.tips || 0), 0);
   const totalOtherPay = shifts.reduce((sum, s) => sum + Number(s.otherPay || 0), 0);
   const totalGross = shifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
-  const totalFuelCost = fuelEntries.reduce((sum, f) => sum + Number(f.totalCost || 0), 0);
-
-  const highestEndingMileage = shifts.length > 0
-    ? shifts.reduce((max, s) => Math.max(max, Number(s.endingMileage || 0)), 0)
-    : 0;
-  const lowestFuelOdometer = fuelEntries.length > 0
-    ? fuelEntries.reduce((min, f) => Math.min(min, Number(f.odometer || 0)), Infinity)
-    : 0;
-  const totalMilesDriven =
-    highestEndingMileage > lowestFuelOdometer && lowestFuelOdometer > 0
-      ? highestEndingMileage - lowestFuelOdometer
-      : 0;
-  const workMilePct = getWorkMilePercentage(totalMileage, totalMilesDriven);
-  const workFuelCost = totalFuelCost * workMilePct;
+  const fuelCostResult = calculateWorkFuelCost({
+    workMiles: totalMileage,
+    fuelEntries: allFuelEntries,
+  });
+  const workFuelCost = fuelCostResult.workFuelCost;
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -137,6 +126,7 @@ export default function DayDetailPage() {
       loadFuelEntriesFromSupabase(uid),
     ]);
     setShifts(allShifts.filter((s) => toISODate(s.date) === dateStr));
+    setAllFuelEntries(allFuel);
     setFuelEntries(allFuel.filter((f) => toISODate(f.date) === dateStr));
   }
 
@@ -316,13 +306,29 @@ export default function DayDetailPage() {
                 { label: "Base Pay", value: totalBasePay, color: "text-white" },
                 { label: "Tips", value: totalTips, color: "text-emerald-400" },
                 { label: "Other Pay", value: totalOtherPay, color: "text-blue-400" },
-                { label: "Fuel Cost", value: workFuelCost, color: "text-red-400", negative: true },
+                {
+                  label: "Fuel Cost",
+                  value: workFuelCost,
+                  valueText: fuelCostResult.needsMpg ? "Pending" : undefined,
+                  color: "text-red-400",
+                  negative: true,
+                  note: fuelCostResult.needsMpg ? "Add MPG history to estimate fuel cost" : undefined,
+                },
               ].map((row) => (
-                <div key={row.label} className="flex items-center justify-between py-2.5 border-b border-slate-800 last:border-0">
-                  <span className="text-sm text-slate-400">{row.label}</span>
-                  <span className={`text-sm font-semibold ${row.color}`}>
-                    {row.negative && row.value > 0 ? "−" : ""}{formatCurrency(row.value)}
-                  </span>
+                <div key={row.label} className="py-2.5 border-b border-slate-800 last:border-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">{row.label}</span>
+                    <span className={`text-sm font-semibold ${row.color}`}>
+                      {row.valueText ?? (
+                        <>
+                          {row.negative && row.value > 0 ? "−" : ""}{formatCurrency(row.value)}
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  {row.note && (
+                    <p className="mt-0.5 text-right text-xs text-slate-500">{row.note}</p>
+                  )}
                 </div>
               ))}
 

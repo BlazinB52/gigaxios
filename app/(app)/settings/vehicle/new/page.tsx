@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
+import {
+  SubscriptionAccessState,
+  loadSubscriptionAccess,
+} from "@/app/lib/subscriptionAccess";
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -32,6 +36,9 @@ export default function NewVehiclePage() {
   const [startingOdometer, setStartingOdometer] = useState("");
   const [isPrimary, setIsPrimary] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [accessState, setAccessState] =
+    useState<SubscriptionAccessState | null>(null);
+  const [startingCheckout, setStartingCheckout] = useState(false);
 
   useEffect(() => {
     async function checkExistingVehicles() {
@@ -43,6 +50,12 @@ export default function NewVehiclePage() {
         router.push("/login");
         return;
       }
+
+      const access = await loadSubscriptionAccess({
+        userId: user.id,
+        userCreatedAt: user.created_at,
+      });
+      setAccessState(access);
 
       const { data } = await supabase
         .from("vehicles")
@@ -58,6 +71,10 @@ export default function NewVehiclePage() {
   }, [router]);
 
   async function handleSave() {
+    if (trialRequired) {
+      return;
+    }
+
     if (!year || !make || !model) {
       alert("Year, make, and model are required.");
       return;
@@ -113,8 +130,30 @@ export default function NewVehiclePage() {
     router.push("/settings");
   }
 
+  async function handleStartTrial() {
+    setStartingCheckout(true);
+    try {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        alert(data.error || "Could not start checkout. Please try again.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch {
+      alert("Could not start checkout. Please try again.");
+    } finally {
+      setStartingCheckout(false);
+    }
+  }
+
   const inputClass =
     "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-500";
+  const trialRequired = accessState?.trialRequired ?? false;
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -133,6 +172,30 @@ export default function NewVehiclePage() {
             <p className="mt-1 text-sm text-slate-400">Tell us about your vehicle.</p>
           </div>
         </div>
+
+        {trialRequired && (
+          <section className="mt-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
+            <h2 className="text-lg font-bold">Start your free trial to continue</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Your free GigAxios preview has ended.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Start your 7-day free trial to continue adding vehicles.
+            </p>
+            <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
+              <p>No charge today.</p>
+              <p>Then $3.99/month for your first year.</p>
+              <p>Cancel anytime.</p>
+            </div>
+            <button
+              onClick={handleStartTrial}
+              disabled={startingCheckout}
+              className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white disabled:opacity-60"
+            >
+              {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
+            </button>
+          </section>
+        )}
 
         {/* VEHICLE FORM */}
         <div className="relative mt-6">
@@ -197,10 +260,10 @@ export default function NewVehiclePage() {
 
             <button
               onClick={handleSave}
-              disabled={saving}
-              className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+              disabled={saving || trialRequired}
+              className="mt-5 w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
-              {saving ? "Saving…" : "Add Vehicle"}
+              {saving ? "Saving…" : trialRequired ? "Start Trial to Add Vehicle" : "Add Vehicle"}
             </button>
           </section>
         </div>

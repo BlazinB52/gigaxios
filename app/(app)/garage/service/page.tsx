@@ -14,6 +14,10 @@ import {
   clearIntervalLastDone,
   generateRemindersFromIntervals,
 } from "@/app/lib/garageStorage";
+import {
+  SubscriptionAccessState,
+  loadSubscriptionAccess,
+} from "@/app/lib/subscriptionAccess";
 
 function getTodayLocal(): string {
   const now = new Date();
@@ -66,6 +70,9 @@ function ServicePageInner() {
   const [serviceCost, setServiceCost] = useState("");
   const [serviceNotes, setServiceNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [accessState, setAccessState] =
+    useState<SubscriptionAccessState | null>(null);
+  const [startingCheckout, setStartingCheckout] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -79,6 +86,12 @@ function ServicePageInner() {
       }
 
       setUserId(user.id);
+
+      const access = await loadSubscriptionAccess({
+        userId: user.id,
+        userCreatedAt: user.created_at,
+      });
+      setAccessState(access);
 
       const vid = vehicleIdParam;
       setVehicleId(vid);
@@ -164,6 +177,7 @@ function ServicePageInner() {
   }
 
   async function handleSaveService() {
+    if (trialRequired) return;
     if (!serviceType || !userId) return;
     setSaving(true);
 
@@ -202,7 +216,29 @@ function ServicePageInner() {
     setSaving(false);
   }
 
+  async function handleStartTrial() {
+    setStartingCheckout(true);
+    try {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        alert(data.error || "Could not start checkout. Please try again.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch {
+      alert("Could not start checkout. Please try again.");
+    } finally {
+      setStartingCheckout(false);
+    }
+  }
+
   const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
+  const trialRequired = accessState?.trialRequired ?? false;
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -232,16 +268,44 @@ function ServicePageInner() {
           </div>
         )}
 
+        {trialRequired && (
+          <section className="mt-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
+            <h2 className="text-lg font-bold">Start your free trial to continue</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Your free GigAxios preview has ended.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Start your 7-day free trial to continue adding service records.
+            </p>
+            <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
+              <p>No charge today.</p>
+              <p>Then $3.99/month for your first year.</p>
+              <p>Cancel anytime.</p>
+            </div>
+            <button
+              onClick={handleStartTrial}
+              disabled={startingCheckout}
+              className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white disabled:opacity-60"
+            >
+              {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
+            </button>
+          </section>
+        )}
+
         {/* ADD SERVICE FORM */}
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
             <button
-              onClick={() => setShowForm((v) => !v)}
-              className="flex w-full items-center justify-between"
+              onClick={() => {
+                if (trialRequired) return;
+                setShowForm((v) => !v);
+              }}
+              disabled={trialRequired}
+              className="flex w-full items-center justify-between disabled:cursor-not-allowed"
             >
               <p className="text-lg font-semibold text-white">Add Service</p>
-              <span className="text-2xl font-light text-blue-400">{showForm ? "−" : "+"}</span>
+              <span className="text-2xl font-light text-blue-400">{trialRequired ? "" : showForm ? "−" : "+"}</span>
             </button>
 
             {showForm && (
@@ -313,10 +377,10 @@ function ServicePageInner() {
 
                 <button
                   onClick={handleSaveService}
-                  disabled={saving || !serviceType}
+                  disabled={saving || !serviceType || trialRequired}
                   className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
                 >
-                  {saving ? "Saving…" : "Save Service"}
+                  {saving ? "Saving…" : trialRequired ? "Start Trial to Save Service" : "Save Service"}
                 </button>
                 <button
                   onClick={() => {

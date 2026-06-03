@@ -18,6 +18,10 @@ import {
   loadFuelEntriesFromSupabase,
   saveFuelEntryToSupabase,
 } from "@/app/lib/fuelStorage";
+import {
+  SubscriptionAccessState,
+  loadSubscriptionAccess,
+} from "@/app/lib/subscriptionAccess";
 
 export default function FuelPage() {
 
@@ -42,6 +46,9 @@ export default function FuelPage() {
   const [gallons, setGallons] = useState("");
   const [pricePerGallon, setPricePerGallon] = useState("");
   const [notes, setNotes] = useState("");
+  const [accessState, setAccessState] =
+    useState<SubscriptionAccessState | null>(null);
+  const [startingCheckout, setStartingCheckout] = useState(false);
 
   /* =========================================================
      DATA LOADING
@@ -63,6 +70,12 @@ export default function FuelPage() {
       const entries = await loadFuelEntriesFromSupabase(user.id);
       setFuelEntries(entries);
 
+      const access = await loadSubscriptionAccess({
+        userId: user.id,
+        userCreatedAt: user.created_at,
+      });
+      setAccessState(access);
+
       const { data: vehicleData } = await supabase
         .from("vehicles")
         .select("id, year, make, model, is_primary, status")
@@ -83,6 +96,26 @@ export default function FuelPage() {
     load();
   }, [router]);
 
+  const trialRequired = accessState?.trialRequired ?? false;
+
+  async function handleStartTrial() {
+    setStartingCheckout(true);
+    try {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        return;
+      }
+
+      window.location.href = data.url;
+    } finally {
+      setStartingCheckout(false);
+    }
+  }
+
   /* =========================================================
      SAVE FUEL ENTRY
      Validates required fields, builds a FuelEntry object,
@@ -90,6 +123,10 @@ export default function FuelPage() {
      ========================================================= */
 
   async function handleSaveFuel() {
+    if (trialRequired) {
+      return;
+    }
+
     if (!date || !odometer || !gallons || !pricePerGallon) {
       alert("Date, odometer, gallons, and price per gallon are required.");
       return;
@@ -148,6 +185,30 @@ export default function FuelPage() {
             Track fill-ups, gallons, and fuel cost.
           </p>
         </div>
+
+        {trialRequired && (
+          <section className="rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
+            <h2 className="text-lg font-bold">Start your free trial to continue</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Your free GigAxios preview has ended.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Start your 7-day free trial to continue adding shifts and fuel entries.
+            </p>
+            <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
+              <p>No charge today.</p>
+              <p>Then $3.99/month for your first year.</p>
+              <p>Cancel anytime.</p>
+            </div>
+            <button
+              onClick={handleStartTrial}
+              disabled={startingCheckout}
+              className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white disabled:opacity-60"
+            >
+              {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
+            </button>
+          </section>
+        )}
 
         {/* =====================================================
             ADD FUEL FORM
@@ -228,9 +289,10 @@ export default function FuelPage() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={handleSaveFuel}
-                className="rounded-xl bg-blue-500 py-2 font-bold text-white"
+                disabled={trialRequired}
+                className="rounded-xl bg-blue-500 py-2 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
-                Save Fuel Entry
+                {trialRequired ? "Start Trial" : "Save Fuel Entry"}
               </button>
 
               <button

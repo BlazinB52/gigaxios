@@ -25,6 +25,10 @@ import { useEffect, useState } from "react";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "@/app/lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import {
+  SubscriptionAccessState,
+  loadSubscriptionAccess,
+} from "@/app/lib/subscriptionAccess";
 
 /* =========================================================
    HOME COMPONENT
@@ -48,6 +52,10 @@ export default function Home() {
   const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
 
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [accessState, setAccessState] =
+    useState<SubscriptionAccessState | null>(null);
+  const [startingCheckout, setStartingCheckout] = useState(false);
+  const [hasPostShiftSignal, setHasPostShiftSignal] = useState(false);
 
   const activeShift = savedShifts.find((shift) => shift.status === "open");
 
@@ -70,6 +78,12 @@ export default function Home() {
 
       const shifts = await loadShiftsFromSupabase(user.id);
       setSavedShifts(shifts);
+
+      const access = await loadSubscriptionAccess({
+        userId: user.id,
+        userCreatedAt: user.created_at,
+      });
+      setAccessState(access);
     }
 
     loadCloudShifts();
@@ -91,6 +105,14 @@ export default function Home() {
     loadCloudFuel();
 
   }, [router]);
+
+  useEffect(() => {
+    const shiftEnded = sessionStorage.getItem("gigaxios_shift_ended") === "1";
+    if (shiftEnded) {
+      sessionStorage.removeItem("gigaxios_shift_ended");
+      setHasPostShiftSignal(true);
+    }
+  }, []);
 
   /* =========================================================
     ACTIVE_SHIFT_LOOKUP
@@ -243,6 +265,39 @@ export default function Home() {
 
   const netPerDelivery =
     totalDeliveries > 0 ? netProfit / totalDeliveries : 0;
+
+  const isSubscribed = accessState?.isSubscribed ?? false;
+  const trialRequired = accessState?.trialRequired ?? false;
+  const showPostShiftCtaModal =
+    !isSubscribed &&
+    !trialRequired &&
+    hasPostShiftSignal;
+
+  function dismissPostShiftModal() {
+    setHasPostShiftSignal(false);
+    sessionStorage.removeItem("gigaxios_shift_ended");
+  }
+
+  async function handleStartTrial() {
+    setStartingCheckout(true);
+    try {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        alert(data.error || "Could not start checkout. Please try again.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch {
+      alert("Could not start checkout. Please try again.");
+    } finally {
+      setStartingCheckout(false);
+    }
+  }
   /* =========================================================
      MAIN_PAGE_RENDER
      ========================================================= */
@@ -416,16 +471,97 @@ export default function Home() {
 
       </div>
 
+      {showPostShiftCtaModal && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 px-5 pb-24 pt-8 sm:items-center sm:pb-8">
+          <section className="w-full max-w-md rounded-3xl border border-blue-500/30 bg-slate-950 p-5 text-white shadow-2xl shadow-black/40">
+            <div className="flex items-start justify-between gap-4">
+              <h2 className="text-2xl font-bold leading-tight">
+                See what you actually made today
+              </h2>
+              <button
+                type="button"
+                onClick={dismissPostShiftModal}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-700 text-xl text-slate-400"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-slate-300">
+              GigAxios has started turning your shift data into real profit insight.
+            </p>
+
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              Start your free 7-day trial to continue after your preview period.
+            </p>
+
+            <div className="mt-4 space-y-1 text-sm font-semibold text-slate-200">
+              <p>No charge today.</p>
+              <p>Then $3.99/month for your first year.</p>
+              <p>Cancel anytime.</p>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              <button
+                type="button"
+                onClick={dismissPostShiftModal}
+                className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white"
+              >
+                View My Results
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartTrial}
+                disabled={startingCheckout}
+                className="w-full rounded-full border border-slate-700 bg-slate-900 px-4 py-3 text-base font-bold text-slate-200 disabled:opacity-60"
+              >
+                {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {/* =====================================================
          HOME_ACTION_PANEL
        ===================================================== */}
       <section className="fixed bottom-20 left-0 right-0 z-40 mx-auto max-w-md px-5">
-        <div className="rounded-3xl border border-slate-700 bg-slate-950/95 p-3 shadow-2xl">
+        <div className="space-y-3 rounded-3xl border border-slate-700 bg-slate-950/95 p-3 shadow-2xl">
+          {trialRequired && !activeShift && (
+            <div className="rounded-2xl border border-blue-500/30 bg-blue-950/30 p-4">
+              <h2 className="text-lg font-bold">Start your free trial to continue</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Your free GigAxios preview has ended.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Start your 7-day free trial to continue adding shifts and fuel entries.
+              </p>
+              <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
+                <p>No charge today.</p>
+                <p>Then $3.99/month for your first year.</p>
+                <p>Cancel anytime.</p>
+              </div>
+              <button
+                onClick={handleStartTrial}
+                disabled={startingCheckout}
+                className="mt-4 w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white disabled:opacity-60"
+              >
+                {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
+              </button>
+            </div>
+          )}
+
           <button
-            onClick={() => router.push("/shifts")}
-            className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white"
+            onClick={() => {
+              if (trialRequired && !activeShift) return;
+              router.push("/shifts");
+            }}
+            disabled={trialRequired && !activeShift}
+            className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
           >
-            {activeShift ? "→ End Shift" : "→ Start Shift"}
+            {activeShift ? "→ End Shift" : trialRequired ? "Start Trial to Continue" : "→ Start Shift"}
           </button>
         </div>
       </section>

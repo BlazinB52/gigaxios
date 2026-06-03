@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen, Cre
 import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import { Vehicle, loadVehiclesFromSupabase } from "@/app/lib/garageStorage";
+import { formatTrialEndDate } from "@/app/lib/subscriptionAccess";
 import JSZip from "jszip";
 
 function toCSV(rows: Record<string, unknown>[]): string {
@@ -45,6 +46,7 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 type BillingSubscription = {
   status: string | null;
   stripe_subscription_id: string | null;
+  trial_end: string | null;
 };
 
 export default function SettingsPage() {
@@ -104,7 +106,7 @@ export default function SettingsPage() {
 
       const { data: subscriptionData } = await supabase
         .from("subscriptions")
-        .select("status, stripe_subscription_id")
+        .select("status, stripe_subscription_id, trial_end")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -246,6 +248,7 @@ export default function SettingsPage() {
   const canStartTrial =
     !hasStripeSubscription ||
     ["", "none", "canceled", "unpaid"].includes(billingStatus);
+  const trialEndText = formatTrialEndDate(billingSubscription?.trial_end ?? null);
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -515,13 +518,23 @@ export default function SettingsPage() {
             </div>
 
             <div className="mt-4 grid gap-3 border-t border-slate-800 pt-4">
+              {billingStatus === "trialing" && (
+                <div className="rounded-2xl border border-emerald-400/30 bg-emerald-950/20 p-4">
+                  <p className="text-sm font-bold text-emerald-300">Free Trial Active</p>
+                  <p className="mt-1 text-sm text-slate-300">
+                    {trialEndText ? `Ends ${trialEndText}` : "Your trial is active."}
+                  </p>
+                  {/* Future: send 3-day and 1-day trial ending reminders. */}
+                </div>
+              )}
+
               {canStartTrial && (
                 <button
                   onClick={handleStartTrial}
                   disabled={startingCheckout}
                   className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
                 >
-                  {startingCheckout ? "Opening checkout..." : "Start 14-Day Free Trial"}
+                  {startingCheckout ? "Opening checkout..." : "Start 7-Day Free Trial"}
                 </button>
               )}
 

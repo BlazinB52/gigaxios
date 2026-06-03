@@ -52,12 +52,13 @@ export default async function LandingPage() {
   const benefits = [
     ["Real profit", "See earnings, fuel, mileage, tips, and expenses together."],
     ["Shift clarity", "Understand which days, apps, and routes are actually worth it."],
-    ["Full access", "Use every tracker and insight during your trial."],
+    ["Full access", "Use every tracker and insight during your free preview."],
   ];
 
   const pricingPoints = [
-    "14-day free trial",
+    "7-day free preview",
     "No charge today",
+    "7-day free trial when you subscribe",
     "$3.99/month for your first year",
     "Cancel anytime",
   ];
@@ -87,7 +88,7 @@ export default async function LandingPage() {
           <div className="grid items-center gap-12 pb-16 pt-14 md:grid-cols-[1.05fr_0.95fr] md:pb-24 md:pt-20">
             <div>
               <p className="inline-flex rounded-full border border-sky-300/30 bg-sky-400/10 px-4 py-2 text-sm font-bold text-sky-200">
-                14-day free trial
+                7-day free preview
               </p>
 
               <h1 className="mt-6 max-w-3xl text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
@@ -108,7 +109,7 @@ export default async function LandingPage() {
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
                 <Link href="/login" className="rounded-2xl bg-blue-500 px-7 py-4 text-center text-base font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
-                  Start your free trial
+                  Start free
                 </Link>
                 <a href="#pricing" className="rounded-2xl border border-white/20 px-7 py-4 text-center text-base font-bold text-slate-100 transition hover:border-sky-300 hover:text-white">
                   View pricing
@@ -116,7 +117,7 @@ export default async function LandingPage() {
               </div>
 
               <p className="mt-5 text-sm font-semibold text-slate-300">
-                14-day free trial. No charge today. Then $3.99/month for your first year.
+                7-day free preview. No charge today. Then start a 7-day free trial before your first charge.
               </p>
             </div>
 
@@ -178,7 +179,7 @@ export default async function LandingPage() {
               Start free. Lock in $3.99/month.
             </h2>
             <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
-              14-day free trial. No charge today. Then $3.99/month for your first year.
+              7-day free preview. No charge today. Then start a 7-day free trial before your first charge.
             </p>
           </div>
 
@@ -211,7 +212,7 @@ export default async function LandingPage() {
             </div>
 
             <Link href="/login" className="mt-8 block rounded-2xl bg-blue-500 px-7 py-4 text-center font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
-              Start your free trial
+              Start free
             </Link>
           </div>
         </div>
@@ -221,12 +222,12 @@ export default async function LandingPage() {
         <div className="mx-auto max-w-7xl rounded-3xl border border-white/10 bg-white/[0.05] p-8 shadow-2xl shadow-black/30 sm:p-10">
           <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center">
             <div>
-              <p className="text-sm font-extrabold uppercase text-sky-200">Full access during trial</p>
+              <p className="text-sm font-extrabold uppercase text-sky-200">Full access during preview</p>
               <h2 className="mt-3 max-w-3xl text-3xl font-extrabold tracking-tight sm:text-5xl">
                 Know what you make before you pay a dollar.
               </h2>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-200">
-                Track every shift free first. After your trial, continue with the limited-time discounted rate of $3.99/month. Regular price is $4.99/month. Cancel anytime.
+                Track every shift free first. After your preview and trial, continue with the limited-time discounted rate of $3.99/month. Regular price is $4.99/month. Cancel anytime.
               </p>
             </div>
 

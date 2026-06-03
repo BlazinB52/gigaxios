@@ -13,6 +13,10 @@ import {
   saveServiceIntervalsToSupabase,
   generateRemindersFromIntervals,
 } from "@/app/lib/garageStorage";
+import {
+  SubscriptionAccessState,
+  loadSubscriptionAccess,
+} from "@/app/lib/subscriptionAccess";
 
 const DEFAULT_INTERVALS: Array<{
   serviceType: string;
@@ -55,6 +59,9 @@ export default function IntervalsPage() {
   );
   const [intervalsSaving, setIntervalsSaving] = useState(false);
   const [intervalsSaved, setIntervalsSaved] = useState(false);
+  const [accessState, setAccessState] =
+    useState<SubscriptionAccessState | null>(null);
+  const [startingCheckout, setStartingCheckout] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -68,6 +75,12 @@ export default function IntervalsPage() {
       }
 
       setUserId(user.id);
+
+      const access = await loadSubscriptionAccess({
+        userId: user.id,
+        userCreatedAt: user.created_at,
+      });
+      setAccessState(access);
 
       const loadedVehicles = await loadVehiclesFromSupabase(user.id);
       setVehicles(loadedVehicles);
@@ -108,6 +121,7 @@ export default function IntervalsPage() {
   }, [router]);
 
   async function handleSaveIntervals() {
+    if (trialRequired) return;
     if (!userId || !selectedVehicleId) return;
     setIntervalsSaving(true);
     setIntervalsSaved(false);
@@ -129,6 +143,27 @@ export default function IntervalsPage() {
     setIntervalsSaving(false);
     setIntervalsSaved(true);
     setTimeout(() => setIntervalsSaved(false), 3000);
+  }
+
+  async function handleStartTrial() {
+    setStartingCheckout(true);
+    try {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        alert(data.error || "Could not start checkout. Please try again.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch {
+      alert("Could not start checkout. Please try again.");
+    } finally {
+      setStartingCheckout(false);
+    }
   }
 
   async function handleVehicleChange(vehicleId: string) {
@@ -207,6 +242,7 @@ export default function IntervalsPage() {
   }
 
   const smallInputClass = "rounded-xl border border-slate-700 bg-slate-950 p-2 text-sm text-white";
+  const trialRequired = accessState?.trialRequired ?? false;
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -225,6 +261,30 @@ export default function IntervalsPage() {
             <p className="mt-1 text-sm text-slate-400">Set your default maintenance intervals.</p>
           </div>
         </div>
+
+        {trialRequired && (
+          <section className="mt-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
+            <h2 className="text-lg font-bold">Start your free trial to continue</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Your free GigAxios preview has ended.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Start your 7-day free trial to continue saving service intervals.
+            </p>
+            <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
+              <p>No charge today.</p>
+              <p>Then $3.99/month for your first year.</p>
+              <p>Cancel anytime.</p>
+            </div>
+            <button
+              onClick={handleStartTrial}
+              disabled={startingCheckout}
+              className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white disabled:opacity-60"
+            >
+              {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
+            </button>
+          </section>
+        )}
 
         {/* VEHICLE TOGGLE — only shown when user has 2+ active vehicles */}
         {vehicles.length > 1 && (
@@ -328,10 +388,10 @@ export default function IntervalsPage() {
 
             <button
               onClick={handleSaveIntervals}
-              disabled={intervalsSaving}
-              className="mt-5 w-full rounded-2xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-60"
+              disabled={intervalsSaving || trialRequired}
+              className="mt-5 w-full rounded-2xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
-              {intervalsSaving ? "Saving…" : "Save Intervals"}
+              {intervalsSaving ? "Saving…" : trialRequired ? "Start Trial to Save Intervals" : "Save Intervals"}
             </button>
           </section>
         </div>

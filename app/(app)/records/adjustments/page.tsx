@@ -5,6 +5,10 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import { PayAdjustment, AdjustmentType } from "@/app/lib/types";
+import {
+  SubscriptionAccessState,
+  loadSubscriptionAccess,
+} from "@/app/lib/subscriptionAccess";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +65,9 @@ function AdjustmentsContent() {
   const [adjustments, setAdjustments] = useState<PayAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [accessState, setAccessState] =
+    useState<SubscriptionAccessState | null>(null);
+  const [startingCheckout, setStartingCheckout] = useState(false);
 
   const weekEnd = (() => {
     if (!weekStart) return "";
@@ -90,6 +97,12 @@ function AdjustmentsContent() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/login"); return; }
       setUserId(user.id);
+
+      const access = await loadSubscriptionAccess({
+        userId: user.id,
+        userCreatedAt: user.created_at,
+      });
+      setAccessState(access);
 
       const { data, error } = await supabase
         .from("pay_adjustments")
@@ -123,6 +136,7 @@ function AdjustmentsContent() {
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
   async function handleAddAdjustment() {
+    if (trialRequired) return;
     if (!userId || !addAmount || Number(addAmount) <= 0) return;
     setSaving(true);
 
@@ -202,7 +216,29 @@ function AdjustmentsContent() {
     setAdjustments((prev) => prev.filter((a) => a.id !== id));
   }
 
+  async function handleStartTrial() {
+    setStartingCheckout(true);
+    try {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        alert(data.error || "Could not start checkout. Please try again.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch {
+      alert("Could not start checkout. Please try again.");
+    } finally {
+      setStartingCheckout(false);
+    }
+  }
+
   const totalAdjustments = adjustments.reduce((sum, a) => sum + a.amount, 0);
+  const trialRequired = accessState?.trialRequired ?? false;
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -246,6 +282,30 @@ function AdjustmentsContent() {
                 {adjustments.length} adjustment{adjustments.length !== 1 ? "s" : ""} this pay period
               </p>
             </section>
+
+            {trialRequired && (
+              <section className="mt-4 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
+                <h2 className="text-lg font-bold">Start your free trial to continue</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Your free GigAxios preview has ended.
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Start your 7-day free trial to continue adding pay adjustments.
+                </p>
+                <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
+                  <p>No charge today.</p>
+                  <p>Then $3.99/month for your first year.</p>
+                  <p>Cancel anytime.</p>
+                </div>
+                <button
+                  onClick={handleStartTrial}
+                  disabled={startingCheckout}
+                  className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white disabled:opacity-60"
+                >
+                  {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
+                </button>
+              </section>
+            )}
 
             {/* ── Adjustment List ── */}
             <section className="mt-4 space-y-3">
@@ -437,10 +497,14 @@ function AdjustmentsContent() {
             {/* ── Add Button ── */}
             {!showAddForm && (
               <button
-                onClick={() => setShowAddForm(true)}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-500/40 bg-blue-500/10 p-4 font-semibold text-blue-300 active:bg-blue-500/20"
+                onClick={() => {
+                  if (trialRequired) return;
+                  setShowAddForm(true);
+                }}
+                disabled={trialRequired}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-500/40 bg-blue-500/10 p-4 font-semibold text-blue-300 active:bg-blue-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900/60 disabled:text-slate-500"
               >
-                <span className="text-lg">+</span> Add Adjustment
+                <span className="text-lg">+</span> {trialRequired ? "Start Trial to Add Adjustment" : "Add Adjustment"}
               </button>
             )}
           </>

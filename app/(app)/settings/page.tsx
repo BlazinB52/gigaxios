@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen, CreditCard } from "lucide-react";
 import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import { Vehicle, loadVehiclesFromSupabase } from "@/app/lib/garageStorage";
@@ -42,6 +42,11 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   );
 }
 
+type BillingSubscription = {
+  status: string | null;
+  stripe_subscription_id: string | null;
+};
+
 export default function SettingsPage() {
   const router = useRouter();
 
@@ -56,6 +61,10 @@ export default function SettingsPage() {
   const [workPaySaved, setWorkPaySaved] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [startingCheckout, setStartingCheckout] = useState(false);
+  const [openingPortal, setOpeningPortal] = useState(false);
+  const [billingSubscription, setBillingSubscription] =
+    useState<BillingSubscription | null>(null);
 
   async function fetchVehicles(uid: string) {
     const loaded = await loadVehiclesFromSupabase(uid);
@@ -92,6 +101,15 @@ export default function SettingsPage() {
       setUserId(user.id);
       setUserEmail(user.email ?? "");
       await fetchVehicles(user.id);
+
+      const { data: subscriptionData } = await supabase
+        .from("subscriptions")
+        .select("status, stripe_subscription_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      setBillingSubscription((subscriptionData as BillingSubscription | null) ?? null);
+
       setDefaultPlatform(localStorage.getItem("gigaxios-default-platform") || "GoPuff");
       setNotifMaintenance(localStorage.getItem("gigaxios-notif-maintenance") !== "false");
       setIsLoaded(true);
@@ -177,6 +195,57 @@ export default function SettingsPage() {
     await supabase.auth.signOut();
     router.push("/login");
   }
+
+  async function handleStartTrial() {
+    setStartingCheckout(true);
+    try {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        alert(data.error || "Could not start checkout. Please try again.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch {
+      alert("Could not start checkout. Please try again.");
+    } finally {
+      setStartingCheckout(false);
+    }
+  }
+
+  async function handleManageBilling() {
+    setOpeningPortal(true);
+    try {
+      const response = await fetch("/api/stripe/customer-portal", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        alert(data.error || "Could not open billing. Please try again.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch {
+      alert("Could not open billing. Please try again.");
+    } finally {
+      setOpeningPortal(false);
+    }
+  }
+
+  const billingStatus = (billingSubscription?.status ?? "").trim().toLowerCase();
+  const hasStripeSubscription = Boolean(billingSubscription?.stripe_subscription_id);
+  const canManageBilling =
+    hasStripeSubscription &&
+    ["trialing", "active", "past_due"].includes(billingStatus);
+  const canStartTrial =
+    !hasStripeSubscription ||
+    ["", "none", "canceled", "unpaid"].includes(billingStatus);
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -429,6 +498,46 @@ export default function SettingsPage() {
         {/* =====================================================
             SECTION 5 — ACCOUNT
            ===================================================== */}
+        {/* =====================================================
+            SECTION 5 - BILLING
+           ===================================================== */}
+        <div className="relative mt-6">
+          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-950/60">
+                <CreditCard className="h-5 w-5 text-blue-400" />
+              </div>
+              <div>
+                <p className="text-xs font-bold tracking-wider text-slate-400">BILLING</p>
+                <p className="text-sm text-slate-500">Start your trial or manage your subscription.</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 border-t border-slate-800 pt-4">
+              {canStartTrial && (
+                <button
+                  onClick={handleStartTrial}
+                  disabled={startingCheckout}
+                  className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {startingCheckout ? "Opening checkout..." : "Start 14-Day Free Trial"}
+                </button>
+              )}
+
+              {canManageBilling && (
+                <button
+                  onClick={handleManageBilling}
+                  disabled={openingPortal}
+                  className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {openingPortal ? "Opening billing..." : "Manage Billing"}
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
+
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-slate-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">

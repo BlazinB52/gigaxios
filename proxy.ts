@@ -10,6 +10,7 @@ export async function proxy(request: NextRequest) {
     pathname === '/' ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/auth/callback') ||
+    pathname === '/api/stripe/webhook' ||
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/terms')
   ) {
@@ -50,10 +51,10 @@ export async function proxy(request: NextRequest) {
   return response
 }
 
-// Matcher excludes /login, /auth/callback, Next.js internals, and static assets.
+// Matcher excludes /login, /auth/callback, Stripe webhooks, Next.js internals, and static assets.
 // The function body also guards /login and /auth/callback explicitly as a second layer.
 export const config = {
   matcher: [
-    '/((?!login|auth/callback|privacy|terms|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!login|auth/callback|api/stripe/webhook|privacy|terms|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

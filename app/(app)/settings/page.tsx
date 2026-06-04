@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen, CreditCard } from "lucide-react";
+import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen, CreditCard, Trash2, X } from "lucide-react";
 import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import { Vehicle, loadVehiclesFromSupabase } from "@/app/lib/garageStorage";
@@ -65,6 +65,10 @@ export default function SettingsPage() {
   const [exporting, setExporting] = useState(false);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState("");
   const [billingSubscription, setBillingSubscription] =
     useState<BillingSubscription | null>(null);
 
@@ -196,6 +200,46 @@ export default function SettingsPage() {
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/login");
+  }
+
+  function openDeleteDialog() {
+    setDeleteConfirmation("");
+    setDeleteAccountError("");
+    setDeleteDialogOpen(true);
+  }
+
+  function closeDeleteDialog() {
+    if (deletingAccount) return;
+    setDeleteDialogOpen(false);
+    setDeleteConfirmation("");
+    setDeleteAccountError("");
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteConfirmation !== "delete my account") return;
+
+    setDeletingAccount(true);
+    setDeleteAccountError("");
+
+    try {
+      const response = await fetch("/api/account/delete", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setDeleteAccountError(data.error || "Could not delete your account. Please try again.");
+        return;
+      }
+
+      await supabase.auth.signOut();
+      router.push(data.redirectTo || "/");
+      router.refresh();
+    } catch {
+      setDeleteAccountError("Could not delete your account. Please try again.");
+    } finally {
+      setDeletingAccount(false);
+    }
   }
 
   async function handleStartTrial() {
@@ -591,8 +635,16 @@ export default function SettingsPage() {
             </p>
 
             <button
+              onClick={openDeleteDialog}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/60 bg-red-950/50 px-4 py-3 text-sm font-bold text-red-200 shadow-[0_0_18px_rgba(248,113,113,0.12)] transition hover:border-red-400/80 disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Account
+            </button>
+
+            <button
               onClick={handleSignOut}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-300"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-300"
             >
               <LogOut className="h-4 w-4" />
               Sign Out
@@ -623,6 +675,80 @@ export default function SettingsPage() {
         </div>
 
       </div>
+      {deleteDialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/70 px-4 pb-4 pt-16 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-title"
+        >
+          <div className="w-full max-w-md rounded-3xl border border-red-500/30 bg-slate-950 p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p
+                  id="delete-account-title"
+                  className="text-xl font-bold text-white"
+                >
+                  Delete account permanently?
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  This will permanently delete your GigAxios account and all app records, including shifts, fuel entries, pay records, vehicles, service history, maintenance reminders, settings, and saved account data.
+                </p>
+              </div>
+              <button
+                onClick={closeDeleteDialog}
+                disabled={deletingAccount}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-50"
+                aria-label="Close delete account dialog"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
+              <p className="font-semibold text-red-200">This action cannot be undone.</p>
+              <p>
+                Billing and payment records may remain with Stripe as required for legal, tax, fraud prevention, refund, or chargeback purposes.
+              </p>
+              <p>
+                To confirm, type: <span className="font-bold text-white">delete my account</span>
+              </p>
+            </div>
+
+            <input
+              value={deleteConfirmation}
+              onChange={(event) => setDeleteConfirmation(event.target.value)}
+              disabled={deletingAccount}
+              className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-red-400 disabled:opacity-60"
+              placeholder="delete my account"
+              autoComplete="off"
+            />
+
+            {deleteAccountError && (
+              <p className="mt-3 rounded-2xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+                {deleteAccountError}
+              </p>
+            )}
+
+            <div className="mt-5 grid gap-3">
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmation !== "delete my account" || deletingAccount}
+                className="w-full rounded-2xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-red-950 disabled:text-red-300 disabled:opacity-60"
+              >
+                {deletingAccount ? "Deleting account..." : "Permanently Delete My Account"}
+              </button>
+              <button
+                onClick={closeDeleteDialog}
+                disabled={deletingAccount}
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm font-bold text-slate-200 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <BottomNav />
     </main>
   );

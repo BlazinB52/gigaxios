@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getStripe } from "@/app/lib/stripe";
 import { getSupabaseAdmin } from "@/app/lib/supabaseAdmin";
+import { sendAccountDeletedAdminEmail } from "@/app/lib/adminDeletionEmail";
 
 const APP_TABLES = [
   "pay_adjustments",
@@ -95,7 +96,7 @@ async function cancelStripeSubscriptions(userId: string) {
   }
 
   if (!data?.stripe_subscription_id && !data?.stripe_customer_id) {
-    return;
+    return false;
   }
 
   const stripe = getStripe();
@@ -134,6 +135,8 @@ async function cancelStripeSubscriptions(userId: string) {
       throw error;
     }
   }
+
+  return true;
 }
 
 async function deleteUserRows(userId: string) {
@@ -149,7 +152,16 @@ async function deleteUserRows(userId: string) {
   }
 }
 
-export async function POST() {
+async function getDeletionReason(request: Request) {
+  try {
+    const body = await request.json();
+    return typeof body?.reason === "string" ? body.reason : "";
+  } catch {
+    return "";
+  }
+}
+
+export async function POST(request: Request) {
   try {
     const { user, supabase } = await getCurrentUserAndClient();
 
@@ -157,17 +169,36 @@ export async function POST() {
       return NextResponse.json({ error: "Please log in first." }, { status: 401 });
     }
 
-    await cancelStripeSubscriptions(user.id);
-    await deleteUserRows(user.id);
+    const userId = user.id;
+    const userEmail = user.email ?? "";
+    const reason = await getDeletionReason(request);
+    const stripeCancellationAttempted = await cancelStripeSubscriptions(userId);
+    await deleteUserRows(userId);
 
     const supabaseAdmin = getSupabaseAdmin();
     const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(
-      user.id,
+      userId,
       true
     );
 
     if (deleteUserError) {
       throw new Error("Could not delete the account.");
+    }
+
+    const deletedAt = new Date().toISOString();
+
+    try {
+      await sendAccountDeletedAdminEmail({
+        userId,
+        email: userEmail,
+        reason,
+        deletedAt,
+        stripeCancellationAttempted,
+        appRecordsDeleted: true,
+        authUserDeleted: true,
+      });
+    } catch (emailError) {
+      console.warn("Failed to send account deletion admin email:", emailError);
     }
 
     await supabase.auth.signOut();

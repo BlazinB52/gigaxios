@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen, Cre
 import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import { Vehicle, loadVehiclesFromSupabase } from "@/app/lib/garageStorage";
-import { formatTrialEndDate } from "@/app/lib/subscriptionAccess";
+import { canAccessFullApp, formatTrialEndDate } from "@/app/lib/subscriptionAccess";
 import JSZip from "jszip";
 
 function toCSV(rows: Record<string, unknown>[]): string {
@@ -47,7 +47,18 @@ type BillingSubscription = {
   status: string | null;
   stripe_subscription_id: string | null;
   trial_end: string | null;
+  cancel_at_period_end: boolean | null;
+  current_period_end: string | null;
 };
+
+const DELETE_ACCOUNT_REASONS = [
+  "Too expensive",
+  "I don't use GigAxios enough",
+  "Missing a feature I need",
+  "I had a problem with the app",
+  "Switching to another solution",
+  "Other",
+];
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -66,6 +77,8 @@ export default function SettingsPage() {
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteDialogStep, setDeleteDialogStep] = useState<"feedback" | "confirm">("feedback");
+  const [deleteReason, setDeleteReason] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState("");
@@ -110,7 +123,7 @@ export default function SettingsPage() {
 
       const { data: subscriptionData } = await supabase
         .from("subscriptions")
-        .select("status, stripe_subscription_id, trial_end")
+        .select("status, stripe_subscription_id, trial_end, cancel_at_period_end, current_period_end")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -203,6 +216,8 @@ export default function SettingsPage() {
   }
 
   function openDeleteDialog() {
+    setDeleteDialogStep("feedback");
+    setDeleteReason("");
     setDeleteConfirmation("");
     setDeleteAccountError("");
     setDeleteDialogOpen(true);
@@ -211,6 +226,8 @@ export default function SettingsPage() {
   function closeDeleteDialog() {
     if (deletingAccount) return;
     setDeleteDialogOpen(false);
+    setDeleteDialogStep("feedback");
+    setDeleteReason("");
     setDeleteConfirmation("");
     setDeleteAccountError("");
   }
@@ -224,6 +241,10 @@ export default function SettingsPage() {
     try {
       const response = await fetch("/api/account/delete", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reason: deleteReason }),
       });
       const data = await response.json();
 
@@ -232,6 +253,10 @@ export default function SettingsPage() {
         return;
       }
 
+      if (userId) {
+        localStorage.removeItem(`gigaxios_welcome_seen:${userId}`);
+      }
+      localStorage.removeItem("gigaxios_welcome_seen");
       await supabase.auth.signOut();
       router.push(data.redirectTo || "/");
       router.refresh();
@@ -286,13 +311,36 @@ export default function SettingsPage() {
 
   const billingStatus = (billingSubscription?.status ?? "").trim().toLowerCase();
   const hasStripeSubscription = Boolean(billingSubscription?.stripe_subscription_id);
-  const canManageBilling =
-    hasStripeSubscription &&
-    ["trialing", "active", "past_due"].includes(billingStatus);
+  const isCancellingAtPeriodEnd = billingSubscription?.cancel_at_period_end === true;
+  const hasFullSubscriptionAccess = canAccessFullApp(billingStatus);
+  const canManageBilling = hasStripeSubscription && hasFullSubscriptionAccess;
   const canStartTrial =
-    !hasStripeSubscription ||
-    ["", "none", "canceled", "unpaid"].includes(billingStatus);
+    (!hasStripeSubscription || !hasFullSubscriptionAccess) &&
+    (!hasStripeSubscription ||
+      ["", "none", "canceled", "incomplete", "incomplete_expired", "expired", "unpaid"].includes(
+        billingStatus
+      ));
   const trialEndText = formatTrialEndDate(billingSubscription?.trial_end ?? null);
+  const periodEndText = formatTrialEndDate(billingSubscription?.current_period_end ?? null);
+  const accessEndText = billingStatus === "trialing"
+    ? trialEndText || periodEndText
+    : periodEndText;
+  const billingStatusLabel = isCancellingAtPeriodEnd
+    ? billingStatus === "trialing"
+      ? "Trial Cancelled"
+      : "Subscription Cancelled"
+    : billingStatus === "trialing"
+      ? "Free Trial Active"
+      : billingStatus === "past_due"
+        ? "Subscription Past Due"
+        : "Subscription Active";
+  const billingStatusDetail = isCancellingAtPeriodEnd
+    ? billingStatus === "trialing"
+      ? `Access remains available until your trial ends.${accessEndText ? ` Ends ${accessEndText}.` : ""}`
+      : `Access remains available until the current billing period ends.${accessEndText ? ` Ends ${accessEndText}.` : ""}`
+    : billingStatus === "trialing" && trialEndText
+      ? `Trial ends ${trialEndText}`
+      : "Your current plan is enabled.";
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -562,11 +610,11 @@ export default function SettingsPage() {
             </div>
 
             <div className="mt-4 grid gap-3 border-t border-slate-800 pt-4">
-              {billingStatus === "trialing" && (
+              {hasStripeSubscription && hasFullSubscriptionAccess && (
                 <div className="rounded-2xl border border-emerald-400/30 bg-emerald-950/20 p-4">
-                  <p className="text-sm font-bold text-emerald-300">Free Trial Active</p>
+                  <p className="text-sm font-bold text-emerald-300">{billingStatusLabel}</p>
                   <p className="mt-1 text-sm text-slate-300">
-                    {trialEndText ? `Ends ${trialEndText}` : "Your trial is active."}
+                    {billingStatusDetail}
                   </p>
                   {/* Future: send 3-day and 1-day trial ending reminders. */}
                 </div>
@@ -578,7 +626,7 @@ export default function SettingsPage() {
                   disabled={startingCheckout}
                   className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
                 >
-                  {startingCheckout ? "Opening checkout..." : "Start 7-Day Free Trial"}
+                  {startingCheckout ? "Opening checkout..." : "Start Subscription"}
                 </button>
               )}
 
@@ -588,7 +636,7 @@ export default function SettingsPage() {
                   disabled={openingPortal}
                   className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
                 >
-                  {openingPortal ? "Opening billing..." : "Manage Billing"}
+                  {openingPortal ? "Opening subscription..." : "Manage Subscription"}
                 </button>
               )}
             </div>
@@ -683,69 +731,152 @@ export default function SettingsPage() {
           aria-labelledby="delete-account-title"
         >
           <div className="w-full max-w-md rounded-3xl border border-red-500/30 bg-slate-950 p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p
-                  id="delete-account-title"
-                  className="text-xl font-bold text-white"
-                >
-                  Delete account permanently?
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  This will permanently delete your GigAxios account and all app records, including shifts, fuel entries, pay records, vehicles, service history, maintenance reminders, settings, and saved account data.
-                </p>
-              </div>
-              <button
-                onClick={closeDeleteDialog}
-                disabled={deletingAccount}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-50"
-                aria-label="Close delete account dialog"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+            {deleteDialogStep === "feedback" ? (
+              <>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p
+                      id="delete-account-title"
+                      className="text-xl font-bold text-white"
+                    >
+                      We're sorry to see you go.
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      Before deleting your account, would you mind telling us why?
+                    </p>
+                  </div>
+                  <button
+                    onClick={closeDeleteDialog}
+                    disabled={deletingAccount}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-50"
+                    aria-label="Close delete account dialog"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
 
-            <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
-              <p className="font-semibold text-red-200">This action cannot be undone.</p>
-              <p>
-                Billing and payment records may remain with Stripe as required for legal, tax, fraud prevention, refund, or chargeback purposes.
-              </p>
-              <p>
-                To confirm, type: <span className="font-bold text-white">delete my account</span>
-              </p>
-            </div>
+                <div className="mt-5 grid gap-2">
+                  {DELETE_ACCOUNT_REASONS.map((reason) => (
+                    <label
+                      key={reason}
+                      className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
+                        deleteReason === reason
+                          ? "border-blue-400 bg-blue-950/30 text-white"
+                          : "border-slate-700 bg-slate-900/60 text-slate-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="delete-account-reason"
+                        value={reason}
+                        checked={deleteReason === reason}
+                        onChange={() => setDeleteReason(reason)}
+                        className="h-4 w-4 accent-blue-500"
+                      />
+                      <span>{reason}</span>
+                    </label>
+                  ))}
+                </div>
 
-            <input
-              value={deleteConfirmation}
-              onChange={(event) => setDeleteConfirmation(event.target.value)}
-              disabled={deletingAccount}
-              className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-red-400 disabled:opacity-60"
-              placeholder="delete my account"
-              autoComplete="off"
-            />
+                <div className="mt-5 rounded-2xl border border-slate-700 bg-slate-900/70 p-4">
+                  <p className="text-sm font-bold text-white">Need help first?</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-300">
+                    Contact support and we'll be happy to help.
+                  </p>
+                </div>
 
-            {deleteAccountError && (
-              <p className="mt-3 rounded-2xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-200">
-                {deleteAccountError}
-              </p>
+                <div className="mt-5 grid gap-3">
+                  <a
+                    href="mailto:support@gigaxios.com?subject=Help%20with%20my%20GigAxios%20account"
+                    className="flex w-full items-center justify-center rounded-2xl border border-blue-400/50 bg-slate-900/80 px-4 py-3 text-sm font-bold text-blue-200"
+                  >
+                    Contact Support
+                  </a>
+                  <button
+                    onClick={() => {
+                      setDeleteAccountError("");
+                      setDeleteDialogStep("confirm");
+                    }}
+                    disabled={!deleteReason}
+                    className="w-full rounded-2xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-red-950 disabled:text-red-300 disabled:opacity-60"
+                  >
+                    Continue to Delete Account
+                  </button>
+                  <button
+                    onClick={closeDeleteDialog}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm font-bold text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p
+                      id="delete-account-title"
+                      className="text-xl font-bold text-white"
+                    >
+                      Delete account permanently?
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      This will permanently delete your GigAxios account and all app records, including shifts, fuel entries, pay records, vehicles, service history, maintenance reminders, settings, and saved account data.
+                    </p>
+                  </div>
+                  <button
+                    onClick={closeDeleteDialog}
+                    disabled={deletingAccount}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-50"
+                    aria-label="Close delete account dialog"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
+                  <p className="font-semibold text-red-200">This action cannot be undone.</p>
+                  <p>
+                    Billing and payment records may remain with Stripe as required for legal, tax, fraud prevention, refund, or chargeback purposes.
+                  </p>
+                  <p>
+                    To confirm, type: <span className="font-bold text-white">delete my account</span>
+                  </p>
+                </div>
+
+                <input
+                  value={deleteConfirmation}
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                  disabled={deletingAccount}
+                  className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-red-400 disabled:opacity-60"
+                  placeholder="delete my account"
+                  autoComplete="off"
+                />
+
+                {deleteAccountError && (
+                  <p className="mt-3 rounded-2xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+                    {deleteAccountError}
+                  </p>
+                )}
+
+                <div className="mt-5 grid gap-3">
+                  <button
+                    onClick={handleDeleteAccount}
+                    disabled={deleteConfirmation !== "delete my account" || deletingAccount}
+                    className="w-full rounded-2xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-red-950 disabled:text-red-300 disabled:opacity-60"
+                  >
+                    {deletingAccount ? "Deleting account..." : "Permanently Delete My Account"}
+                  </button>
+                  <button
+                    onClick={closeDeleteDialog}
+                    disabled={deletingAccount}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm font-bold text-slate-200 disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
             )}
-
-            <div className="mt-5 grid gap-3">
-              <button
-                onClick={handleDeleteAccount}
-                disabled={deleteConfirmation !== "delete my account" || deletingAccount}
-                className="w-full rounded-2xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-red-950 disabled:text-red-300 disabled:opacity-60"
-              >
-                {deletingAccount ? "Deleting account..." : "Permanently Delete My Account"}
-              </button>
-              <button
-                onClick={closeDeleteDialog}
-                disabled={deletingAccount}
-                className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm font-bold text-slate-200 disabled:opacity-60"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
         </div>
       )}

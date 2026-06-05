@@ -1,7 +1,7 @@
 "use client";
 
 /* =========================================================
-   GIGAXIOS HOME PAGE--
+   GIGAXIOS HOME PAGE
    ---------------------------------------------------------
    Main dashboard screen for mobile-first gig tracking app.
    This screen shows:
@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 
 
 /* =========================================================
-   STORAGE IMPORTS------
+   STORAGE IMPORTS
    ========================================================= */
 
 import { loadShiftsFromSupabase } from "@/app/lib/storage";

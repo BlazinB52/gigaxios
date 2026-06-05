@@ -29,10 +29,17 @@ export async function sendWelcomeEmailForNewUser(userId: string) {
     const appMetadata = user.app_metadata ?? {};
 
     if (appMetadata[WELCOME_EMAIL_SENT_METADATA_KEY]) {
+      console.info("Skipping welcome email because it was already sent.", {
+        userId,
+      });
       return;
     }
 
     if (!isNewAccount(user.created_at)) {
+      console.info("Skipping welcome email because the account is not new.", {
+        userId,
+        created_at: user.created_at,
+      });
       return;
     }
 
@@ -52,6 +59,7 @@ export async function sendWelcomeEmailForNewUser(userId: string) {
       });
     } catch (emailError) {
       console.warn("Failed to send welcome email:", emailError);
+      return;
     }
 
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
@@ -66,7 +74,14 @@ export async function sendWelcomeEmailForNewUser(userId: string) {
 
     if (updateError) {
       console.warn("Could not mark welcome email as sent:", updateError);
+      return;
     }
+
+    console.info("Marked welcome email as sent in user app_metadata.", {
+      userId,
+      metadata_key: WELCOME_EMAIL_SENT_METADATA_KEY,
+      sent_at: sentAt,
+    });
   } catch (error) {
     console.warn("Welcome email handling failed:", error);
   }

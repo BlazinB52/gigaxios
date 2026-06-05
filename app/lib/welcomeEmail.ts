@@ -5,8 +5,25 @@ type WelcomeEmailPayload = {
 
 export const WELCOME_EMAIL_SENT_METADATA_KEY = "gigaxios_welcome_email_sent_at";
 
+const RESEND_EMAILS_URL = "https://api.resend.com/emails";
+const WELCOME_EMAIL_FROM = "hello@gigaxios.com";
+const WELCOME_EMAIL_SUBJECT =
+  "Welcome to GigAxios \u2014 Know what you actually make";
+
+type ResendEmailResponse = {
+  id?: string;
+  name?: string;
+  message?: string;
+  statusCode?: number;
+};
+
 export async function sendWelcomeEmail(payload: WelcomeEmailPayload) {
-  const subject = "Welcome to GigAxios — Know what you actually make";
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("Missing RESEND_API_KEY for welcome email.");
+  }
+
   const body = [
     "Hi,",
     "",
@@ -42,16 +59,35 @@ export async function sendWelcomeEmail(payload: WelcomeEmailPayload) {
     "— The GigAxios Team",
   ].join("\n");
 
-  // TODO: Wire this to the production email provider once configured.
-  // Expected future config: provider API key, verified sender domain for
-  // hello@gigaxios.com, and any required template/domain settings. Until then,
-  // log the intended welcome email server-side without blocking signup.
-  console.warn("Welcome email provider is not configured yet.");
-  console.info("Intended welcome email:", {
-    from: "hello@gigaxios.com",
-    to: payload.email,
-    subject,
-    body,
-    user_id: payload.userId,
+  const response = await fetch(RESEND_EMAILS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: WELCOME_EMAIL_FROM,
+      to: payload.email,
+      subject: WELCOME_EMAIL_SUBJECT,
+      text: body,
+    }),
   });
+
+  const result = (await response.json().catch(() => ({}))) as ResendEmailResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      `Resend welcome email failed with status ${response.status}: ${
+        result.message || result.name || "Unknown error"
+      }`
+    );
+  }
+
+  console.info("Welcome email sent through Resend.", {
+    user_id: payload.userId,
+    to: payload.email,
+    resend_email_id: result.id ?? null,
+  });
+
+  return result;
 }

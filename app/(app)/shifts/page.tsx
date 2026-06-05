@@ -318,6 +318,7 @@ export default function ShiftsPage() {
                                 <option value="Amazon Flex">Amazon Flex</option>
                                 <option value="Uber Eats">Uber Eats</option>
                                 <option value="DoorDash">DoorDash</option>
+                                <option value="Shipt">Shipt</option>
                                 <option value="Other">Other</option>
                             </select>
                             <div className="relative">

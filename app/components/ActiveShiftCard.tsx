@@ -5,6 +5,11 @@ type ActiveShiftCardProps = {
 
     endingMileage: string;
     setEndingMileage: (value: string) => void;
+    allowEndMileageException: boolean;
+    setAllowEndMileageException: (value: boolean) => void;
+    endMileageExceptionReason: string;
+    setEndMileageExceptionReason: (value: string) => void;
+    showEndMileageException: boolean;
 
     deliveries: string;
     setDeliveries: (value: string) => void;
@@ -28,6 +33,11 @@ export default function ActiveShiftCard({
     activeShift,
     endingMileage,
     setEndingMileage,
+    allowEndMileageException,
+    setAllowEndMileageException,
+    endMileageExceptionReason,
+    setEndMileageExceptionReason,
+    showEndMileageException,
     deliveries,
     setDeliveries,
     hoursWorked,
@@ -60,6 +70,31 @@ export default function ActiveShiftCard({
                     placeholder="Ending Mileage"
                     className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
                 />
+
+                {showEndMileageException && (
+                    <div className="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-4">
+                        <p className="text-sm leading-6 text-amber-100">
+                            This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.
+                        </p>
+                        <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-white">
+                            <input
+                                type="checkbox"
+                                checked={allowEndMileageException}
+                                onChange={(event) => setAllowEndMileageException(event.target.checked)}
+                                className="h-4 w-4 accent-blue-500"
+                            />
+                            Allow mileage exception
+                        </label>
+                        {allowEndMileageException && (
+                            <textarea
+                                value={endMileageExceptionReason}
+                                onChange={(event) => setEndMileageExceptionReason(event.target.value)}
+                                placeholder="Reason for exception"
+                                className="mt-3 min-h-20 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                            />
+                        )}
+                    </div>
+                )}
 
                 <input
                     type="number"

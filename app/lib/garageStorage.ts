@@ -33,6 +33,8 @@ export type ServiceEntry = {
   serviceType: string;
   cost: string;
   notes: string;
+  overrideMileageValidation?: boolean;
+  overrideMileageReason?: string | null;
 };
 
 export type MaintenanceReminder = {
@@ -103,6 +105,8 @@ export async function loadServiceEntriesFromSupabase(
     serviceType: entry.service_type ?? "",
     cost: entry.cost ?? "",
     notes: entry.notes ?? "",
+    overrideMileageValidation: entry.override_mileage_validation ?? false,
+    overrideMileageReason: entry.override_mileage_reason ?? null,
   }));
 }
 
@@ -115,6 +119,10 @@ export async function saveServiceEntryToSupabase(entry: ServiceEntry) {
     service_type: entry.serviceType,
     cost: entry.cost || null,
     notes: entry.notes,
+    override_mileage_validation: entry.overrideMileageValidation ?? false,
+    override_mileage_reason: entry.overrideMileageValidation
+      ? entry.overrideMileageReason || null
+      : null,
   });
 
   if (error) {

@@ -39,6 +39,12 @@ const fmtPct = (n: number) => (n * 100).toFixed(1) + "%";
 /** Formats a number as a dollar string, e.g. 123.4 → "$123.40" */
 const fmtDollar = (n: number) => "$" + fmt(n);
 
+function parseOptionalDateTime(value: string | undefined): number {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 /* =========================================================
    DATE PARSING
    Handles both MM/DD/YYYY (legacy) and YYYY-MM-DD formats.
@@ -203,9 +209,15 @@ export default function MetricsPage() {
     }, 0);
 
     /* Total miles driven — first to last odometer reading from fuel entries. */
-    const sortedFuel = [...yearFuel].sort(
-      (a, b) => parseShiftDate(a.date).getTime() - parseShiftDate(b.date).getTime()
-    );
+    const sortedFuel = [...yearFuel].sort((a, b) => {
+      const dateDiff = parseShiftDate(a.date).getTime() - parseShiftDate(b.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+
+      const odometerDiff = Number(a.odometer || 0) - Number(b.odometer || 0);
+      if (odometerDiff !== 0) return odometerDiff;
+
+      return parseOptionalDateTime(a.createdAt) - parseOptionalDateTime(b.createdAt);
+    });
     let totalMilesDriven = 0;
     if (sortedFuel.length >= 2) {
       const firstOdo = Number(sortedFuel[0].odometer);
@@ -261,8 +273,10 @@ export default function MetricsPage() {
 
     const maxMonthlyValue = Math.max(...monthlyData.map((m) => m.grossPay), 1);
 
-    /* Average MPG from fuel entries that have an mpg value */
-    const validMpgEntries = fuelEntries.filter((f) => f.mpg && f.mpg > 0);
+    /* Average MPG from full fill-up fuel entries that have an mpg value */
+    const validMpgEntries = fuelEntries.filter(
+      (f) => (f.isFullFillUp ?? true) && f.mpg && f.mpg > 0
+    );
     const avgMpg = validMpgEntries.length > 0
       ? validMpgEntries.reduce((sum, f) => sum + f.mpg!, 0) / validMpgEntries.length
       : 0;
@@ -560,7 +574,7 @@ export default function MetricsPage() {
                     {avgMpg > 0 && (
                       <div className="mt-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-slate-300">Avg MPG</span>
+                          <span className="text-sm text-slate-300">Avg MPG from full fill-ups</span>
                           <span className="font-semibold text-amber-400">{avgMpg.toFixed(1)}</span>
                         </div>
                         <p className="mt-0.5 text-xs text-slate-500">all-time average</p>

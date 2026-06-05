@@ -13,6 +13,10 @@ export type FuelEntry = {
   notes: string;
   mpg?: number;
   costPerMile?: number;
+  createdAt?: string;
+  isFullFillUp?: boolean;
+  overrideMileageValidation?: boolean;
+  overrideMileageReason?: string | null;
 };
 
 const STORAGE_KEY = "gigaxios-fuel";
@@ -76,6 +80,10 @@ export async function loadFuelEntriesFromSupabase(userId: string) {
     notes: entry.notes ?? "",
     mpg: entry.mpg != null ? Number(entry.mpg) : undefined,
     costPerMile: entry.cost_per_mile != null ? Number(entry.cost_per_mile) : undefined,
+    createdAt: entry.created_at ?? undefined,
+    isFullFillUp: entry.is_full_fill_up ?? true,
+    overrideMileageValidation: entry.override_mileage_validation ?? false,
+    overrideMileageReason: entry.override_mileage_reason ?? null,
   }));
 }
 
@@ -83,26 +91,30 @@ export async function saveFuelEntryToSupabase(entry: FuelEntry) {
   const currentOdometer = Number(entry.odometer);
   const currentGallons = Number(entry.gallons);
   const currentPpg = Number(entry.pricePerGallon);
-
-  const { data: prevData } = await supabase
-    .from("fuel_entries")
-    .select("odometer")
-    .eq("user_id", entry.userId)
-    .lt("odometer", currentOdometer)
-    .order("odometer", { ascending: false })
-    .limit(1);
+  const isFullFillUp = entry.isFullFillUp ?? true;
 
   let milesSinceLastFillup: number | null = null;
   let mpg: number | null = null;
   let costPerMile: number | null = null;
 
-  if (prevData && prevData.length > 0) {
-    const miles = currentOdometer - Number(prevData[0].odometer);
-    if (miles > 0 && currentGallons > 0) {
-      milesSinceLastFillup = miles;
-      mpg = miles / currentGallons;
-      if (mpg > 0 && currentPpg > 0) {
-        costPerMile = currentPpg / mpg;
+  if (isFullFillUp) {
+    const { data: prevData } = await supabase
+      .from("fuel_entries")
+      .select("odometer")
+      .eq("user_id", entry.userId)
+      .eq("is_full_fill_up", true)
+      .lt("odometer", currentOdometer)
+      .order("odometer", { ascending: false })
+      .limit(1);
+
+    if (prevData && prevData.length > 0) {
+      const miles = currentOdometer - Number(prevData[0].odometer);
+      if (miles > 0 && currentGallons > 0) {
+        milesSinceLastFillup = miles;
+        mpg = miles / currentGallons;
+        if (mpg > 0 && currentPpg > 0) {
+          costPerMile = currentPpg / mpg;
+        }
       }
     }
   }
@@ -116,9 +128,14 @@ export async function saveFuelEntryToSupabase(entry: FuelEntry) {
     price_per_gallon: entry.pricePerGallon,
     total_cost: entry.totalCost,
     notes: entry.notes,
+    is_full_fill_up: isFullFillUp,
     miles_since_last_fillup: milesSinceLastFillup,
     mpg,
     cost_per_mile: costPerMile,
+    override_mileage_validation: entry.overrideMileageValidation ?? false,
+    override_mileage_reason: entry.overrideMileageValidation
+      ? entry.overrideMileageReason || null
+      : null,
   });
 
   if (error) {

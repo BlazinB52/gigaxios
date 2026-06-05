@@ -11,6 +11,10 @@ import {
     SubscriptionAccessState,
     loadSubscriptionAccess,
 } from "@/app/lib/subscriptionAccess";
+import {
+    loadHighestMileageReading,
+    needsMileageException,
+} from "@/app/lib/mileageValidation";
 
 
 export default function ShiftsPage() {
@@ -23,6 +27,11 @@ export default function ShiftsPage() {
     const [shiftDate, setShiftDate] = useState("");
     const [beginningMileage, setBeginningMileage] = useState("");
     const [endingMileage, setEndingMileage] = useState("");
+    const [allowStartMileageException, setAllowStartMileageException] = useState(false);
+    const [startMileageExceptionReason, setStartMileageExceptionReason] = useState("");
+    const [allowEndMileageException, setAllowEndMileageException] = useState(false);
+    const [endMileageExceptionReason, setEndMileageExceptionReason] = useState("");
+    const [endMileageThreshold, setEndMileageThreshold] = useState<number | null>(null);
 
     const [deliveries, setDeliveries] = useState("");
     const [hoursWorked, setHoursWorked] = useState("");
@@ -79,6 +88,28 @@ export default function ShiftsPage() {
     const activeShift = savedShifts.find((shift) => shift.status === "open");
     const isSubscribed = accessState?.isSubscribed ?? false;
     const trialRequired = accessState?.trialRequired ?? false;
+    const showEndMileageException = needsMileageException({
+        mileage: endingMileage,
+        highestMileage: endMileageThreshold,
+    });
+
+    useEffect(() => {
+        async function loadEndMileageThreshold() {
+            if (!activeShift) {
+                setEndMileageThreshold(null);
+                return;
+            }
+
+            const highest = await loadHighestMileageReading({
+                userId: activeShift.userId,
+                vehicleId: activeShift.vehicleId,
+            });
+
+            setEndMileageThreshold(highest);
+        }
+
+        loadEndMileageThreshold();
+    }, [activeShift?.id, activeShift?.userId, activeShift?.vehicleId]);
 
     async function handleStartTrial() {
         setStartingCheckout(true);
@@ -131,16 +162,41 @@ export default function ShiftsPage() {
             return;
         }
 
+        const highestMileage = await loadHighestMileageReading({
+            userId: user.id,
+            vehicleId: selectedVehicleId || undefined,
+        });
+        const startMileageIsLower = needsMileageException({
+            mileage: beginningMileage,
+            highestMileage,
+        });
+
+        if (
+            startMileageIsLower &&
+            (!allowStartMileageException || startMileageExceptionReason.trim().length === 0)
+        ) {
+            alert("This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.");
+            return;
+        }
+
 
         // New Shift Block
 
         const newShift: SavedShift = {
             id: crypto.randomUUID(),
             userId: user.id,
+            vehicleId: selectedVehicleId || undefined,
             platform,
             date: shiftDate,
             beginningMileage,
             endingMileage: "",
+            startMileageOverride: startMileageIsLower && allowStartMileageException,
+            startMileageOverrideReason:
+                startMileageIsLower && allowStartMileageException
+                    ? startMileageExceptionReason.trim()
+                    : null,
+            endMileageOverride: false,
+            endMileageOverrideReason: null,
             deliveries: "",
             hoursWorked: "",
             basePay: "",
@@ -153,6 +209,8 @@ export default function ShiftsPage() {
         setSavedShifts([...existingShifts, newShift]);
         setShiftDate("");
         setBeginningMileage("");
+        setAllowStartMileageException(false);
+        setStartMileageExceptionReason("");
 
         await supabase.from("shifts").insert({
             id: newShift.id,
@@ -162,6 +220,12 @@ export default function ShiftsPage() {
             platform: newShift.platform ?? null,
             beginning_mileage: newShift.beginningMileage,
             ending_mileage: newShift.endingMileage,
+            start_mileage_override: newShift.startMileageOverride ?? false,
+            start_mileage_override_reason: newShift.startMileageOverride
+                ? newShift.startMileageOverrideReason || null
+                : null,
+            end_mileage_override: false,
+            end_mileage_override_reason: null,
             deliveries: newShift.deliveries ?? null,
             hours_worked: newShift.hoursWorked ?? null,
             base_pay: newShift.basePay ?? null,
@@ -182,6 +246,23 @@ export default function ShiftsPage() {
             return;
         }
 
+        const highestMileage = await loadHighestMileageReading({
+            userId: activeShift.userId,
+            vehicleId: activeShift.vehicleId,
+        });
+        const endMileageIsLower = needsMileageException({
+            mileage: endingMileage,
+            highestMileage,
+        });
+
+        if (
+            endMileageIsLower &&
+            (!allowEndMileageException || endMileageExceptionReason.trim().length === 0)
+        ) {
+            alert("This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.");
+            return;
+        }
+
         const calculatedGrossPay =
             Number(basePay || 0) + Number(tips || 0) + Number(otherPay || 0);
 
@@ -196,6 +277,11 @@ export default function ShiftsPage() {
                     tips,
                     otherPay,
                     grossPay: calculatedGrossPay.toFixed(2),
+                    endMileageOverride: endMileageIsLower && allowEndMileageException,
+                    endMileageOverrideReason:
+                        endMileageIsLower && allowEndMileageException
+                            ? endMileageExceptionReason.trim()
+                            : null,
                     status: "closed" as const,
                 };
             }
@@ -212,11 +298,18 @@ export default function ShiftsPage() {
         setBasePay("");
         setTips("");
         setOtherPay("");
+        setAllowEndMileageException(false);
+        setEndMileageExceptionReason("");
 
         await supabase
             .from("shifts")
             .update({
                 ending_mileage: endingMileage,
+                end_mileage_override: endMileageIsLower && allowEndMileageException,
+                end_mileage_override_reason:
+                    endMileageIsLower && allowEndMileageException
+                        ? endMileageExceptionReason.trim()
+                        : null,
                 deliveries,
                 hours_worked: hoursWorked,
                 base_pay: basePay,
@@ -258,6 +351,11 @@ export default function ShiftsPage() {
                     setTips={setTips}
                     otherPay={otherPay}
                     setOtherPay={setOtherPay}
+                    allowEndMileageException={allowEndMileageException}
+                    setAllowEndMileageException={setAllowEndMileageException}
+                    endMileageExceptionReason={endMileageExceptionReason}
+                    setEndMileageExceptionReason={setEndMileageExceptionReason}
+                    showEndMileageException={showEndMileageException}
                     onEndShift={handleEndShift}
                 />
 
@@ -345,6 +443,29 @@ export default function ShiftsPage() {
                                 placeholder="Beginning Mileage"
                                 className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
                             />
+
+                            <div className="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-4">
+                                <p className="text-sm leading-6 text-amber-100">
+                                    This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.
+                                </p>
+                                <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-white">
+                                    <input
+                                        type="checkbox"
+                                        checked={allowStartMileageException}
+                                        onChange={(event) => setAllowStartMileageException(event.target.checked)}
+                                        className="h-4 w-4 accent-blue-500"
+                                    />
+                                    Allow mileage exception
+                                </label>
+                                {allowStartMileageException && (
+                                    <textarea
+                                        value={startMileageExceptionReason}
+                                        onChange={(event) => setStartMileageExceptionReason(event.target.value)}
+                                        placeholder="Reason for exception"
+                                        className="mt-3 min-h-20 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                                    />
+                                )}
+                            </div>
 
                             <button
                                 onClick={handleStartShift}

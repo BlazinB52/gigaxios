@@ -16,6 +16,10 @@ export type SavedShift = {
 
   beginningMileage: string;
   endingMileage: string;
+  startMileageOverride?: boolean;
+  startMileageOverrideReason?: string | null;
+  endMileageOverride?: boolean;
+  endMileageOverrideReason?: string | null;
 
   deliveries: string;
   hoursWorked: string;

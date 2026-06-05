@@ -22,6 +22,10 @@ import {
   SubscriptionAccessState,
   loadSubscriptionAccess,
 } from "@/app/lib/subscriptionAccess";
+import {
+  loadHighestMileageReading,
+  needsMileageException,
+} from "@/app/lib/mileageValidation";
 
 export default function FuelPage() {
 
@@ -46,6 +50,10 @@ export default function FuelPage() {
   const [gallons, setGallons] = useState("");
   const [pricePerGallon, setPricePerGallon] = useState("");
   const [notes, setNotes] = useState("");
+  const [isFullFillUp, setIsFullFillUp] = useState(true);
+  const [allowMileageException, setAllowMileageException] = useState(false);
+  const [mileageExceptionReason, setMileageExceptionReason] = useState("");
+  const [highestMileage, setHighestMileage] = useState<number | null>(null);
   const [accessState, setAccessState] =
     useState<SubscriptionAccessState | null>(null);
   const [startingCheckout, setStartingCheckout] = useState(false);
@@ -96,7 +104,30 @@ export default function FuelPage() {
     load();
   }, [router]);
 
+  useEffect(() => {
+    async function loadMileageThreshold() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      const highest = await loadHighestMileageReading({
+        userId: user.id,
+        vehicleId: selectedVehicleId || undefined,
+      });
+
+      setHighestMileage(highest);
+    }
+
+    loadMileageThreshold();
+  }, [selectedVehicleId]);
+
   const trialRequired = accessState?.trialRequired ?? false;
+  const showMileageException = needsMileageException({
+    mileage: odometer,
+    highestMileage,
+  });
 
   async function handleStartTrial() {
     setStartingCheckout(true);
@@ -142,6 +173,24 @@ export default function FuelPage() {
     }
 
     const calculatedTotalCost = Number(gallons) * Number(pricePerGallon);
+    const latestHighestMileage = await loadHighestMileageReading({
+      userId: user.id,
+      vehicleId: selectedVehicleId || undefined,
+    });
+    const mileageIsLower = needsMileageException({
+      mileage: odometer,
+      highestMileage: latestHighestMileage,
+    });
+
+    if (
+      mileageIsLower &&
+      (!allowMileageException || mileageExceptionReason.trim().length === 0)
+    ) {
+      alert(
+        "This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data."
+      );
+      return;
+    }
 
     const newEntry: FuelEntry = {
       id: crypto.randomUUID(),
@@ -153,6 +202,12 @@ export default function FuelPage() {
       pricePerGallon,
       totalCost: calculatedTotalCost.toFixed(2),
       notes,
+      isFullFillUp,
+      overrideMileageValidation: mileageIsLower && allowMileageException,
+      overrideMileageReason:
+        mileageIsLower && allowMileageException
+          ? mileageExceptionReason.trim()
+          : null,
     };
 
     const updatedEntries = [newEntry, ...fuelEntries];
@@ -258,6 +313,31 @@ export default function FuelPage() {
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
             />
 
+            {showMileageException && (
+              <div className="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-4">
+                <p className="text-sm leading-6 text-amber-100">
+                  This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.
+                </p>
+                <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-white">
+                  <input
+                    type="checkbox"
+                    checked={allowMileageException}
+                    onChange={(e) => setAllowMileageException(e.target.checked)}
+                    className="h-4 w-4 accent-blue-500"
+                  />
+                  Allow mileage exception
+                </label>
+                {allowMileageException && (
+                  <textarea
+                    value={mileageExceptionReason}
+                    onChange={(e) => setMileageExceptionReason(e.target.value)}
+                    placeholder="Reason for exception"
+                    className="mt-3 min-h-20 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                  />
+                )}
+              </div>
+            )}
+
             {/* GALLONS */}
             <input
               type="number"
@@ -266,6 +346,23 @@ export default function FuelPage() {
               onChange={(e) => setGallons(e.target.value)}
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
             />
+
+            <label className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
+              <input
+                type="checkbox"
+                checked={isFullFillUp}
+                onChange={(e) => setIsFullFillUp(e.target.checked)}
+                className="mt-1 h-4 w-4 accent-blue-500"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-white">
+                  Full fill-up
+                </span>
+                <span className="mt-1 block text-xs text-slate-400">
+                  Use this fuel entry for MPG calculations.
+                </span>
+              </span>
+            </label>
 
             {/* PRICE PER GALLON */}
             <input

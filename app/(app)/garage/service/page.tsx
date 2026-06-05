@@ -18,6 +18,10 @@ import {
   SubscriptionAccessState,
   loadSubscriptionAccess,
 } from "@/app/lib/subscriptionAccess";
+import {
+  loadHighestMileageReading,
+  needsMileageException,
+} from "@/app/lib/mileageValidation";
 
 function getTodayLocal(): string {
   const now = new Date();
@@ -69,6 +73,9 @@ function ServicePageInner() {
   const [serviceOdometer, setServiceOdometer] = useState("");
   const [serviceCost, setServiceCost] = useState("");
   const [serviceNotes, setServiceNotes] = useState("");
+  const [allowMileageException, setAllowMileageException] = useState(false);
+  const [mileageExceptionReason, setMileageExceptionReason] = useState("");
+  const [highestMileage, setHighestMileage] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [accessState, setAccessState] =
     useState<SubscriptionAccessState | null>(null);
@@ -126,6 +133,21 @@ function ServicePageInner() {
     load();
   }, [router, vehicleIdParam]);
 
+  useEffect(() => {
+    async function loadMileageThreshold() {
+      if (!userId) return;
+
+      const highest = await loadHighestMileageReading({
+        userId,
+        vehicleId: selectedVehicleId || undefined,
+      });
+
+      setHighestMileage(highest);
+    }
+
+    loadMileageThreshold();
+  }, [userId, selectedVehicleId]);
+
   async function handleDeleteEntry(id: string) {
     if (!userId) return;
 
@@ -181,6 +203,26 @@ function ServicePageInner() {
     if (!serviceType || !userId) return;
     setSaving(true);
 
+    const highestMileage = await loadHighestMileageReading({
+      userId,
+      vehicleId: selectedVehicleId || undefined,
+    });
+    const mileageIsLower = needsMileageException({
+      mileage: serviceOdometer,
+      highestMileage,
+    });
+
+    if (
+      mileageIsLower &&
+      (!allowMileageException || mileageExceptionReason.trim().length === 0)
+    ) {
+      alert(
+        "This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data."
+      );
+      setSaving(false);
+      return;
+    }
+
     const entry: ServiceEntry = {
       id: crypto.randomUUID(),
       userId,
@@ -190,6 +232,11 @@ function ServicePageInner() {
       serviceType,
       cost: serviceCost,
       notes: serviceNotes,
+      overrideMileageValidation: mileageIsLower && allowMileageException,
+      overrideMileageReason:
+        mileageIsLower && allowMileageException
+          ? mileageExceptionReason.trim()
+          : null,
     };
 
     await saveServiceEntryToSupabase(entry);
@@ -212,6 +259,8 @@ function ServicePageInner() {
     setServiceOdometer("");
     setServiceCost("");
     setServiceNotes("");
+    setAllowMileageException(false);
+    setMileageExceptionReason("");
     setShowForm(false);
     setSaving(false);
   }
@@ -239,6 +288,10 @@ function ServicePageInner() {
 
   const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
   const trialRequired = accessState?.trialRequired ?? false;
+  const showMileageException = needsMileageException({
+    mileage: serviceOdometer,
+    highestMileage,
+  });
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -360,6 +413,31 @@ function ServicePageInner() {
                   className={inputClass}
                 />
 
+                {showMileageException && (
+                  <div className="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-4">
+                    <p className="text-sm leading-6 text-amber-100">
+                      This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.
+                    </p>
+                    <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-white">
+                      <input
+                        type="checkbox"
+                        checked={allowMileageException}
+                        onChange={(e) => setAllowMileageException(e.target.checked)}
+                        className="h-4 w-4 accent-blue-500"
+                      />
+                      Allow mileage exception
+                    </label>
+                    {allowMileageException && (
+                      <textarea
+                        value={mileageExceptionReason}
+                        onChange={(e) => setMileageExceptionReason(e.target.value)}
+                        placeholder="Reason for exception"
+                        className={`${inputClass} mt-3 min-h-20`}
+                      />
+                    )}
+                  </div>
+                )}
+
                 <input
                   type="number"
                   placeholder="Cost ($)"
@@ -389,6 +467,8 @@ function ServicePageInner() {
                     setServiceOdometer("");
                     setServiceCost("");
                     setServiceNotes("");
+                    setAllowMileageException(false);
+                    setMileageExceptionReason("");
                     setShowForm(false);
                   }}
                   className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300"

@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
@@ -19,6 +18,7 @@ export default function WelcomePage() {
   const router = useRouter();
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [device, setDevice] = useState("unknown");
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     async function checkUser() {
@@ -31,12 +31,15 @@ export default function WelcomePage() {
         return;
       }
 
-      const seen = localStorage.getItem("gigaxios_welcome_seen");
+      const welcomeKey = `gigaxios_welcome_seen:${user.id}`;
+      const seen = localStorage.getItem(welcomeKey);
       if (seen === "true") {
         router.replace("/dashboard");
         return;
       }
 
+      localStorage.removeItem("gigaxios_welcome_seen");
+      setUserId(user.id);
       setDevice(getDevice());
       setCheckingAuth(false);
     }
@@ -201,13 +204,19 @@ export default function WelcomePage() {
           </p>
         </div>
 
-        <Link
-          href="/dashboard"
-          onClick={() => localStorage.setItem("gigaxios_welcome_seen", "true")}
+        <button
+          type="button"
+          onClick={() => {
+            if (userId) {
+              localStorage.setItem(`gigaxios_welcome_seen:${userId}`, "true");
+            }
+            localStorage.removeItem("gigaxios_welcome_seen");
+            router.replace("/dashboard");
+          }}
           className="flex min-h-[56px] items-center justify-center rounded-2xl bg-blue-500 px-6 py-4 text-center text-base font-bold text-white shadow-[0_0_25px_rgba(59,130,246,0.35)] transition active:scale-[0.98]"
         >
           Continue to App
-        </Link>
+        </button>
       </div>
     </main>
   );

@@ -65,7 +65,7 @@ export default function LoginPage() {
     setMessage("");
     setIsVerifying(true);
 
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       email: email.trim(),
       token: code.trim(),
       type: "email",
@@ -78,7 +78,17 @@ export default function LoginPage() {
       return;
     }
 
-    const seenWelcome = localStorage.getItem("gigaxios_welcome_seen") === "true";
+    const user =
+      data.user ??
+      (await supabase.auth.getUser()).data.user;
+
+    if (!user) {
+      setMessage("We could not verify your session. Please try logging in again.");
+      return;
+    }
+
+    const seenWelcome =
+      localStorage.getItem(`gigaxios_welcome_seen:${user.id}`) === "true";
     router.replace(seenWelcome ? "/dashboard" : "/welcome");
   }
 

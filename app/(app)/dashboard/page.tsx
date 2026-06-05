@@ -108,12 +108,21 @@ export default function Home() {
   }, [router]);
 
   useEffect(() => {
+    if (!accessState) return;
+
     const shiftEnded = sessionStorage.getItem("gigaxios_shift_ended") === "1";
-    if (shiftEnded) {
-      sessionStorage.removeItem("gigaxios_shift_ended");
-      setHasPostShiftSignal(true);
-    }
-  }, []);
+    if (!shiftEnded) return;
+
+    sessionStorage.removeItem("gigaxios_shift_ended");
+    setHasPostShiftSignal(!accessState.isSubscribed);
+  }, [accessState]);
+
+  useEffect(() => {
+    if (!accessState?.isSubscribed) return;
+
+    sessionStorage.removeItem("gigaxios_shift_ended");
+    setHasPostShiftSignal(false);
+  }, [accessState?.isSubscribed]);
 
   /* =========================================================
     ACTIVE_SHIFT_LOOKUP

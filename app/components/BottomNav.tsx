@@ -17,6 +17,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { CalendarDays } from "lucide-react";
 
 /* =========================================================
    NAV ITEMS
@@ -27,7 +28,12 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { href: "/dashboard", label: "Home",    icon: "🏠", color: "text-blue-400"    },
   { href: "/fuel",    label: "Fuel",    icon: "⛽", color: "text-emerald-300" },
-  { href: "/records", label: "Records", icon: "📅", color: "text-cyan-300"    },
+  {
+    href: "/records",
+    label: "Records",
+    icon: <CalendarDays aria-hidden="true" className="h-5 w-5 stroke-[2.25]" />,
+    color: "text-cyan-300",
+  },
   { href: "/metrics", label: "Metrics", icon: "↗",  color: "text-blue-300"    },
   { href: "/garage",  label: "Garage",  icon: "🔧", color: "text-slate-300"   },
 ];
@@ -64,7 +70,6 @@ export default function BottomNav() {
              so child routes (e.g. /garage/maintenance) keep the
              Garage tab lit. */
           const isActive = pathname.startsWith(item.href);
-
           return (
             <Link
               key={item.href}
@@ -74,7 +79,9 @@ export default function BottomNav() {
               }`}
             >
               {/* ICON */}
-              <span className="text-xl leading-none">{item.icon}</span>
+              <span className="flex h-5 w-5 items-center justify-center text-xl leading-none">
+                {item.icon}
+              </span>
 
               {/* LABEL */}
               <span>{item.label}</span>

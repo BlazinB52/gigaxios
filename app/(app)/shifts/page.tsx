@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Calendar } from "lucide-react";
 import ActiveShiftCard from "@/app/components/ActiveShiftCard";
 import { SavedShift } from "@/app/lib/types";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
@@ -76,6 +77,7 @@ export default function ShiftsPage() {
     }, [router]);
 
     const activeShift = savedShifts.find((shift) => shift.status === "open");
+    const isSubscribed = accessState?.isSubscribed ?? false;
     const trialRequired = accessState?.trialRequired ?? false;
 
     async function handleStartTrial() {
@@ -225,7 +227,11 @@ export default function ShiftsPage() {
             })
             .eq("id", activeShift.id);
 
-        sessionStorage.setItem("gigaxios_shift_ended", "1");
+        if (isSubscribed) {
+            sessionStorage.removeItem("gigaxios_shift_ended");
+        } else {
+            sessionStorage.setItem("gigaxios_shift_ended", "1");
+        }
         router.push("/dashboard");
     }
     return (
@@ -314,12 +320,22 @@ export default function ShiftsPage() {
                                 <option value="DoorDash">DoorDash</option>
                                 <option value="Other">Other</option>
                             </select>
-                            <input
-                                type="date"
-                                value={shiftDate}
-                                onChange={(event) => setShiftDate(event.target.value)}
-                                className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white [&::-webkit-calendar-picker-indicator]:invert"
-                            />
+                            <div>
+                                <label htmlFor="shift-date" className="text-sm text-slate-400">
+                                    Shift Date
+                                </label>
+                                <div className="relative mt-1">
+                                    <input
+                                        id="shift-date"
+                                        type="date"
+                                        value={shiftDate}
+                                        onChange={(event) => setShiftDate(event.target.value)}
+                                        className="h-12 min-h-12 w-full appearance-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-0 pr-11 text-base leading-none text-white [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0"
+                                        style={{ WebkitAppearance: "none" }}
+                                    />
+                                    <Calendar className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white" />
+                                </div>
+                            </div>
 
                             <input
                                 type="number"

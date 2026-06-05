@@ -89,6 +89,9 @@ export default function LoginPage() {
 
     const seenWelcome =
       localStorage.getItem(`gigaxios_welcome_seen:${user.id}`) === "true";
+    await fetch("/api/account/welcome-email", { method: "POST" }).catch((welcomeEmailError) => {
+      console.warn("Welcome email request failed:", welcomeEmailError);
+    });
     router.replace(seenWelcome ? "/dashboard" : "/welcome");
   }
 

@@ -2,6 +2,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
+import { sendWelcomeEmailForNewUser } from '@/app/lib/sendWelcomeEmailForNewUser'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
@@ -27,9 +28,13 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
+      if (data.user) {
+        await sendWelcomeEmailForNewUser(data.user.id)
+      }
+
       return NextResponse.redirect(new URL('/welcome', origin))
     }
   }

@@ -320,21 +320,21 @@ export default function ShiftsPage() {
                                 <option value="DoorDash">DoorDash</option>
                                 <option value="Other">Other</option>
                             </select>
-                            <div>
-                                <label htmlFor="shift-date" className="text-sm text-slate-400">
-                                    Shift Date
-                                </label>
-                                <div className="relative mt-1">
-                                    <input
-                                        id="shift-date"
-                                        type="date"
-                                        value={shiftDate}
-                                        onChange={(event) => setShiftDate(event.target.value)}
-                                        className="h-12 min-h-12 w-full appearance-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-0 pr-11 text-base leading-none text-white [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0"
-                                        style={{ WebkitAppearance: "none" }}
-                                    />
-                                    <Calendar className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white" />
-                                </div>
+                            <div className="relative">
+                                <input
+                                    aria-label="Shift Date"
+                                    type="date"
+                                    value={shiftDate}
+                                    onChange={(event) => setShiftDate(event.target.value)}
+                                    className={`h-12 min-h-12 w-full appearance-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-0 pr-11 text-base leading-none [color-scheme:dark] ${shiftDate ? "text-white" : "text-transparent"} [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0`}
+                                    style={{ WebkitAppearance: "none" }}
+                                />
+                                {!shiftDate && (
+                                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-slate-500">
+                                        Shift Date
+                                    </span>
+                                )}
+                                <Calendar className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white" />
                             </div>
 
                             <input

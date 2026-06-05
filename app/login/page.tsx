@@ -55,7 +55,7 @@ export default function LoginPage() {
   }
 
   /* =========================================================
-     VERIFY CODE
+     VERIFY CODE ---
      Confirms the 6-digit code, then routes the user to the
      welcome page if they have not seen it, otherwise dashboard.
      ========================================================= */

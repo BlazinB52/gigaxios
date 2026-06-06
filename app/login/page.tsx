@@ -10,6 +10,29 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 
+const INVALID_EMAIL_MESSAGE = "Please enter a valid email address.";
+const MAX_EMAIL_LENGTH = 254;
+const EMAIL_PATTERN =
+  /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+
+function isValidLoginEmail(value: string) {
+  const trimmed = value.trim();
+  const [localPart, domain] = trimmed.split("@");
+
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= MAX_EMAIL_LENGTH &&
+    !/\s/.test(trimmed) &&
+    trimmed.includes("@") &&
+    trimmed.split("@").length === 2 &&
+    Boolean(localPart) &&
+    localPart.length <= 64 &&
+    Boolean(domain) &&
+    domain.includes(".") &&
+    EMAIL_PATTERN.test(trimmed)
+  );
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -19,6 +42,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [contactWebsite, setContactWebsite] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -31,10 +55,17 @@ export default function LoginPage() {
 
   async function sendCode() {
     setMessage("");
+
+    const trimmedEmail = email.trim();
+    if (contactWebsite.trim() || !isValidLoginEmail(trimmedEmail)) {
+      setMessage(INVALID_EMAIL_MESSAGE);
+      return;
+    }
+
     setIsSending(true);
 
     const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
+      email: trimmedEmail,
     });
 
     setIsSending(false);
@@ -63,10 +94,17 @@ export default function LoginPage() {
   async function handleVerifyCode(event: { preventDefault(): void }) {
     event.preventDefault();
     setMessage("");
+
+    const trimmedEmail = email.trim();
+    if (!isValidLoginEmail(trimmedEmail)) {
+      setMessage(INVALID_EMAIL_MESSAGE);
+      return;
+    }
+
     setIsVerifying(true);
 
     const { data, error } = await supabase.auth.verifyOtp({
-      email: email.trim(),
+      email: trimmedEmail,
       token: code.trim(),
       type: "email",
     });
@@ -120,6 +158,22 @@ export default function LoginPage() {
 
         {step === "email" ? (
           <form onSubmit={handleSendCode} className="mt-6 space-y-4">
+
+            <div
+              aria-hidden="true"
+              className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden"
+            >
+              <label htmlFor="contact-website">Website</label>
+              <input
+                id="contact-website"
+                name="contact_website"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={contactWebsite}
+                onChange={(event) => setContactWebsite(event.target.value)}
+              />
+            </div>
 
             <input
               type="email"

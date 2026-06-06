@@ -14,10 +14,13 @@ import {
 } from "@/app/lib/garageStorage";
 import { PayAdjustment, SavedShift } from "@/app/lib/types";
 
-type PayPeriodOption = {
+type RangeType = "current_pay_period" | "previous_pay_period" | "month" | "quarter" | "year";
+
+type DateRangeOption = {
   label: string;
-  weekStart: string;
-  weekEnd: string;
+  rangeStart: string;
+  rangeEnd: string;
+  type: RangeType;
 };
 
 type FormulaCardProps = {
@@ -140,9 +143,42 @@ function getPayPeriodForDate(date: Date, weekStartsOn: number) {
   };
 }
 
-function isDateInRange(dateStr: string, weekStart: string, weekEnd: string): boolean {
+function toDateRange(
+  label: string,
+  start: Date,
+  end: Date,
+  type: RangeType
+): DateRangeOption {
+  return {
+    label,
+    rangeStart: formatISODate(start),
+    rangeEnd: formatISODate(end),
+    type,
+  };
+}
+
+function getThisMonthRange(date: Date): DateRangeOption {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  return toDateRange("This month", start, end, "month");
+}
+
+function getThisQuarterRange(date: Date): DateRangeOption {
+  const quarterStartMonth = Math.floor(date.getMonth() / 3) * 3;
+  const start = new Date(date.getFullYear(), quarterStartMonth, 1);
+  const end = new Date(date.getFullYear(), quarterStartMonth + 3, 0);
+  return toDateRange("This quarter", start, end, "quarter");
+}
+
+function getThisYearRange(date: Date): DateRangeOption {
+  const start = new Date(date.getFullYear(), 0, 1);
+  const end = new Date(date.getFullYear(), 11, 31);
+  return toDateRange("This year", start, end, "year");
+}
+
+function isDateInRange(dateStr: string, rangeStart: string, rangeEnd: string): boolean {
   const iso = toISODate(dateStr);
-  return iso >= weekStart && iso <= weekEnd;
+  return iso >= rangeStart && iso <= rangeEnd;
 }
 
 function FormulaCard({
@@ -318,7 +354,7 @@ export default function BugcheckPage() {
   const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
   const [adjustments, setAdjustments] = useState<PayAdjustment[]>([]);
   const [weekStartsOn, setWeekStartsOn] = useState(1);
-  const [selectedPeriodKey, setSelectedPeriodKey] = useState("");
+  const [selectedRangeKey, setSelectedRangeKey] = useState<RangeType>("current_pay_period");
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -372,60 +408,44 @@ export default function BugcheckPage() {
     load();
   }, [router]);
 
-  const currentPayPeriod = useMemo(
-    () => getPayPeriodForDate(new Date(), weekStartsOn),
-    [weekStartsOn]
-  );
+  const rangeOptions = useMemo<DateRangeOption[]>(() => {
+    const today = new Date();
+    const currentPayPeriod = getPayPeriodForDate(today, weekStartsOn);
+    const previousPayPeriodStart = parseLocalDate(currentPayPeriod.weekStart);
+    previousPayPeriodStart.setDate(previousPayPeriodStart.getDate() - 7);
+    const previousPayPeriod = getPayPeriodForDate(previousPayPeriodStart, weekStartsOn);
 
-  const payPeriodOptions = useMemo<PayPeriodOption[]>(() => {
-    const periodMap = new Map<string, PayPeriodOption>();
+    return [
+      {
+        label: "Current pay period",
+        rangeStart: currentPayPeriod.weekStart,
+        rangeEnd: currentPayPeriod.weekEnd,
+        type: "current_pay_period",
+      },
+      {
+        label: "Previous pay period",
+        rangeStart: previousPayPeriod.weekStart,
+        rangeEnd: previousPayPeriod.weekEnd,
+        type: "previous_pay_period",
+      },
+      getThisMonthRange(today),
+      getThisQuarterRange(today),
+      getThisYearRange(today),
+    ];
+  }, [weekStartsOn]);
 
-    function addPeriodForDate(dateStr: string) {
-      const date = parseLocalDate(dateStr);
-      if (date.getTime() === 0 || Number.isNaN(date.getTime())) return;
-      const period = getPayPeriodForDate(date, weekStartsOn);
-      periodMap.set(period.weekStart, {
-        ...period,
-        label: `${formatLongDate(period.weekStart)} - ${formatLongDate(period.weekEnd)}`,
-      });
-    }
-
-    periodMap.set(currentPayPeriod.weekStart, {
-      ...currentPayPeriod,
-      label: `Current pay period: ${formatLongDate(currentPayPeriod.weekStart)} - ${formatLongDate(
-        currentPayPeriod.weekEnd
-      )}`,
-    });
-
-    shifts.forEach((shift) => addPeriodForDate(shift.date));
-    fuelEntries.forEach((entry) => addPeriodForDate(entry.date));
-    serviceEntries.forEach((entry) => addPeriodForDate(entry.date));
-    adjustments.forEach((adjustment) => addPeriodForDate(adjustment.weekStart));
-
-    return Array.from(periodMap.values()).sort((a, b) =>
-      b.weekStart.localeCompare(a.weekStart)
-    );
-  }, [adjustments, currentPayPeriod, fuelEntries, serviceEntries, shifts, weekStartsOn]);
-
-  useEffect(() => {
-    if (!selectedPeriodKey && payPeriodOptions.length > 0) {
-      setSelectedPeriodKey(currentPayPeriod.weekStart);
-    }
-  }, [currentPayPeriod.weekStart, payPeriodOptions.length, selectedPeriodKey]);
-
-  const selectedPayPeriod =
-    payPeriodOptions.find((period) => period.weekStart === selectedPeriodKey) ??
-    payPeriodOptions[0] ??
-    currentPayPeriod;
+  const selectedRange =
+    rangeOptions.find((range) => range.type === selectedRangeKey) ??
+    rangeOptions[0];
 
   const completedPeriodShifts = useMemo(
     () =>
       shifts.filter(
         (shift) =>
           shift.status === "closed" &&
-          isDateInRange(shift.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
+          isDateInRange(shift.date, selectedRange.rangeStart, selectedRange.rangeEnd)
       ),
-    [selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart, shifts]
+    [selectedRange.rangeEnd, selectedRange.rangeStart, shifts]
   );
   const selectedPeriodVehicleIds = useMemo(
     () =>
@@ -470,32 +490,36 @@ export default function BugcheckPage() {
     () =>
       scopedFuelEntries
         .filter((entry) =>
-          isDateInRange(entry.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
+          isDateInRange(entry.date, selectedRange.rangeStart, selectedRange.rangeEnd)
         )
         .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0)),
-    [scopedFuelEntries, selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart]
+    [scopedFuelEntries, selectedRange.rangeEnd, selectedRange.rangeStart]
+  );
+  const totalFuelPurchasedInRange = periodFuelEntries.reduce(
+    (sum, entry) => sum + getFuelEntryCost(entry),
+    0
   );
 
   const chronologicalPeriodFuelEntries = useMemo(
     () =>
       scopedFuelEntries
         .filter((entry) =>
-          isDateInRange(entry.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
+          isDateInRange(entry.date, selectedRange.rangeStart, selectedRange.rangeEnd)
         )
         .sort((a, b) => {
           const dateCompare = toISODate(a.date).localeCompare(toISODate(b.date));
           if (dateCompare !== 0) return dateCompare;
           return getFuelSortValue(a) - getFuelSortValue(b);
         }),
-    [scopedFuelEntries, selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart]
+    [scopedFuelEntries, selectedRange.rangeEnd, selectedRange.rangeStart]
   );
 
   const periodAdjustments = useMemo(
     () =>
       adjustments.filter((adjustment) =>
-        isDateInRange(adjustment.weekStart, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
+        isDateInRange(adjustment.weekStart, selectedRange.rangeStart, selectedRange.rangeEnd)
       ),
-    [adjustments, selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart]
+    [adjustments, selectedRange.rangeEnd, selectedRange.rangeStart]
   );
 
   const shiftGrossPay = completedPeriodShifts.reduce(
@@ -567,7 +591,7 @@ export default function BugcheckPage() {
       result,
     };
   });
-  const fuelCostResult = {
+  const recentFuelCostResult = {
     workFuelCost: vehicleFuelCostResults.reduce(
       (sum, item) => sum + item.result.workFuelCost,
       0
@@ -734,6 +758,75 @@ export default function BugcheckPage() {
     0,
     workMiles - verifiedCompletedCycleWorkMiles
   );
+  const openCycleFuelEstimateResults = selectedPeriodVehicleKeys.map((vehicleKey) => {
+    const vehicleWorkMiles =
+      vehicleFuelCostResults.find((vehicle) => vehicle.vehicleKey === vehicleKey)
+        ?.workMiles ?? 0;
+    const completedCycleWorkMiles = verifiedCompletedFuelCycles
+      .filter((cycle) => cycle.vehicleKey === vehicleKey)
+      .reduce((sum, cycle) => sum + cycle.workMiles, 0);
+    const openCycleWorkMiles = Math.max(0, vehicleWorkMiles - completedCycleWorkMiles);
+    const vehicleFuelEntries = periodFuelEntries.filter(
+      (entry) => getRecordVehicleKey(entry) === vehicleKey
+    );
+    const result = calculateWorkFuelCost({
+      workMiles: openCycleWorkMiles,
+      fuelEntries: vehicleFuelEntries,
+    });
+
+    return {
+      vehicleKey,
+      openCycleWorkMiles,
+      result,
+    };
+  });
+  const completedCycleFuelCost = fuelCostAuditTotal;
+  const openCycleFuelCostEstimate = openCycleFuelEstimateResults.reduce(
+    (sum, vehicle) => sum + vehicle.result.workFuelCost,
+    0
+  );
+  const fuelCostNeedsMpg =
+    workMiles > 0 &&
+    openCycleFuelEstimateResults.some(
+      (vehicle) => vehicle.openCycleWorkMiles > 0 && vehicle.result.needsMpg
+    );
+  const fuelCostResult = {
+    workFuelCost: fuelCostNeedsMpg
+      ? completedCycleFuelCost
+      : completedCycleFuelCost + openCycleFuelCostEstimate,
+    effectiveCostPerMile:
+      workMiles > 0
+        ? (fuelCostNeedsMpg
+            ? completedCycleFuelCost
+            : completedCycleFuelCost + openCycleFuelCostEstimate) / workMiles
+        : 0,
+    completedCycleFuelCost,
+    openCycleFuelCostEstimate,
+    isEstimated:
+      openCycleUnverifiedWorkMiles > 0 ||
+      verifiedCompletedFuelCycles.length === 0 ||
+      recentFuelCostResult.isEstimated,
+    needsMpg: fuelCostNeedsMpg,
+    source:
+      completedCycleFuelCost > 0
+        ? openCycleUnverifiedWorkMiles > 0
+          ? "cycle_summed_plus_open_estimate"
+          : "cycle_summed"
+        : openCycleFuelEstimateResults.some(
+              (vehicle) => vehicle.result.source === "actual_history"
+            )
+          ? "open_cycle_actual_history_estimate"
+          : openCycleFuelEstimateResults.some(
+                (vehicle) => vehicle.result.source === "vehicle_estimate"
+              )
+            ? "open_cycle_vehicle_estimate"
+            : "unavailable",
+  };
+  const workFuelCostWarning =
+    !fuelCostResult.needsMpg &&
+    fuelCostResult.workFuelCost > totalFuelPurchasedInRange
+      ? "Work fuel cost exceeds fuel purchased in this range. This may indicate open-cycle timing or cost-per-mile overstatement."
+      : "";
   const openFuelCycles = useMemo(() => {
     const fuelByVehicle = new Map<string, FuelEntry[]>();
 
@@ -1113,21 +1206,21 @@ export default function BugcheckPage() {
 
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 border-b border-slate-200 pb-4">
-            <h2 className="text-2xl font-semibold">Pay Period Selector</h2>
+            <h2 className="text-2xl font-semibold">Date Range Selector</h2>
           </div>
 
           <div className="grid grid-cols-[360px_1fr] gap-8">
             <label className="space-y-2">
-              <span className="block text-sm font-semibold text-slate-700">Pay Period</span>
+              <span className="block text-sm font-semibold text-slate-700">Date Range</span>
               <select
-                value={selectedPayPeriod.weekStart}
-                onChange={(event) => setSelectedPeriodKey(event.target.value)}
+                value={selectedRange.type}
+                onChange={(event) => setSelectedRangeKey(event.target.value as RangeType)}
                 className="w-full rounded-md border border-slate-300 bg-white px-4 py-3 text-base font-medium text-slate-950 shadow-sm"
                 disabled={!isLoaded}
               >
-                {payPeriodOptions.map((period) => (
-                  <option key={period.weekStart} value={period.weekStart}>
-                    {period.label}
+                {rangeOptions.map((range) => (
+                  <option key={range.type} value={range.type}>
+                    {range.label}
                   </option>
                 ))}
               </select>
@@ -1135,11 +1228,11 @@ export default function BugcheckPage() {
 
             <div className="rounded-md border border-slate-200 bg-slate-50 p-5">
               <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Selected Pay Period
+                Selected Range
               </p>
               <p className="mt-2 text-2xl font-bold">
-                {formatLongDate(selectedPayPeriod.weekStart)} -{" "}
-                {formatLongDate(selectedPayPeriod.weekEnd)}
+                {formatLongDate(selectedRange.rangeStart)} -{" "}
+                {formatLongDate(selectedRange.rangeEnd)}
               </p>
               <p className="mt-2 text-sm text-slate-600">
                 Week starts on {DAY_NAMES[weekStartsOn]}. If no setting is available,
@@ -1154,7 +1247,7 @@ export default function BugcheckPage() {
           <div className="grid grid-cols-3 gap-5">
             <FormulaCard
               title="Shift Gross Pay"
-              purpose="Total completed shift earnings inside the selected pay period."
+              purpose="Total completed shift earnings inside the selected range."
               formula="sum(completed shift gross_pay)"
               values={`${completedPeriodShifts.length} closed shifts`}
               result={fmtCurrency(shiftGrossPay)}
@@ -1162,7 +1255,7 @@ export default function BugcheckPage() {
             />
             <FormulaCard
               title="Pay Adjustments"
-              purpose="Total adjustment amounts assigned to the selected pay period."
+              purpose="Total adjustment amounts assigned to the selected range."
               formula="sum(pay adjustment amounts)"
               values={`${periodAdjustments.length} adjustments`}
               result={fmtCurrency(adjustmentTotal)}
@@ -1184,7 +1277,7 @@ export default function BugcheckPage() {
           <div className="grid grid-cols-3 gap-5">
             <FormulaCard
               title="Work Miles"
-              purpose="Mileage driven during completed shifts in the selected pay period."
+              purpose="Mileage driven during completed shifts in the selected range."
               formula="sum(ending_mileage - beginning_mileage)"
               values={`${completedPeriodShifts.length} closed shifts`}
               result={`${fmtNumber(workMiles)} miles`}
@@ -1192,7 +1285,7 @@ export default function BugcheckPage() {
             />
             <FormulaCard
               title="Total Fuel Odometer Miles"
-              purpose="Odometer span covered by fuel entries in the selected pay period."
+              purpose="Odometer span covered by fuel entries in the selected range."
               formula="last fuel odometer - first fuel odometer"
               values={`${fmtNumber(lastFuelOdometer, 0)} - ${fmtNumber(firstFuelOdometer, 0)}`}
               result={`${fmtNumber(totalFuelOdometerMiles)} miles`}
@@ -1221,25 +1314,57 @@ export default function BugcheckPage() {
           <div className="grid grid-cols-3 gap-5">
             <FormulaCard
               title="Fuel Cost Per Mile"
-              purpose="Effective per-mile fuel cost from recent fuel history used by Metrics."
-              formula="Fuel Cost / Miles Between Full Fill-Ups"
+              purpose="Blended per-mile fuel cost from the final selected-range fuel model."
+              formula="Total Work Fuel Cost / Work Miles"
               values={`${validMpgEntries.length} full fill-up MPG entries with cost-per-mile history`}
               result={
                 fuelCostResult.needsMpg
                   ? "Pending"
                   : `${fmtCurrency(fuelCostResult.effectiveCostPerMile)}/mi`
               }
-              source={`calculateWorkFuelCost source: ${fuelCostResult.source}`}
+              source={`fuel model source: ${fuelCostResult.source}`}
+            />
+            <FormulaCard
+              title="Completed-Cycle Fuel Cost"
+              purpose="Fuel cost for selected-range work miles inside completed full-fill cycles."
+              formula="sum(cycle work miles x cycle fuel cost per mile)"
+              values={`${fmtNumber(verifiedCompletedCycleWorkMiles)} completed-cycle work miles`}
+              result={fmtCurrency(completedCycleFuelCost)}
+              source="Fuel Cost Audit Detail"
+            />
+            <FormulaCard
+              title="Open-Cycle Estimated Fuel Cost"
+              purpose="Estimated fuel cost for selected-range work miles not yet covered by a completed cycle."
+              formula="Open-Cycle Work Miles x recent effective CPM"
+              values={`${fmtNumber(openCycleUnverifiedWorkMiles)} open-cycle work miles`}
+              result={fuelCostResult.needsMpg ? "Pending" : fmtCurrency(openCycleFuelCostEstimate)}
+              source="calculateWorkFuelCost(openCycleWorkMiles, fuelEntries)"
             />
             <FormulaCard
               title="Work Fuel Cost"
-              purpose="Fuel cost allocated to work miles in the selected pay period."
-              formula="Work Miles x Fuel Cost Per Mile"
-              values={`${fmtNumber(workMiles)} mi x ${fmtCurrency(
-                fuelCostResult.effectiveCostPerMile
-              )}/mi`}
+              purpose="Fuel cost allocated to work miles in the selected range."
+              formula="Completed-Cycle Fuel Cost + Open-Cycle Estimated Fuel Cost"
+              values={`${fmtCurrency(completedCycleFuelCost)} + ${fmtCurrency(
+                openCycleFuelCostEstimate
+              )}; Total Fuel Purchased in Range: ${fmtCurrency(totalFuelPurchasedInRange)}`}
               result={fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}
-              source="calculateWorkFuelCost(workMiles, fuelEntries)"
+              source="cycle-summed fuel model plus open-cycle estimate"
+              warning={workFuelCostWarning}
+            />
+            <FormulaCard
+              title="Fuel Purchase Reconciliation"
+              purpose="Compares selected-range work fuel cost with fuel purchased in the same range."
+              formula="Work Fuel Cost - Total Fuel Purchased in Range"
+              values={`${fmtCurrency(fuelCostResult.workFuelCost)} - ${fmtCurrency(
+                totalFuelPurchasedInRange
+              )}`}
+              result={
+                fuelCostResult.needsMpg
+                  ? "Pending"
+                  : fmtCurrency(fuelCostResult.workFuelCost - totalFuelPurchasedInRange)
+              }
+              source={`fuel_entries count: ${periodFuelEntries.length}`}
+              warning={workFuelCostWarning}
             />
             <FormulaCard
               title="Avg MPG from Full Fill-Ups"
@@ -1279,7 +1404,7 @@ export default function BugcheckPage() {
                   {periodFuelEntries.length === 0 ? (
                     <tr>
                       <td className="px-4 py-6 text-slate-600" colSpan={8}>
-                        No fuel entries in the selected pay period.
+                        No fuel entries in the selected range.
                       </td>
                     </tr>
                   ) : (
@@ -1391,7 +1516,7 @@ export default function BugcheckPage() {
                   {verifiedCompletedFuelCycles.length === 0 ? (
                     <tr>
                       <td className="px-4 py-6 text-slate-600" colSpan={13}>
-                        No selected-period work miles fall inside completed fuel cycles yet.
+                        No selected-range work miles fall inside completed fuel cycles yet.
                         Open-cycle work miles are excluded until the next full fill-up.
                       </td>
                     </tr>
@@ -1451,14 +1576,14 @@ export default function BugcheckPage() {
                 <tfoot>
                   <tr className="border-t-2 border-slate-300 bg-slate-50">
                     <td className="px-4 py-4 text-base font-bold" colSpan={11}>
-                      Total Work Fuel Cost = sum(cycle work fuel cost)
+                      Completed-Cycle Fuel Cost = sum(cycle work fuel cost)
                     </td>
                     <td className="px-4 py-4 text-base font-bold">
                       {fmtCurrency(fuelCostAuditTotal)}
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-600">
-                      True Cost Work Fuel Cost currently shows{" "}
-                      {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}.
+                      Open-cycle estimate: {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(openCycleFuelCostEstimate)}.
+                      Total Work Fuel Cost: {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}.
                     </td>
                   </tr>
                 </tfoot>
@@ -1794,7 +1919,7 @@ export default function BugcheckPage() {
               <h3 className="text-xl font-semibold">Service Cost Audit Detail</h3>
               <p className="mt-1 text-sm text-slate-600">
                 Service entries create active mileage windows. Service Cost Per Mile =
-                Service Cost / Service Interval. Allocated Service Cost = selected-period
+                Service Cost / Service Interval. Allocated Service Cost = selected-range
                 shift miles overlapping the active service window x Cost Per Mile, capped
                 at the original service cost. All-time allocation and remaining value are
                 shown for each active service window. Tires fall back to 50,000 miles when
@@ -1802,7 +1927,7 @@ export default function BugcheckPage() {
               </p>
               <p className="mt-2 text-sm font-medium text-slate-700">
                 Service records may come from earlier dates. They are included only when
-                selected-pay-period work miles fall inside that service&apos;s active mileage
+                selected-range work miles fall inside that service&apos;s active mileage
                 window.
               </p>
               <p className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
@@ -1823,10 +1948,10 @@ export default function BugcheckPage() {
                     <th className="px-4 py-3 font-semibold">Service End Odometer</th>
                     <th className="px-4 py-3 font-semibold">Cost Per Mile</th>
                     <th className="px-4 py-3 font-semibold">
-                      This Pay Period Miles Charged
+                      Selected Range Miles Charged
                     </th>
                     <th className="px-4 py-3 font-semibold">
-                      This Pay Period Service Cost
+                      Selected Range Service Cost
                     </th>
                     <th className="px-4 py-3 font-semibold">All-Time Service Cost Used</th>
                     <th className="px-4 py-3 font-semibold">Remaining Unused Service Value</th>
@@ -2000,7 +2125,7 @@ export default function BugcheckPage() {
           <div>
             <h2 className="text-2xl font-semibold">True Cost</h2>
             <p className="mt-1 text-sm text-amber-700">
-              Current selected-period view. Not fully verified when selected-period
+              Current selected-range view. Not fully verified when selected-range
               work miles include open-cycle miles that have not been finalized by a
               next full fill-up.
             </p>
@@ -2045,14 +2170,14 @@ export default function BugcheckPage() {
                 <tr className="border-b border-slate-100 align-top">
                   <td className="px-4 py-4 text-base font-semibold">Work Fuel Cost</td>
                   <td className="px-4 py-4 text-slate-700">
-                    Fuel cost allocated to selected-period work miles.
+                    Fuel cost allocated to selected-range work miles.
                   </td>
                   <td className="px-4 py-4 font-mono text-slate-950">
-                    Work Miles x Fuel Cost Per Mile
+                    Completed-Cycle Fuel Cost + Open-Cycle Estimated Fuel Cost
                   </td>
                   <td className="px-4 py-4 text-slate-950">
-                    {fmtNumber(workMiles)} mi x{" "}
-                    {fmtCurrency(fuelCostResult.effectiveCostPerMile)}/mi
+                    {fmtCurrency(completedCycleFuelCost)} +{" "}
+                    {fmtCurrency(openCycleFuelCostEstimate)}
                   </td>
                   <td className="px-4 py-4 text-base font-bold text-slate-950">
                     {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}
@@ -2064,11 +2189,11 @@ export default function BugcheckPage() {
                     Allocated Service Cost
                   </td>
                   <td className="px-4 py-4 text-slate-700">
-                    Prior and current services allocated to selected-period work miles
+                    Prior and current services allocated to selected-range work miles
                     when those miles fall inside active service mileage windows.
                   </td>
                   <td className="px-4 py-4 font-mono text-slate-950">
-                    sum(min(Service Cost, Period Work Miles In Service Window x Cost Per Mile))
+                    sum(min(Service Cost, Range Work Miles In Service Window x Cost Per Mile))
                   </td>
                   <td className="px-4 py-4 text-slate-950">
                     {serviceDiagnostics.length} service entries
@@ -2122,15 +2247,15 @@ export default function BugcheckPage() {
           <div>
             <h2 className="text-2xl font-semibold">Verified Completed-Cycle True Cost</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Uses only selected-period work miles that fall inside completed fuel
+              Uses only selected-range work miles that fall inside completed fuel
               cycles. Open-cycle miles are not estimated here.
             </p>
           </div>
 
           <div className="grid grid-cols-3 gap-5">
             <FormulaCard
-              title="Selected-Period Work Miles"
-              purpose="All completed shift work miles in the selected pay period."
+              title="Selected-Range Work Miles"
+              purpose="All completed shift work miles in the selected range."
               formula="sum(ending_mileage - beginning_mileage)"
               values={`${completedPeriodShifts.length} closed shifts`}
               result={`${fmtNumber(workMiles)} miles`}
@@ -2138,16 +2263,16 @@ export default function BugcheckPage() {
             />
             <FormulaCard
               title="Completed-Cycle Verified Work Miles"
-              purpose="Selected-period work miles that fall inside closed fuel-cycle odometer ranges."
+              purpose="Selected-range work miles that fall inside closed fuel-cycle odometer ranges."
               formula="sum(shift mileage overlap with completed fuel cycles)"
-              values={`${verifiedCompletedFuelCycles.length} completed fuel cycles with selected-period work miles`}
+              values={`${verifiedCompletedFuelCycles.length} completed fuel cycles with selected-range work miles`}
               result={`${fmtNumber(verifiedCompletedCycleWorkMiles)} miles`}
               source="Fuel Cost Audit Detail"
             />
             <FormulaCard
               title="Open-Cycle / Unverified Work Miles"
-              purpose="Selected-period work miles not yet covered by a completed fuel cycle."
-              formula="Selected-Period Work Miles - Completed-Cycle Verified Work Miles"
+              purpose="Selected-range work miles not yet covered by a completed fuel cycle."
+              formula="Selected-Range Work Miles - Completed-Cycle Verified Work Miles"
               values={`${fmtNumber(workMiles)} - ${fmtNumber(verifiedCompletedCycleWorkMiles)}`}
               result={`${fmtNumber(openCycleUnverifiedWorkMiles)} miles`}
               source="Derived from verified fuel-cycle coverage"
@@ -2156,9 +2281,9 @@ export default function BugcheckPage() {
 
           <div className="grid grid-cols-3 gap-5">
             <FormulaCard
-              title="Current-Period Service Cost"
-              purpose="Current-period service wear uses all selected-period work miles inside active service windows."
-              formula="sum(selected-period service-window work miles x service cost per mile)"
+              title="Current-Range Service Cost"
+              purpose="Current-range service wear uses all selected-range work miles inside active service windows."
+              formula="sum(selected-range service-window work miles x service cost per mile)"
               values={`${fmtNumber(verifiedServiceAudit.selectedPeriodMiles)} service-window miles`}
               result={fmtCurrency(allocatedServiceCost)}
               source="Service Cost Audit Detail / current True Cost"
@@ -2174,7 +2299,7 @@ export default function BugcheckPage() {
             <FormulaCard
               title="Open-Cycle Service Wear Excluded"
               purpose="Service wear tied to open-cycle work miles is excluded from the verified view."
-              formula="Current-period service wear - verified completed-cycle service wear"
+              formula="Current-range service wear - verified completed-cycle service wear"
               values={`${fmtCurrency(verifiedServiceAudit.selectedPeriodCost)} - ${fmtCurrency(
                 verifiedServiceCost
               )}`}
@@ -2231,7 +2356,7 @@ export default function BugcheckPage() {
                     Verified Service Cost
                   </td>
                   <td className="px-4 py-4 text-slate-700">
-                    Service allocation only for selected-period work miles that also
+                    Service allocation only for selected-range work miles that also
                     fall inside completed fuel cycles.
                   </td>
                   <td className="px-4 py-4 font-mono text-slate-950">
@@ -2301,7 +2426,7 @@ export default function BugcheckPage() {
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6 text-emerald-900 shadow-sm">
               <h3 className="text-lg font-semibold">No Data Check Warnings</h3>
               <p className="mt-2 text-sm">
-                No selected-period warnings were found for mileage, duplicate shifts,
+                No selected-range warnings were found for mileage, duplicate shifts,
                 fuel odometer order, full-fill MPG references, service intervals, or
                 missing completed-shift mileage.
               </p>

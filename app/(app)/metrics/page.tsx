@@ -3,12 +3,12 @@
 /* =========================================================
    METRICS PAGE
    ---------------------------------------------------------
-   Full earnings analytics for a selected calendar year.
+   Full earnings analytics for a selected pay period.
    Pulls shifts, fuel entries, service entries, and pay
    adjustments from Supabase, then computes:
      • KPI overview (deliveries, hours, gross, fuel, net)
      • Retention percentage bar
-     • Monthly gross vs net bar chart
+     • Pay-period gross vs net summary
      • True Cost View (includes vehicle maintenance share)
    ========================================================= */
 
@@ -41,6 +41,28 @@ const fmtPct = (n: number) => (n * 100).toFixed(1) + "%";
 /** Formats a number as a dollar string, e.g. 123.4 → "$123.40" */
 const fmtDollar = (n: number) => "$" + fmt(n);
 
+type PayPeriodOption = {
+  label: string;
+  weekStart: string;
+  weekEnd: string;
+};
+
+const WEEK_START_STORAGE_KEYS = [
+  "gigaxios-week-start",
+  "gigaxios-week-starts-on",
+  "gigaxios-weekStartsOn",
+];
+
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
 function parseOptionalDateTime(value: string | undefined): number {
   if (!value) return 0;
   const timestamp = new Date(value).getTime();
@@ -60,6 +82,65 @@ function parseShiftDate(dateStr: string): Date {
     return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
   }
   return new Date(dateStr + "T12:00:00");
+}
+
+function formatISODate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function toISODate(dateStr: string): string {
+  const date = parseShiftDate(dateStr);
+  if (date.getTime() === 0 || Number.isNaN(date.getTime())) return "";
+  return formatISODate(date);
+}
+
+function formatLongDate(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getWeekStartDay(): number {
+  if (typeof window === "undefined") return 1;
+
+  for (const key of WEEK_START_STORAGE_KEYS) {
+    const value = localStorage.getItem(key)?.toLowerCase();
+    if (!value) continue;
+
+    const numeric = Number(value);
+    if (Number.isInteger(numeric) && numeric >= 0 && numeric <= 6) return numeric;
+
+    const index = DAY_NAMES.findIndex((day) => day.toLowerCase() === value);
+    if (index >= 0) return index;
+  }
+
+  return 1;
+}
+
+function getPayPeriodForDate(date: Date, weekStartsOn: number) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+
+  const offset = (start.getDay() - weekStartsOn + 7) % 7;
+  start.setDate(start.getDate() - offset);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  return {
+    weekStart: formatISODate(start),
+    weekEnd: formatISODate(end),
+  };
+}
+
+function isDateInRange(dateStr: string, weekStart: string, weekEnd: string): boolean {
+  const iso = toISODate(dateStr);
+  return iso >= weekStart && iso <= weekEnd;
 }
 
 /* =========================================================
@@ -107,23 +188,25 @@ function getServiceIntervalMileage(
   return null;
 }
 
-function getWorkMilesSinceService(service: ServiceEntry, shifts: SavedShift[]): number {
-  const serviceDate = parseShiftDate(service.date).getTime();
-  const serviceOdometer = Number(service.odometer);
-  const hasServiceOdometer = Number.isFinite(serviceOdometer) && serviceOdometer > 0;
+function getMileageRangeOverlapMiles(
+  rangeStart: number,
+  rangeEnd: number,
+  windowStart: number,
+  windowEnd: number
+): number {
+  if (!(rangeStart > 0 && rangeEnd > rangeStart && windowStart > 0 && windowEnd > windowStart)) {
+    return 0;
+  }
 
-  return shifts.reduce((sum, shift) => {
-    const shiftDate = parseShiftDate(shift.date).getTime();
-    if (shiftDate < serviceDate) return sum;
+  return Math.max(0, Math.min(rangeEnd, windowEnd) - Math.max(rangeStart, windowStart));
+}
 
-    const begin = Number(shift.beginningMileage);
-    const end = Number(shift.endingMileage);
-    if (!(begin > 0 && end > begin)) return sum;
-    if (hasServiceOdometer && end <= serviceOdometer) return sum;
+function getShiftVehicleKey(shift: SavedShift): string {
+  return shift.vehicleId || "unassigned";
+}
 
-    const effectiveBegin = hasServiceOdometer ? Math.max(begin, serviceOdometer) : begin;
-    return sum + Math.max(0, end - effectiveBegin);
-  }, 0);
+function getFuelVehicleKey(entry: FuelEntry): string {
+  return entry.vehicleId || "unassigned";
 }
 
 /* =========================================================
@@ -142,7 +225,8 @@ export default function MetricsPage() {
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
   const [adjustments, setAdjustments] = useState<{ amount: number; week_start: string }[]>([]);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [weekStartsOn, setWeekStartsOn] = useState(1);
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
   const [vehicles, setVehicles] = useState<Array<{
     id: string;
@@ -172,6 +256,9 @@ export default function MetricsPage() {
       }
 
       try {
+        const resolvedWeekStartsOn = getWeekStartDay();
+        setWeekStartsOn(resolvedWeekStartsOn);
+
         const [s, f, sv, intervals, adjRes, vRes] = await Promise.all([
           loadShiftsFromSupabase(user.id),
           loadFuelEntriesFromSupabase(user.id),
@@ -193,8 +280,7 @@ export default function MetricsPage() {
         setAdjustments((adjRes.data ?? []) as { amount: number; week_start: string }[]);
         const vehicleData = vRes.data || [];
         setVehicles(vehicleData);
-        const primary = vehicleData.find((v: { is_primary: boolean }) => v.is_primary);
-        setSelectedVehicleId(primary?.id || "all");
+        setSelectedVehicleId("all");
       } finally {
         setIsLoaded(true);
       }
@@ -209,102 +295,229 @@ export default function MetricsPage() {
      year even if no data exists for it yet.
      ========================================================= */
 
-  const availableYears = useMemo(() => {
-    const filtered = selectedVehicleId === "all"
-      ? shifts
-      : shifts.filter((s) => s.vehicleId === selectedVehicleId);
-    const years = [
-      ...new Set(filtered.map((s) => parseShiftDate(s.date).getFullYear())),
-    ].sort((a, b) => b - a);
-    const currentYear = new Date().getFullYear();
-    if (!years.includes(currentYear)) return [currentYear, ...years];
-    return years;
-  }, [shifts, selectedVehicleId]);
+  const currentPayPeriod = useMemo(
+    () => getPayPeriodForDate(new Date(), weekStartsOn),
+    [weekStartsOn]
+  );
+
+  const payPeriodOptions = useMemo<PayPeriodOption[]>(() => {
+    const periodMap = new Map<string, PayPeriodOption>();
+
+    function addPeriodForDate(dateStr: string) {
+      const date = parseShiftDate(dateStr);
+      if (date.getTime() === 0 || Number.isNaN(date.getTime())) return;
+      const period = getPayPeriodForDate(date, weekStartsOn);
+      periodMap.set(period.weekStart, {
+        ...period,
+        label: `${formatLongDate(period.weekStart)} - ${formatLongDate(period.weekEnd)}`,
+      });
+    }
+
+    periodMap.set(currentPayPeriod.weekStart, {
+      ...currentPayPeriod,
+      label: `Current pay period: ${formatLongDate(currentPayPeriod.weekStart)} - ${formatLongDate(
+        currentPayPeriod.weekEnd
+      )}`,
+    });
+
+    shifts.forEach((shift) => addPeriodForDate(shift.date));
+    fuelEntries.forEach((entry) => addPeriodForDate(entry.date));
+    serviceEntries.forEach((entry) => addPeriodForDate(entry.date));
+    adjustments.forEach((adjustment) => addPeriodForDate(adjustment.week_start));
+
+    return Array.from(periodMap.values()).sort((a, b) =>
+      b.weekStart.localeCompare(a.weekStart)
+    );
+  }, [adjustments, currentPayPeriod, fuelEntries, serviceEntries, shifts, weekStartsOn]);
+
+  useEffect(() => {
+    if (!selectedPeriodKey && payPeriodOptions.length > 0) {
+      setSelectedPeriodKey(currentPayPeriod.weekStart);
+    }
+  }, [currentPayPeriod.weekStart, payPeriodOptions.length, selectedPeriodKey]);
+
+  const selectedPayPeriod =
+    payPeriodOptions.find((period) => period.weekStart === selectedPeriodKey) ??
+    payPeriodOptions[0] ??
+    currentPayPeriod;
 
   /* =========================================================
      METRICS COMPUTATION
      All calculations are memoized and re-run whenever the
-     selected year or any data source changes.
+     selected pay period or any data source changes.
      ========================================================= */
 
   const metrics = useMemo(() => {
 
-    /* Filter by vehicle first (when not "all"), then by year */
+    /* Filter by vehicle first (when not "all"), then by selected pay period */
     const vehicleShifts = selectedVehicleId === "all" ? shifts : shifts.filter((s) => s.vehicleId === selectedVehicleId);
     const vehicleFuel = selectedVehicleId === "all" ? fuelEntries : fuelEntries.filter((f) => f.vehicleId === selectedVehicleId);
-    const vehicleServices = selectedVehicleId === "all" ? serviceEntries : serviceEntries.filter((sv) => sv.vehicleId === selectedVehicleId);
-
-    const yearShifts = vehicleShifts.filter(
-      (s) => parseShiftDate(s.date).getFullYear() === selectedYear
+    const periodShifts = vehicleShifts.filter(
+      (s) => isDateInRange(s.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
     );
-    const yearFuel = vehicleFuel.filter(
-      (f) => parseShiftDate(f.date).getFullYear() === selectedYear
+    const periodFuel = vehicleFuel.filter(
+      (f) => isDateInRange(f.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
     );
-    const yearServices = vehicleServices.filter(
-      (sv) => parseShiftDate(sv.date).getFullYear() === selectedYear
+    const completedPeriodShifts = periodShifts.filter((shift) => shift.status === "closed");
+    const selectedVehicleKeys = [...new Set(completedPeriodShifts.map(getShiftVehicleKey))];
+    const selectedVehicleIds = selectedVehicleKeys.filter((vehicleId) => vehicleId !== "unassigned");
+    const scopedPeriodFuel = periodFuel.filter((entry) =>
+      selectedVehicleKeys.includes(getFuelVehicleKey(entry))
     );
-    const completedYearShifts = yearShifts.filter((shift) => shift.status === "closed");
+    const scopedAllFuel = vehicleFuel.filter((entry) =>
+      selectedVehicleKeys.includes(getFuelVehicleKey(entry))
+    );
+    const assignedVehicleServices = selectedVehicleId === "all"
+      ? serviceEntries.filter(
+          (service) => !!service.vehicleId && selectedVehicleIds.includes(service.vehicleId)
+        )
+      : serviceEntries.filter((service) => service.vehicleId === selectedVehicleId);
+    const unassignedServiceRecords = selectedVehicleId === "all"
+      ? serviceEntries.filter((service) => !service.vehicleId)
+      : [];
 
     /* Pay adjustments (MGA, bonuses, etc.) — excluded when vehicle has no shifts,
        since adjustments are driver-level and cannot be attributed to a specific vehicle */
-    const yearAdjustments = adjustments.filter(
-      (a) => new Date(a.week_start + "T12:00:00").getFullYear() === selectedYear
+    const periodAdjustments = adjustments.filter(
+      (a) => isDateInRange(a.week_start, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
     );
-    const totalAdjustments = vehicleShifts.length === 0
+    const totalAdjustments = completedPeriodShifts.length === 0
       ? 0
-      : yearAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+      : periodAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0);
 
     /* Basic shift totals */
-    const totalDeliveries = completedYearShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
-    const totalHours = completedYearShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
-    const shiftGrossPay = completedYearShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0);
+    const totalDeliveries = completedPeriodShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
+    const totalHours = completedPeriodShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
+    const shiftGrossPay = completedPeriodShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0);
     const totalGrossPay = shiftGrossPay + totalAdjustments;
-    const totalFuelCost = yearFuel.reduce((s, x) => s + Number(x.totalCost || 0), 0);
+    const totalFuelCost = scopedPeriodFuel.reduce((s, x) => s + Number(x.totalCost || 0), 0);
+    const shiftsMissingBeginningMileage = completedPeriodShifts.filter(
+      (shift) => !(Number(shift.beginningMileage) > 0)
+    );
+    const shiftsMissingEndingMileage = completedPeriodShifts.filter(
+      (shift) => !(Number(shift.endingMileage) > 0)
+    );
 
     /* Work miles — difference between ending and beginning mileage per shift */
-    const totalShiftMiles = completedYearShifts.reduce((sum, s) => {
+    const totalShiftMiles = completedPeriodShifts.reduce((sum, s) => {
       const begin = Number(s.beginningMileage);
       const end = Number(s.endingMileage);
       return begin > 0 && end > begin ? sum + (end - begin) : sum;
     }, 0);
 
     /* Total miles driven — first to last odometer reading from fuel entries. */
-    const sortedFuel = [...yearFuel].sort((a, b) => {
-      const dateDiff = parseShiftDate(a.date).getTime() - parseShiftDate(b.date).getTime();
-      if (dateDiff !== 0) return dateDiff;
+    const totalMilesDriven = selectedVehicleKeys.reduce((sum, vehicleKey) => {
+      const sortedFuel = scopedPeriodFuel
+        .filter((entry) => getFuelVehicleKey(entry) === vehicleKey)
+        .sort((a, b) => {
+          const dateDiff = parseShiftDate(a.date).getTime() - parseShiftDate(b.date).getTime();
+          if (dateDiff !== 0) return dateDiff;
 
-      const odometerDiff = Number(a.odometer || 0) - Number(b.odometer || 0);
-      if (odometerDiff !== 0) return odometerDiff;
+          const odometerDiff = Number(a.odometer || 0) - Number(b.odometer || 0);
+          if (odometerDiff !== 0) return odometerDiff;
 
-      return parseOptionalDateTime(a.createdAt) - parseOptionalDateTime(b.createdAt);
-    });
-    let totalMilesDriven = 0;
-    if (sortedFuel.length >= 2) {
+          return parseOptionalDateTime(a.createdAt) - parseOptionalDateTime(b.createdAt);
+        });
+
+      if (sortedFuel.length < 2) return sum;
+
       const firstOdo = Number(sortedFuel[0].odometer);
       const lastOdo = Number(sortedFuel[sortedFuel.length - 1].odometer);
-      if (lastOdo > firstOdo) totalMilesDriven = lastOdo - firstOdo;
-    }
+      return lastOdo > firstOdo ? sum + (lastOdo - firstOdo) : sum;
+    }, 0);
 
     const businessUseInvalid = totalMilesDriven > 0 && totalShiftMiles > totalMilesDriven;
     const businessUsePct = businessUseInvalid
       ? null
       : getWorkMilePercentage(totalShiftMiles, totalMilesDriven);
-    const fuelCostResult = calculateWorkFuelCost({
-      workMiles: totalShiftMiles,
-      fuelEntries: yearFuel,
+    const vehicleFuelCostResults = selectedVehicleKeys.map((vehicleKey) => {
+      const vehicleCompletedShifts = completedPeriodShifts.filter(
+        (shift) => getShiftVehicleKey(shift) === vehicleKey
+      );
+      const vehicleWorkMiles = vehicleCompletedShifts.reduce((sum, shift) => {
+        const begin = Number(shift.beginningMileage);
+        const end = Number(shift.endingMileage);
+        return begin > 0 && end > begin ? sum + (end - begin) : sum;
+      }, 0);
+      const vehicleFuel = scopedPeriodFuel.filter((entry) => getFuelVehicleKey(entry) === vehicleKey);
+      const result = calculateWorkFuelCost({
+        workMiles: vehicleWorkMiles,
+        fuelEntries: vehicleFuel,
+      });
+
+      return { vehicleKey, vehicleWorkMiles, result };
     });
-    const workFuelCost = fuelCostResult.workFuelCost;
+    const workFuelCost = vehicleFuelCostResults.reduce(
+      (sum, vehicle) => sum + vehicle.result.workFuelCost,
+      0
+    );
+    const fuelCostNeedsMpg = totalShiftMiles > 0 && vehicleFuelCostResults.some(
+      (vehicle) => vehicle.vehicleWorkMiles > 0 && vehicle.result.needsMpg
+    );
+    const hasFuelCostHistoryGap = vehicleFuelCostResults.some(
+      (vehicle) => vehicle.vehicleWorkMiles > 0 && vehicle.result.source === "unavailable"
+    );
+    const fuelCostPerMile = totalShiftMiles > 0 ? workFuelCost / totalShiftMiles : 0;
+    const fuelCostSource = vehicleFuelCostResults.some(
+      (vehicle) => vehicle.result.source === "actual_history"
+    )
+      ? "actual_history"
+      : vehicleFuelCostResults.some((vehicle) => vehicle.result.source === "vehicle_estimate")
+        ? "vehicle_estimate"
+        : "unavailable";
+
+    const completedFuelCycles = selectedVehicleKeys.flatMap((vehicleKey) => {
+      const fullFillUps = scopedAllFuel
+        .filter((entry) => getFuelVehicleKey(entry) === vehicleKey)
+        .filter((entry) => entry.isFullFillUp ?? true)
+        .sort((a, b) => {
+          const odometerDiff = Number(a.odometer || 0) - Number(b.odometer || 0);
+          if (odometerDiff !== 0) return odometerDiff;
+
+          const dateDiff = parseShiftDate(a.date).getTime() - parseShiftDate(b.date).getTime();
+          if (dateDiff !== 0) return dateDiff;
+
+          return parseOptionalDateTime(a.createdAt) - parseOptionalDateTime(b.createdAt);
+        });
+
+      return fullFillUps.slice(1).map((endFill, index) => {
+        const startFill = fullFillUps[index];
+        return {
+          vehicleKey,
+          startOdometer: Number(startFill.odometer || 0),
+          endOdometer: Number(endFill.odometer || 0),
+        };
+      }).filter((cycle) => cycle.endOdometer > cycle.startOdometer);
+    });
+
+    const verifiedCompletedCycleWorkMiles = completedPeriodShifts.reduce((sum, shift) => {
+      const shiftStart = Number(shift.beginningMileage);
+      const shiftEnd = Number(shift.endingMileage);
+      const vehicleKey = getShiftVehicleKey(shift);
+      const cycleMiles = completedFuelCycles
+        .filter((cycle) => cycle.vehicleKey === vehicleKey)
+        .reduce(
+          (cycleSum, cycle) =>
+            cycleSum + getMileageRangeOverlapMiles(
+              shiftStart,
+              shiftEnd,
+              cycle.startOdometer,
+              cycle.endOdometer
+            ),
+          0
+        );
+
+      return sum + cycleMiles;
+    }, 0);
+    const openCycleMiles = Math.max(0, totalShiftMiles - verifiedCompletedCycleWorkMiles);
 
     /* Profitability */
-    const netProfit = totalGrossPay - workFuelCost;
-    const netProfitPct = totalGrossPay > 0 ? netProfit / totalGrossPay : 0;
+    const fuelOnlyProfit = totalGrossPay - workFuelCost;
+    const fuelOnlyProfitPct = totalGrossPay > 0 ? fuelOnlyProfit / totalGrossPay : 0;
     const fuelPct = totalGrossPay > 0 ? workFuelCost / totalGrossPay : 0;
 
-    const hourlyRate = totalHours > 0 ? netProfit / totalHours : 0;
-    const profitPerDelivery = totalDeliveries > 0 ? netProfit / totalDeliveries : 0;
-
     /* True cost view — allocates service cost by configured service interval mileage */
-    const serviceAllocation = yearServices.reduce(
+    const serviceAllocation = assignedVehicleServices.reduce(
       (totals, service) => {
         const serviceCost = Number(service.cost || 0);
         if (!(serviceCost > 0)) return totals;
@@ -326,11 +539,22 @@ export default function MetricsPage() {
           return totals;
         }
 
-        const serviceShifts = service.vehicleId
-          ? completedYearShifts.filter((shift) => shift.vehicleId === service.vehicleId)
-          : completedYearShifts;
-        const workMilesSinceService = getWorkMilesSinceService(service, serviceShifts);
+        const serviceStartOdometer = Number(service.odometer || 0);
+        const serviceEndOdometer = serviceStartOdometer + intervalMileage;
+        const serviceVehicleKey = service.vehicleId || "unassigned";
         const costPerMile = serviceCost / intervalMileage;
+        const workMilesSinceService = completedPeriodShifts
+          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+          .reduce((sum, shift) => {
+            const shiftStart = Number(shift.beginningMileage);
+            const shiftEnd = Number(shift.endingMileage);
+            return sum + getMileageRangeOverlapMiles(
+              shiftStart,
+              shiftEnd,
+              serviceStartOdometer,
+              serviceEndOdometer
+            );
+          }, 0);
         const allocatedServiceCost = Math.min(
           serviceCost,
           workMilesSinceService * costPerMile
@@ -368,34 +592,19 @@ export default function MetricsPage() {
     const businessServiceCost = serviceAllocation.businessServiceCost;
     const unallocatedServiceCost = serviceAllocation.unallocatedServiceCost;
     const serviceDetails = serviceAllocation.serviceDetails;
-    const trueNetProfit = netProfit - businessServiceCost;
+    const trueNetProfit = totalGrossPay - workFuelCost - businessServiceCost;
     const trueNetPct = totalGrossPay > 0 ? trueNetProfit / totalGrossPay : 0;
     const serviceCostPct = totalGrossPay > 0 ? businessServiceCost / totalGrossPay : 0;
 
-    /* Monthly breakdown — builds one entry per month that has shift data */
-    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const monthlyData = MONTHS.map((month, i) => {
-      const mShifts = completedYearShifts.filter(
-        (s) => parseShiftDate(s.date).getMonth() === i
-      );
-      const mAdjTotal = yearAdjustments
-        .filter((a) => new Date(a.week_start + "T12:00:00").getMonth() === i)
-        .reduce((sum, a) => sum + Number(a.amount || 0), 0);
-      const gross = mShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0) + mAdjTotal;
-      const mWorkMiles = mShifts.reduce((sum, s) => {
-        const begin = Number(s.beginningMileage);
-        const end = Number(s.endingMileage);
-        return begin > 0 && end > begin ? sum + (end - begin) : sum;
-      }, 0);
-      const mWorkFuel = calculateWorkFuelCost({
-        workMiles: mWorkMiles,
-        fuelEntries: yearFuel,
-      }).workFuelCost;
-      const net = Math.max(gross - mWorkFuel, 0);
-      return { month, grossPay: gross, netProfit: net, hasData: mShifts.length > 0 || mAdjTotal > 0 };
-    }).filter((m) => m.hasData);
+    const periodSummaryData = [
+      {
+        label: "This period",
+        grossPay: totalGrossPay,
+        netProfit: Math.max(trueNetProfit, 0),
+      },
+    ];
 
-    const maxMonthlyValue = Math.max(...monthlyData.map((m) => m.grossPay), 1);
+    const maxPeriodSummaryValue = Math.max(totalGrossPay, Math.max(trueNetProfit, 0), 1);
 
     /* Average MPG from full fill-up fuel entries that have an mpg value */
     const validMpgEntries = fuelEntries.filter(
@@ -404,20 +613,53 @@ export default function MetricsPage() {
     const avgMpg = validMpgEntries.length > 0
       ? validMpgEntries.reduce((sum, f) => sum + f.mpg!, 0) / validMpgEntries.length
       : 0;
+    const warnings: Array<{ title: string; description: string }> = [];
+
+    if (unassignedServiceRecords.length > 0) {
+      warnings.push({
+        title: "Unassigned service records excluded",
+        description: `${unassignedServiceRecords.length} service record${unassignedServiceRecords.length === 1 ? "" : "s"} without a vehicle are excluded from service cost allocation.`,
+      });
+    }
+    if (hasFuelCostHistoryGap) {
+      warnings.push({
+        title: "Fuel cost history needed",
+        description: "Work miles exist, but there is no fuel cost-per-mile history for the selected vehicle scope.",
+      });
+    }
+    if (openCycleMiles > 0) {
+      warnings.push({
+        title: "Open-cycle miles included",
+        description: "Includes open-cycle miles; final fuel-cycle verification occurs after next full fill-up.",
+      });
+    }
+    if (shiftsMissingBeginningMileage.length > 0) {
+      warnings.push({
+        title: "Beginning mileage missing",
+        description: `${shiftsMissingBeginningMileage.length} completed shift${shiftsMissingBeginningMileage.length === 1 ? "" : "s"} missing beginning mileage were excluded from work miles.`,
+      });
+    }
+    if (shiftsMissingEndingMileage.length > 0) {
+      warnings.push({
+        title: "Ending mileage missing",
+        description: `${shiftsMissingEndingMileage.length} completed shift${shiftsMissingEndingMileage.length === 1 ? "" : "s"} missing ending mileage were excluded from work miles.`,
+      });
+    }
 
     return {
       totalDeliveries, totalHours, totalGrossPay, totalFuelCost, totalAdjustments,
       shiftGrossPay, totalShiftMiles, totalMilesDriven, businessUsePct, businessUseInvalid,
-      workFuelCost, netProfit, netProfitPct, fuelPct,
-      fuelCostPerMile: fuelCostResult.effectiveCostPerMile,
-      fuelCostSource: fuelCostResult.source,
-      fuelCostNeedsMpg: fuelCostResult.needsMpg,
-      hourlyRate, profitPerDelivery,
+      workFuelCost, netProfit: trueNetProfit, netProfitPct: trueNetPct, fuelPct,
+      fuelCostPerMile,
+      fuelCostSource,
+      fuelCostNeedsMpg,
+      hourlyRate: totalHours > 0 ? trueNetProfit / totalHours : 0,
+      profitPerDelivery: totalDeliveries > 0 ? trueNetProfit / totalDeliveries : 0,
       yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct, serviceCostPct,
-      monthlyData, maxMonthlyValue, avgMpg,
-      hasData: completedYearShifts.length > 0 || totalAdjustments > 0,
+      periodSummaryData, maxPeriodSummaryValue, avgMpg, warnings, openCycleMiles, fuelOnlyProfitPct,
+      hasData: completedPeriodShifts.length > 0 || totalAdjustments > 0,
     };
-  }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedYear, selectedVehicleId]);
+  }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedPayPeriod, selectedVehicleId]);
 
   /* =========================================================
      LOADING STATE
@@ -439,7 +681,7 @@ export default function MetricsPage() {
     workFuelCost, netProfit, netProfitPct, fuelPct, fuelCostNeedsMpg, fuelCostPerMile, fuelCostSource,
     profitPerDelivery,
     yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct,
-    monthlyData, maxMonthlyValue, avgMpg,
+    periodSummaryData, maxPeriodSummaryValue, avgMpg, warnings, fuelOnlyProfitPct,
     hasData,
   } = metrics;
 
@@ -476,24 +718,44 @@ export default function MetricsPage() {
           </div>
         )}
 
-        {/* YEAR SELECTOR */}
+        {/* PAY PERIOD SELECTOR */}
         <div className="mt-5 flex items-center justify-between">
-          <span className="text-sm text-slate-400">Viewing:</span>
+          <span className="text-sm text-slate-400">Pay period:</span>
           <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+            value={selectedPayPeriod.weekStart}
+            onChange={(e) => setSelectedPeriodKey(e.target.value)}
+            className="max-w-[260px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
           >
-            {availableYears.map((yr) => (
-              <option key={yr} value={yr}>{yr}</option>
+            {payPeriodOptions.map((period) => (
+              <option key={period.weekStart} value={period.weekStart}>
+                {period.label}
+              </option>
             ))}
           </select>
         </div>
 
+        <p className="mt-2 text-xs text-slate-500">
+          {formatLongDate(selectedPayPeriod.weekStart)} - {formatLongDate(selectedPayPeriod.weekEnd)}
+        </p>
+
+        {warnings.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {warnings.map((warning) => (
+              <div
+                key={warning.title}
+                className="rounded-2xl border border-amber-500/40 bg-amber-950/30 p-3"
+              >
+                <p className="text-sm font-semibold text-amber-200">{warning.title}</p>
+                <p className="mt-0.5 text-xs text-amber-100/80">{warning.description}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* NO DATA STATE */}
         {!hasData ? (
           <div className="mt-16 text-center">
-            <p className="text-slate-500">No data for {selectedYear}.</p>
+            <p className="text-slate-500">No data for this pay period.</p>
           </div>
         ) : (
           <>
@@ -505,7 +767,7 @@ export default function MetricsPage() {
                   <span className="text-lg">📊</span>
                   <h2 className="text-lg font-bold">Overview</h2>
                   <span className="ml-1 rounded-full bg-blue-950 px-2 py-0.5 text-xs text-blue-400">
-                    {selectedYear}
+                    This pay period
                   </span>
                 </div>
 
@@ -513,19 +775,19 @@ export default function MetricsPage() {
                   {[
                     { label: "Deliveries",    value: totalDeliveries.toLocaleString(),    sub: "Total" },
                     { label: "Hours Worked",  value: totalHours.toFixed(2),               sub: "Total" },
-                    { label: "Gross Pay",     value: fmtDollar(shiftGrossPay),            sub: "Completed shifts" },
+                    { label: "Total Income",  value: fmtDollar(totalGrossPay),            sub: "Shift gross + adjustments" },
                     ...(totalAdjustments !== 0
-                      ? [{ label: "Adjustments", value: fmtDollar(totalAdjustments), sub: "Pay records" }]
+                      ? [{ label: "Pay Adjustments", value: fmtDollar(totalAdjustments), sub: "Pay records" }]
                       : []),
                     {
-                      label: "Fuel Cost",
+                      label: "Work Fuel Cost",
                       value: fuelCostNeedsMpg ? "Pending" : fmtDollar(workFuelCost),
                       sub: fuelCostNeedsMpg ? "Add MPG history" : "Work miles only",
                     },
                     {
-                      label: "Net Profit",
+                      label: "True Net Profit",
                       value: fmtDollar(netProfit),
-                      sub: fuelCostNeedsMpg ? "Fuel cost pending" : "After fuel",
+                      sub: fuelCostNeedsMpg ? "Fuel cost pending" : "After fuel + service",
                       emerald: true,
                     },
                     { label: "Per Delivery",  value: fmtDollar(profitPerDelivery),        sub: "Average" },
@@ -559,9 +821,9 @@ export default function MetricsPage() {
                   </>
                 ) : (
                   <>
-                    <p className="text-sm text-slate-400">You keep</p>
+                    <p className="text-sm text-slate-400">You truly keep</p>
                     <p className="text-4xl font-bold text-emerald-400">{fmtPct(netProfitPct)}</p>
-                    <p className="mt-0.5 text-sm text-slate-400">of what you earn (after fuel)</p>
+                    <p className="mt-0.5 text-sm text-slate-400">of what you earn (after fuel + service)</p>
                   </>
                 )}
 
@@ -578,7 +840,7 @@ export default function MetricsPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 text-slate-400">
                       <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                      {fuelCostNeedsMpg ? "Profit pending fuel" : "Net Profit"}
+                      {fuelCostNeedsMpg ? "Profit pending fuel" : "True Net Profit"}
                     </span>
                     <span className="text-emerald-400">
                       {fmtDollar(netProfit)}{" "}
@@ -590,7 +852,7 @@ export default function MetricsPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 text-slate-400">
                       <span className="inline-block h-2 w-2 rounded-full bg-blue-400" />
-                      {fuelCostNeedsMpg ? "Fuel cost pending" : "Fuel Cost"}
+                      {fuelCostNeedsMpg ? "Fuel cost pending" : "Work Fuel Cost"}
                     </span>
                     <span className="text-blue-400">
                       {fuelCostNeedsMpg ? (
@@ -607,31 +869,31 @@ export default function MetricsPage() {
               </section>
             </div>
 
-            {/* ── SECTION 3: MONTHLY CHART ── */}
-            {monthlyData.length > 0 && (
+            {/* ── SECTION 3: PERIOD SUMMARY ── */}
+            {periodSummaryData.length > 0 && (
               <div className="relative mt-6">
                 <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-purple-500" />
                 <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
                   <div className="mb-5 flex items-center justify-center gap-2">
-                    <h2 className="text-lg font-bold">Monthly Breakdown</h2>
+                    <h2 className="text-lg font-bold">Pay Period Breakdown</h2>
                     <span className="rounded-full bg-purple-950 px-2 py-0.5 text-xs text-purple-400">
-                      {selectedYear}
+                      Selected period
                     </span>
                   </div>
 
                   {/* BAR CHART — grey = gross, green = net */}
                   <div className="flex items-end justify-center gap-2 overflow-x-auto pb-2">
-                    {monthlyData.map((m) => {
+                    {periodSummaryData.map((m) => {
                       const grossH = Math.max(
-                        Math.round((m.grossPay / maxMonthlyValue) * 80),
+                        Math.round((m.grossPay / maxPeriodSummaryValue) * 80),
                         2
                       );
                       const netH = Math.max(
-                        Math.round((m.netProfit / maxMonthlyValue) * 80),
+                        Math.round((m.netProfit / maxPeriodSummaryValue) * 80),
                         2
                       );
                       return (
-                        <div key={m.month} className="flex flex-col items-center gap-1">
+                        <div key={m.label} className="flex flex-col items-center gap-1">
                           <div
                             className="flex items-end gap-0.5"
                             style={{ height: "80px" }}
@@ -645,7 +907,7 @@ export default function MetricsPage() {
                               style={{ height: `${netH}px` }}
                             />
                           </div>
-                          <span className="text-xs text-slate-400">{m.month}</span>
+                          <span className="text-xs text-slate-400">{m.label}</span>
                         </div>
                       );
                     })}
@@ -655,11 +917,11 @@ export default function MetricsPage() {
                   <div className="mt-3 flex items-center justify-center gap-4">
                     <span className="flex items-center gap-1.5 text-xs text-slate-400">
                       <span className="inline-block h-2 w-4 rounded-sm bg-slate-600" />
-                      Gross Pay
+                      Total Income
                     </span>
                     <span className="flex items-center gap-1.5 text-xs text-slate-400">
                       <span className="inline-block h-2 w-4 rounded-sm bg-emerald-500" />
-                      {fuelCostNeedsMpg ? "Profit pending fuel" : "Net Profit"}
+                      {fuelCostNeedsMpg ? "Profit pending fuel" : "True Net Profit"}
                     </span>
                   </div>
                 </section>
@@ -771,11 +1033,11 @@ export default function MetricsPage() {
                         )}
                         <div>
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-slate-300">− Service (your share)</span>
+                            <span className="text-sm text-slate-300">− Service Cost Used</span>
                             <span className="text-sm text-red-400">−{fmtDollar(businessServiceCost)}</span>
                           </div>
                           <p className="mt-0.5 text-right text-xs text-slate-500">
-                            ${yearServiceCost.toFixed(2)} total, allocated by service intervals
+                            ${yearServiceCost.toFixed(2)} service value, allocated by active service windows
                           </p>
                         </div>
                         {unallocatedServiceCost > 0 && (
@@ -825,7 +1087,7 @@ export default function MetricsPage() {
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-between">
-                                    <span>Work miles since service</span>
+                                    <span>This-period miles charged</span>
                                     <span>{service.workMilesSinceService.toLocaleString()} mi</span>
                                   </div>
                                 </div>
@@ -877,7 +1139,7 @@ export default function MetricsPage() {
                         <p className="mt-1.5 text-xs text-slate-500">
                           {fuelCostNeedsMpg
                             ? "Add another fill-up to calculate after-fuel take-home."
-                            : `vs ${fmtPct(netProfitPct)} fuel-only view`}
+                            : `vs ${fmtPct(fuelOnlyProfitPct)} fuel-only view`}
                         </p>
                       </div>
                     </div>

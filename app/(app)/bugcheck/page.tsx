@@ -36,6 +36,22 @@ type WarningItem = {
   detail: string;
 };
 
+type CompletedFuelCycle = {
+  id: string;
+  vehicleKey: string;
+  startEntry: FuelEntry;
+  endEntry: FuelEntry;
+  partialFillUps: FuelEntry[];
+  cycleMiles: number;
+  gallons: number;
+  fuelCost: number;
+  mpg: number;
+  fuelCostPerMile: number;
+  workMiles: number;
+  businessUse: number;
+  workFuelCost: number;
+};
+
 const WEEK_START_STORAGE_KEYS = [
   "gigaxios-week-start",
   "gigaxios-week-starts-on",
@@ -183,6 +199,46 @@ function getFuelSortValue(entry: FuelEntry): number {
 
   const dateValue = parseLocalDate(entry.date).getTime();
   return Number.isFinite(dateValue) ? dateValue : 0;
+}
+
+function getVehicleCycleKey(entry: FuelEntry): string {
+  return entry.vehicleId || "unassigned";
+}
+
+function getShiftCycleVehicleKey(shift: SavedShift): string {
+  return shift.vehicleId || "unassigned";
+}
+
+function getRecordVehicleKey(record: { vehicleId?: string }): string {
+  return record.vehicleId || "unassigned";
+}
+
+function getShiftCycleOverlapMiles(
+  shift: SavedShift,
+  cycleStartOdometer: number,
+  cycleEndOdometer: number
+): number {
+  const shiftStart = Number(shift.beginningMileage || 0);
+  const shiftEnd = Number(shift.endingMileage || 0);
+  if (!(shiftStart > 0 && shiftEnd > shiftStart)) return 0;
+
+  return Math.max(
+    0,
+    Math.min(shiftEnd, cycleEndOdometer) - Math.max(shiftStart, cycleStartOdometer)
+  );
+}
+
+function getMileageRangeOverlapMiles(
+  rangeStart: number,
+  rangeEnd: number,
+  windowStart: number,
+  windowEnd: number
+): number {
+  if (!(rangeStart > 0 && rangeEnd > rangeStart && windowStart > 0 && windowEnd > windowStart)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(rangeEnd, windowEnd) - Math.max(rangeStart, windowStart));
 }
 
 function normalizeServiceType(serviceType: string): string {
@@ -371,20 +427,58 @@ export default function BugcheckPage() {
       ),
     [selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart, shifts]
   );
+  const selectedPeriodVehicleIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          completedPeriodShifts
+            .map((shift) => shift.vehicleId)
+            .filter((vehicleId): vehicleId is string => Boolean(vehicleId))
+        )
+      ),
+    [completedPeriodShifts]
+  );
+  const selectedPeriodVehicleKeys = useMemo(
+    () =>
+      selectedPeriodVehicleIds.length > 0
+        ? selectedPeriodVehicleIds
+        : completedPeriodShifts.some((shift) => !shift.vehicleId)
+          ? ["unassigned"]
+          : [],
+    [completedPeriodShifts, selectedPeriodVehicleIds]
+  );
+  const scopedFuelEntries = useMemo(
+    () =>
+      selectedPeriodVehicleIds.length > 0
+        ? fuelEntries.filter((entry) => entry.vehicleId && selectedPeriodVehicleIds.includes(entry.vehicleId))
+        : fuelEntries.filter((entry) => !entry.vehicleId),
+    [fuelEntries, selectedPeriodVehicleIds]
+  );
+  const scopedServiceEntries = useMemo(
+    () =>
+      serviceEntries.filter(
+        (entry) => entry.vehicleId && selectedPeriodVehicleIds.includes(entry.vehicleId)
+      ),
+    [selectedPeriodVehicleIds, serviceEntries]
+  );
+  const unassignedServiceEntries = useMemo(
+    () => serviceEntries.filter((entry) => !entry.vehicleId),
+    [serviceEntries]
+  );
 
   const periodFuelEntries = useMemo(
     () =>
-      fuelEntries
+      scopedFuelEntries
         .filter((entry) =>
           isDateInRange(entry.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
         )
         .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0)),
-    [fuelEntries, selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart]
+    [scopedFuelEntries, selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart]
   );
 
   const chronologicalPeriodFuelEntries = useMemo(
     () =>
-      fuelEntries
+      scopedFuelEntries
         .filter((entry) =>
           isDateInRange(entry.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
         )
@@ -393,7 +487,7 @@ export default function BugcheckPage() {
           if (dateCompare !== 0) return dateCompare;
           return getFuelSortValue(a) - getFuelSortValue(b);
         }),
-    [fuelEntries, selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart]
+    [scopedFuelEntries, selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart]
   );
 
   const periodAdjustments = useMemo(
@@ -402,16 +496,6 @@ export default function BugcheckPage() {
         isDateInRange(adjustment.weekStart, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
       ),
     [adjustments, selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart]
-  );
-
-  const periodServiceEntries = useMemo(
-    () =>
-      serviceEntries
-        .filter((entry) =>
-          isDateInRange(entry.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
-        )
-        .sort((a, b) => toISODate(a.date).localeCompare(toISODate(b.date))),
-    [selectedPayPeriod.weekEnd, selectedPayPeriod.weekStart, serviceEntries]
   );
 
   const shiftGrossPay = completedPeriodShifts.reduce(
@@ -428,10 +512,30 @@ export default function BugcheckPage() {
     const ending = Number(shift.endingMileage || 0);
     return sum + Math.max(0, ending - beginning);
   }, 0);
-  const firstFuelOdometer = Number(periodFuelEntries[0]?.odometer || 0);
-  const lastFuelOdometer = Number(periodFuelEntries[periodFuelEntries.length - 1]?.odometer || 0);
-  const totalFuelOdometerMiles =
-    periodFuelEntries.length >= 2 ? Math.max(0, lastFuelOdometer - firstFuelOdometer) : 0;
+  const fuelOdometerSpans = selectedPeriodVehicleKeys.map((vehicleKey) => {
+    const vehicleFuelEntries = periodFuelEntries
+      .filter((entry) => getRecordVehicleKey(entry) === vehicleKey)
+      .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0));
+    const firstFuelOdometer = Number(vehicleFuelEntries[0]?.odometer || 0);
+    const lastFuelOdometer = Number(vehicleFuelEntries[vehicleFuelEntries.length - 1]?.odometer || 0);
+
+    return {
+      vehicleKey,
+      count: vehicleFuelEntries.length,
+      firstFuelOdometer,
+      lastFuelOdometer,
+      miles:
+        vehicleFuelEntries.length >= 2
+          ? Math.max(0, lastFuelOdometer - firstFuelOdometer)
+          : 0,
+    };
+  });
+  const firstFuelOdometer = fuelOdometerSpans[0]?.firstFuelOdometer ?? 0;
+  const lastFuelOdometer = fuelOdometerSpans[0]?.lastFuelOdometer ?? 0;
+  const totalFuelOdometerMiles = fuelOdometerSpans.reduce(
+    (sum, span) => sum + span.miles,
+    0
+  );
   const businessUse =
     totalFuelOdometerMiles > 0 ? workMiles / totalFuelOdometerMiles : 0;
   const businessUseWarning =
@@ -440,10 +544,51 @@ export default function BugcheckPage() {
           totalFuelOdometerMiles
         )}). Business Use % is not shown.`
       : "";
-  const fuelCostResult = calculateWorkFuelCost({
-    workMiles,
-    fuelEntries: periodFuelEntries,
+  const vehicleFuelCostResults = selectedPeriodVehicleKeys.map((vehicleKey) => {
+    const vehicleShifts = completedPeriodShifts.filter(
+      (shift) => getShiftCycleVehicleKey(shift) === vehicleKey
+    );
+    const vehicleWorkMiles = vehicleShifts.reduce((sum, shift) => {
+      const beginning = Number(shift.beginningMileage || 0);
+      const ending = Number(shift.endingMileage || 0);
+      return sum + Math.max(0, ending - beginning);
+    }, 0);
+    const vehicleFuelEntries = periodFuelEntries.filter(
+      (entry) => getRecordVehicleKey(entry) === vehicleKey
+    );
+    const result = calculateWorkFuelCost({
+      workMiles: vehicleWorkMiles,
+      fuelEntries: vehicleFuelEntries,
+    });
+
+    return {
+      vehicleKey,
+      workMiles: vehicleWorkMiles,
+      result,
+    };
   });
+  const fuelCostResult = {
+    workFuelCost: vehicleFuelCostResults.reduce(
+      (sum, item) => sum + item.result.workFuelCost,
+      0
+    ),
+    effectiveCostPerMile:
+      workMiles > 0
+        ? vehicleFuelCostResults.reduce(
+            (sum, item) => sum + item.result.workFuelCost,
+            0
+          ) / workMiles
+        : 0,
+    isEstimated: vehicleFuelCostResults.some((item) => item.result.isEstimated),
+    needsMpg:
+      vehicleFuelCostResults.length === 0 ||
+      vehicleFuelCostResults.some((item) => item.result.needsMpg),
+    source: vehicleFuelCostResults.some((item) => item.result.source === "actual_history")
+      ? "actual_history"
+      : vehicleFuelCostResults.some((item) => item.result.source === "vehicle_estimate")
+        ? "vehicle_estimate"
+        : "unavailable",
+  };
   const validMpgEntries = periodFuelEntries.filter(
     (entry) => (entry.isFullFillUp ?? true) && entry.mpg && entry.mpg > 0
   );
@@ -452,21 +597,256 @@ export default function BugcheckPage() {
       ? validMpgEntries.reduce((sum, entry) => sum + (entry.mpg ?? 0), 0) /
         validMpgEntries.length
       : 0;
-  const serviceDiagnostics = periodServiceEntries.map((service) => {
+  function getLatestKnownOdometer(vehicleId?: string): number {
+    const odometerValues = [
+      ...fuelEntries
+        .filter((entry) => !vehicleId || entry.vehicleId === vehicleId)
+        .map((entry) => Number(entry.odometer || 0)),
+      ...shifts
+        .filter((shift) => !vehicleId || shift.vehicleId === vehicleId)
+        .flatMap((shift) => [
+          Number(shift.beginningMileage || 0),
+          Number(shift.endingMileage || 0),
+        ]),
+      ...serviceEntries
+        .filter((entry) => !vehicleId || entry.vehicleId === vehicleId)
+        .map((entry) => Number(entry.odometer || 0)),
+    ].filter((value) => Number.isFinite(value) && value > 0);
+
+    return odometerValues.length > 0 ? Math.max(...odometerValues) : 0;
+  }
+
+  const closedShifts = useMemo(
+    () => shifts.filter((shift) => shift.status === "closed"),
+    [shifts]
+  );
+  const completedFuelCycles = useMemo<CompletedFuelCycle[]>(() => {
+    const fuelByVehicle = new Map<string, FuelEntry[]>();
+
+    scopedFuelEntries.forEach((entry) => {
+      const vehicleKey = getVehicleCycleKey(entry);
+      fuelByVehicle.set(vehicleKey, [...(fuelByVehicle.get(vehicleKey) ?? []), entry]);
+    });
+
+    const cycles: CompletedFuelCycle[] = [];
+
+    fuelByVehicle.forEach((vehicleFuelEntries, vehicleKey) => {
+      const sortedFullFillUps = vehicleFuelEntries
+        .filter((entry) => (entry.isFullFillUp ?? true) && Number(entry.odometer || 0) > 0)
+        .sort((a, b) => {
+          const odometerDiff = Number(a.odometer || 0) - Number(b.odometer || 0);
+          if (odometerDiff !== 0) return odometerDiff;
+          return toISODate(a.date).localeCompare(toISODate(b.date));
+        });
+
+      for (let index = 1; index < sortedFullFillUps.length; index += 1) {
+        const startEntry = sortedFullFillUps[index - 1];
+        const endEntry = sortedFullFillUps[index];
+        const startOdometer = Number(startEntry.odometer || 0);
+        const endOdometer = Number(endEntry.odometer || 0);
+        const cycleMiles = endOdometer - startOdometer;
+        const gallons = Number(endEntry.gallons || 0);
+        const fuelCost = getFuelEntryCost(endEntry);
+
+        if (!(cycleMiles > 0)) continue;
+
+        const cycleShifts =
+          vehicleKey === "unassigned"
+            ? closedShifts
+            : closedShifts.filter((shift) => getShiftCycleVehicleKey(shift) === vehicleKey);
+        const workMiles = cycleShifts.reduce(
+          (sum, shift) => sum + getShiftCycleOverlapMiles(shift, startOdometer, endOdometer),
+          0
+        );
+        const fuelCostPerMile = fuelCost > 0 ? fuelCost / cycleMiles : 0;
+        const partialFillUps = vehicleFuelEntries
+          .filter((entry) => {
+            const odometer = Number(entry.odometer || 0);
+            return (
+              !(entry.isFullFillUp ?? true) &&
+              odometer > startOdometer &&
+              odometer < endOdometer
+            );
+          })
+          .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0));
+
+        cycles.push({
+          id: `${vehicleKey}-${startEntry.id}-${endEntry.id}`,
+          vehicleKey,
+          startEntry,
+          endEntry,
+          partialFillUps,
+          cycleMiles,
+          gallons,
+          fuelCost,
+          mpg: gallons > 0 ? cycleMiles / gallons : 0,
+          fuelCostPerMile,
+          workMiles,
+          businessUse: cycleMiles > 0 ? workMiles / cycleMiles : 0,
+          workFuelCost: workMiles * fuelCostPerMile,
+        });
+      }
+    });
+
+    return cycles.sort((a, b) => {
+      const dateCompare = toISODate(b.endEntry.date).localeCompare(toISODate(a.endEntry.date));
+      if (dateCompare !== 0) return dateCompare;
+      return Number(b.endEntry.odometer || 0) - Number(a.endEntry.odometer || 0);
+    });
+  }, [closedShifts, scopedFuelEntries]);
+  const verifiedCompletedFuelCycles = useMemo<CompletedFuelCycle[]>(
+    () =>
+      completedFuelCycles
+        .map((cycle) => {
+          const startOdometer = Number(cycle.startEntry.odometer || 0);
+          const endOdometer = Number(cycle.endEntry.odometer || 0);
+          const cycleShifts =
+            cycle.vehicleKey === "unassigned"
+              ? completedPeriodShifts
+              : completedPeriodShifts.filter(
+                  (shift) => getShiftCycleVehicleKey(shift) === cycle.vehicleKey
+                );
+          const periodWorkMiles = cycleShifts.reduce(
+            (sum, shift) =>
+              sum + getShiftCycleOverlapMiles(shift, startOdometer, endOdometer),
+            0
+          );
+
+          return {
+            ...cycle,
+            workMiles: periodWorkMiles,
+            businessUse: cycle.cycleMiles > 0 ? periodWorkMiles / cycle.cycleMiles : 0,
+            workFuelCost: periodWorkMiles * cycle.fuelCostPerMile,
+          };
+        })
+        .filter((cycle) => cycle.workMiles > 0),
+    [completedFuelCycles, completedPeriodShifts]
+  );
+  const fuelCostAuditTotal = verifiedCompletedFuelCycles.reduce(
+    (sum, cycle) => sum + cycle.workFuelCost,
+    0
+  );
+  const verifiedCompletedCycleWorkMiles = verifiedCompletedFuelCycles.reduce(
+    (sum, cycle) => sum + cycle.workMiles,
+    0
+  );
+  const openCycleUnverifiedWorkMiles = Math.max(
+    0,
+    workMiles - verifiedCompletedCycleWorkMiles
+  );
+  const openFuelCycles = useMemo(() => {
+    const fuelByVehicle = new Map<string, FuelEntry[]>();
+
+    scopedFuelEntries.forEach((entry) => {
+      const vehicleKey = getVehicleCycleKey(entry);
+      fuelByVehicle.set(vehicleKey, [...(fuelByVehicle.get(vehicleKey) ?? []), entry]);
+    });
+
+    return Array.from(fuelByVehicle.entries())
+      .map(([vehicleKey, vehicleFuelEntries]) => {
+        const lastFullFillUp = vehicleFuelEntries
+          .filter((entry) => (entry.isFullFillUp ?? true) && Number(entry.odometer || 0) > 0)
+          .sort((a, b) => Number(b.odometer || 0) - Number(a.odometer || 0))[0];
+
+        if (!lastFullFillUp) return null;
+
+        const partialFillUps = vehicleFuelEntries
+          .filter(
+            (entry) =>
+              !(entry.isFullFillUp ?? true) &&
+              Number(entry.odometer || 0) > Number(lastFullFillUp.odometer || 0)
+          )
+          .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0));
+
+        return {
+          vehicleKey,
+          lastFullFillUp,
+          partialFillUps,
+        };
+      })
+      .filter((cycle): cycle is {
+        vehicleKey: string;
+        lastFullFillUp: FuelEntry;
+        partialFillUps: FuelEntry[];
+      } => cycle !== null)
+      .sort((a, b) => Number(b.lastFullFillUp.odometer || 0) - Number(a.lastFullFillUp.odometer || 0));
+  }, [scopedFuelEntries]);
+  const serviceDiagnostics = scopedServiceEntries
+    .slice()
+    .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0))
+    .map((service) => {
     const matchingInterval = getMatchingServiceInterval(service, serviceIntervals);
     const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
     const serviceCost = Number(service.cost || 0);
+    const serviceStartOdometer = Number(service.odometer || 0);
+    const serviceEndOdometer =
+      intervalMileage && serviceStartOdometer > 0
+        ? serviceStartOdometer + intervalMileage
+        : null;
     const costPerMile = intervalMileage ? serviceCost / intervalMileage : null;
     const serviceShifts = service.vehicleId
       ? completedPeriodShifts.filter((shift) => shift.vehicleId === service.vehicleId)
       : completedPeriodShifts;
-    const workMilesSinceService = intervalMileage
-      ? getWorkMilesSinceService(service, serviceShifts)
-      : 0;
+    const allTimeServiceShifts = service.vehicleId
+      ? closedShifts.filter((shift) => shift.vehicleId === service.vehicleId)
+      : closedShifts;
+    const workMilesInActiveWindow =
+      serviceEndOdometer === null
+        ? 0
+        : serviceShifts.reduce((sum, shift) => {
+            const beginning = Number(shift.beginningMileage || 0);
+            const ending = Number(shift.endingMileage || 0);
+            return (
+              sum +
+              getMileageRangeOverlapMiles(
+                beginning,
+                ending,
+                serviceStartOdometer,
+                serviceEndOdometer
+              )
+            );
+          }, 0);
+    const allTimeWorkMilesInActiveWindow =
+      serviceEndOdometer === null
+        ? 0
+        : allTimeServiceShifts.reduce((sum, shift) => {
+            const beginning = Number(shift.beginningMileage || 0);
+            const ending = Number(shift.endingMileage || 0);
+            return (
+              sum +
+              getMileageRangeOverlapMiles(
+                beginning,
+                ending,
+                serviceStartOdometer,
+                serviceEndOdometer
+              )
+            );
+          }, 0);
     const allocatedServiceCost =
       costPerMile === null
         ? null
-        : Math.min(serviceCost, workMilesSinceService * costPerMile);
+        : Math.min(serviceCost, workMilesInActiveWindow * costPerMile);
+    const allTimeAllocatedServiceCost =
+      costPerMile === null
+        ? null
+        : Math.min(serviceCost, allTimeWorkMilesInActiveWindow * costPerMile);
+    const remainingServiceValue =
+      allTimeAllocatedServiceCost === null
+        ? null
+        : Math.max(0, serviceCost - allTimeAllocatedServiceCost);
+    const latestKnownOdometer = getLatestKnownOdometer(service.vehicleId);
+    const remainingServiceMiles =
+      serviceEndOdometer === null
+        ? null
+        : Math.max(0, serviceEndOdometer - latestKnownOdometer);
+    const status =
+      intervalMileage === null
+        ? "Unallocated - missing interval"
+        : latestKnownOdometer < serviceStartOdometer
+          ? "Future service window"
+          : (remainingServiceValue ?? 0) <= 0 || (remainingServiceMiles ?? 0) <= 0
+            ? "Fully allocated"
+            : "Active";
     const usesTireFallback =
       normalizeServiceType(service.serviceType) === "tires" &&
       !matchingInterval &&
@@ -477,15 +857,112 @@ export default function BugcheckPage() {
       serviceCost,
       matchingInterval,
       intervalMileage,
+      serviceStartOdometer,
+      serviceEndOdometer,
       costPerMile,
-      workMilesSinceService,
+      workMilesSinceService: workMilesInActiveWindow,
       allocatedServiceCost,
+      allTimeWorkMilesInActiveWindow,
+      allTimeAllocatedServiceCost,
+      remainingServiceValue,
+      remainingServiceMiles,
+      latestKnownOdometer,
+      status,
       usesTireFallback,
     };
   });
   const allocatedServiceCost = serviceDiagnostics.reduce(
     (sum, diagnostic) => sum + (diagnostic.allocatedServiceCost ?? 0),
     0
+  );
+  const totalRemainingServiceValue = serviceDiagnostics.reduce(
+    (sum, diagnostic) => sum + (diagnostic.remainingServiceValue ?? 0),
+    0
+  );
+  const verifiedServiceAudit = scopedServiceEntries.reduce(
+    (audit, service) => {
+    const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
+    const serviceStartOdometer = Number(service.odometer || 0);
+    const serviceCost = Number(service.cost || 0);
+
+    if (!(intervalMileage && serviceStartOdometer > 0 && serviceCost > 0)) {
+      return audit;
+    }
+
+    const serviceEndOdometer = serviceStartOdometer + intervalMileage;
+    const costPerMile = serviceCost / intervalMileage;
+    const serviceShifts = service.vehicleId
+      ? completedPeriodShifts.filter((shift) => shift.vehicleId === service.vehicleId)
+      : completedPeriodShifts;
+
+    const verifiedMilesForService = serviceShifts.reduce((shiftTotal, shift) => {
+      const shiftStart = Number(shift.beginningMileage || 0);
+      const shiftEnd = Number(shift.endingMileage || 0);
+      if (!(shiftStart > 0 && shiftEnd > shiftStart)) return shiftTotal;
+
+      const cycleMilesForShift = verifiedCompletedFuelCycles.reduce((cycleTotal, cycle) => {
+        if (
+          service.vehicleId &&
+          cycle.vehicleKey !== getShiftCycleVehicleKey(shift)
+        ) {
+          return cycleTotal;
+        }
+
+        const cycleStart = Number(cycle.startEntry.odometer || 0);
+        const cycleEnd = Number(cycle.endEntry.odometer || 0);
+        const overlapStart = Math.max(shiftStart, serviceStartOdometer, cycleStart);
+        const overlapEnd = Math.min(shiftEnd, serviceEndOdometer, cycleEnd);
+
+        return cycleTotal + Math.max(0, overlapEnd - overlapStart);
+      }, 0);
+
+      return shiftTotal + cycleMilesForShift;
+    }, 0);
+    const selectedPeriodMilesInServiceWindow = serviceShifts.reduce((shiftTotal, shift) => {
+      const shiftStart = Number(shift.beginningMileage || 0);
+      const shiftEnd = Number(shift.endingMileage || 0);
+
+      return (
+        shiftTotal +
+        getMileageRangeOverlapMiles(
+          shiftStart,
+          shiftEnd,
+          serviceStartOdometer,
+          serviceEndOdometer
+        )
+      );
+    }, 0);
+    const verifiedCostForService = Math.min(
+      serviceCost,
+      verifiedMilesForService * costPerMile
+    );
+    const selectedPeriodCostForService = Math.min(
+      serviceCost,
+      selectedPeriodMilesInServiceWindow * costPerMile
+    );
+
+    return {
+      verifiedMiles: audit.verifiedMiles + verifiedMilesForService,
+      verifiedCost: audit.verifiedCost + verifiedCostForService,
+      selectedPeriodMiles: audit.selectedPeriodMiles + selectedPeriodMilesInServiceWindow,
+      selectedPeriodCost: audit.selectedPeriodCost + selectedPeriodCostForService,
+    };
+  },
+    {
+      verifiedMiles: 0,
+      verifiedCost: 0,
+      selectedPeriodMiles: 0,
+      selectedPeriodCost: 0,
+    }
+  );
+  const verifiedServiceCost = verifiedServiceAudit.verifiedCost;
+  const openCycleServiceWearMiles = Math.max(
+    0,
+    verifiedServiceAudit.selectedPeriodMiles - verifiedServiceAudit.verifiedMiles
+  );
+  const openCycleServiceWearCost = Math.max(
+    0,
+    verifiedServiceAudit.selectedPeriodCost - verifiedServiceAudit.verifiedCost
   );
   const trueNetProfit =
     totalIncome - fuelCostResult.workFuelCost - allocatedServiceCost;
@@ -546,7 +1023,7 @@ export default function BugcheckPage() {
       });
     }
 
-    const allFullFillUpsByOdometer = fuelEntries
+    const allFullFillUpsByOdometer = scopedFuelEntries
       .filter((entry) => (entry.isFullFillUp ?? true) && Number(entry.odometer || 0) > 0)
       .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0));
     const missingPreviousFullFillReference = periodFuelEntries.filter((entry) => {
@@ -616,9 +1093,9 @@ export default function BugcheckPage() {
   }, [
     chronologicalPeriodFuelEntries,
     completedPeriodShifts,
-    fuelEntries,
     periodFuelEntries,
     serviceDiagnostics,
+    scopedFuelEntries,
     totalFuelOdometerMiles,
     workMiles,
   ]);
@@ -852,42 +1329,516 @@ export default function BugcheckPage() {
 
         <section className="space-y-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">Service</h2>
+            <div>
+              <h2 className="text-2xl font-semibold">Fuel Cost Audit Detail</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Verified completed-cycle fuel cost detail. Partial fill-ups are shown
+                inside cycles but excluded from MPG and do not close cycles.
+              </p>
+            </div>
             <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-medium text-slate-700">
-              {periodServiceEntries.length} service entries
+              {verifiedCompletedFuelCycles.length} verified cycles
             </span>
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-5 border-b border-slate-200 pb-4">
-              <h3 className="text-xl font-semibold">Service Allocation Table</h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Service Cost Per Mile = Service Cost / Service Interval. Allocated
-                Service Cost = Work Miles Since Service x Cost Per Mile, capped at
-                the original service cost. Tires fall back to 50,000 miles when no
-                configured interval exists.
-              </p>
+              <h3 className="text-xl font-semibold">Fuel Cost Formulas</h3>
+              <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-sm text-slate-700">
+                <p>
+                  <span className="font-semibold">cycle miles</span> = end full-fill
+                  odometer - start full-fill odometer
+                </p>
+                <p>
+                  <span className="font-semibold">MPG</span> = cycle miles / closing
+                  full-fill gallons
+                </p>
+                <p>
+                  <span className="font-semibold">fuel cost per mile</span> = closing
+                  full-fill fuel cost / cycle miles
+                </p>
+                <p>
+                  <span className="font-semibold">work miles inside cycle</span> =
+                  mileage overlap between completed shifts and cycle odometer range
+                </p>
+                <p>
+                  <span className="font-semibold">cycle work fuel cost</span> = work
+                  miles inside cycle x fuel cost per mile
+                </p>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1180px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[1540px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-700">
+                    <th className="px-4 py-3 font-semibold">Cycle Label</th>
+                    <th className="px-4 py-3 font-semibold">Start Date</th>
+                    <th className="px-4 py-3 font-semibold">End Date</th>
+                    <th className="px-4 py-3 font-semibold">Start Odometer</th>
+                    <th className="px-4 py-3 font-semibold">End Odometer</th>
+                    <th className="px-4 py-3 font-semibold">Total Cycle Miles</th>
+                    <th className="px-4 py-3 font-semibold">Closing Full-Fill Gallons</th>
+                    <th className="px-4 py-3 font-semibold">Closing Full-Fill Fuel Cost</th>
+                    <th className="px-4 py-3 font-semibold">MPG</th>
+                    <th className="px-4 py-3 font-semibold">Fuel Cost Per Mile</th>
+                    <th className="px-4 py-3 font-semibold">Work Miles Inside Cycle</th>
+                    <th className="px-4 py-3 font-semibold">Work Fuel Cost For Cycle</th>
+                    <th className="px-4 py-3 font-semibold">Partial Fill-Up Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verifiedCompletedFuelCycles.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-6 text-slate-600" colSpan={13}>
+                        No selected-period work miles fall inside completed fuel cycles yet.
+                        Open-cycle work miles are excluded until the next full fill-up.
+                      </td>
+                    </tr>
+                  ) : (
+                    verifiedCompletedFuelCycles.map((cycle, index) => (
+                      <tr key={`fuel-audit-${cycle.id}`} className="border-b border-slate-100 align-top">
+                        <td className="px-4 py-3 font-semibold">
+                          Cycle {verifiedCompletedFuelCycles.length - index}
+                        </td>
+                        <td className="px-4 py-3">{formatLongDate(cycle.startEntry.date)}</td>
+                        <td className="px-4 py-3">{formatLongDate(cycle.endEntry.date)}</td>
+                        <td className="px-4 py-3">
+                          {fmtNumber(Number(cycle.startEntry.odometer || 0), 0)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {fmtNumber(Number(cycle.endEntry.odometer || 0), 0)}
+                        </td>
+                        <td className="px-4 py-3">{fmtNumber(cycle.cycleMiles)} mi</td>
+                        <td className="px-4 py-3">{fmtNumber(cycle.gallons, 3)}</td>
+                        <td className="px-4 py-3">{fmtCurrency(cycle.fuelCost)}</td>
+                        <td className="px-4 py-3">{fmtNumber(cycle.mpg, 1)}</td>
+                        <td className="px-4 py-3">
+                          {fmtCurrency(cycle.fuelCostPerMile)}/mi
+                        </td>
+                        <td className="px-4 py-3">{fmtNumber(cycle.workMiles)} mi</td>
+                        <td className="px-4 py-3 font-semibold">
+                          {fmtCurrency(cycle.workFuelCost)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {cycle.partialFillUps.length === 0 ? (
+                            <span className="text-slate-500">None</span>
+                          ) : (
+                            <div className="space-y-2">
+                              {cycle.partialFillUps.map((entry) => (
+                                <div
+                                  key={`fuel-audit-partial-${entry.id}`}
+                                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                                >
+                                  <div className="font-semibold">
+                                    {formatLongDate(entry.date)} at{" "}
+                                    {fmtNumber(Number(entry.odometer || 0), 0)} mi
+                                  </div>
+                                  <div>
+                                    {fmtNumber(Number(entry.gallons || 0), 3)} gal,{" "}
+                                    {fmtCurrency(getFuelEntryCost(entry))}
+                                  </div>
+                                  <div>Excluded from MPG. Does not close cycle.</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-300 bg-slate-50">
+                    <td className="px-4 py-4 text-base font-bold" colSpan={11}>
+                      Total Work Fuel Cost = sum(cycle work fuel cost)
+                    </td>
+                    <td className="px-4 py-4 text-base font-bold">
+                      {fmtCurrency(fuelCostAuditTotal)}
+                    </td>
+                    <td className="px-4 py-4 text-sm text-slate-600">
+                      True Cost Work Fuel Cost currently shows{" "}
+                      {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}.
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-6 text-blue-950 shadow-sm">
+            <div className="flex items-center justify-between border-b border-blue-200 pb-4">
+              <div>
+                <h3 className="text-xl font-semibold">Open Fuel Cycle</h3>
+                <p className="mt-1 text-sm">
+                  Open cycle not included until next full fill-up.
+                </p>
+              </div>
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium">
+                {openFuelCycles.length} open cycle{openFuelCycles.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            {openFuelCycles.length === 0 ? (
+              <p className="mt-5 text-sm">No open fuel cycle is available.</p>
+            ) : (
+              <div className="mt-5 overflow-x-auto">
+                <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-blue-200 bg-white/60">
+                      <th className="px-4 py-3 font-semibold">Vehicle Scope</th>
+                      <th className="px-4 py-3 font-semibold">Last Full Fill-Up Date</th>
+                      <th className="px-4 py-3 font-semibold">Last Full Fill-Up Odometer</th>
+                      <th className="px-4 py-3 font-semibold">Partial Fill-Ups Since</th>
+                      <th className="px-4 py-3 font-semibold">Audit Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openFuelCycles.map((cycle) => (
+                      <tr key={`fuel-audit-open-${cycle.vehicleKey}`} className="border-b border-blue-100 align-top">
+                        <td className="px-4 py-3 font-medium">{cycle.vehicleKey}</td>
+                        <td className="px-4 py-3">
+                          {formatLongDate(cycle.lastFullFillUp.date)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {fmtNumber(Number(cycle.lastFullFillUp.odometer || 0), 0)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {cycle.partialFillUps.length === 0 ? (
+                            "None"
+                          ) : (
+                            <div className="space-y-1">
+                              {cycle.partialFillUps.map((entry) => (
+                                <div key={`fuel-audit-open-partial-${entry.id}`}>
+                                  {formatLongDate(entry.date)} -{" "}
+                                  {fmtNumber(Number(entry.odometer || 0), 0)} mi,{" "}
+                                  {fmtCurrency(getFuelEntryCost(entry))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-semibold">
+                          Open cycle not included until next full fill-up.
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold">Completed Fuel Cycles</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Diagnostic-only cycle accounting for comparison against current Metrics math.
+                Completed cycle = previous full fill-up - next full fill-up.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-medium text-slate-700">
+              {completedFuelCycles.length} completed cycles
+            </span>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 border-b border-slate-200 pb-4">
+              <h3 className="text-xl font-semibold">Cycle Formulas</h3>
+              <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-sm text-slate-700">
+                <p>
+                  <span className="font-semibold">cycle miles</span> = end full-fill
+                  odometer - start full-fill odometer
+                </p>
+                <p>
+                  <span className="font-semibold">MPG</span> = cycle miles / closing
+                  full-fill gallons
+                </p>
+                <p>
+                  <span className="font-semibold">fuel cost per mile</span> = closing
+                  full-fill total cost / cycle miles
+                </p>
+                <p>
+                  <span className="font-semibold">work miles in cycle</span> = overlap
+                  of completed shift mileage ranges with cycle odometer range
+                </p>
+                <p>
+                  <span className="font-semibold">business use</span> = work miles in
+                  cycle / cycle miles
+                </p>
+                <p>
+                  <span className="font-semibold">work fuel cost</span> = work miles in
+                  cycle x fuel cost per mile
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1500px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-slate-700">
+                    <th className="px-4 py-3 font-semibold">Cycle Start Date</th>
+                    <th className="px-4 py-3 font-semibold">Cycle End Date</th>
+                    <th className="px-4 py-3 font-semibold">Start Odometer</th>
+                    <th className="px-4 py-3 font-semibold">End Odometer</th>
+                    <th className="px-4 py-3 font-semibold">Total Cycle Miles</th>
+                    <th className="px-4 py-3 font-semibold">Closing Gallons</th>
+                    <th className="px-4 py-3 font-semibold">Closing Fuel Cost</th>
+                    <th className="px-4 py-3 font-semibold">MPG</th>
+                    <th className="px-4 py-3 font-semibold">Fuel Cost Per Mile</th>
+                    <th className="px-4 py-3 font-semibold">Work Miles Inside Cycle</th>
+                    <th className="px-4 py-3 font-semibold">Business Use %</th>
+                    <th className="px-4 py-3 font-semibold">Work Fuel Cost</th>
+                    <th className="px-4 py-3 font-semibold">Partial Fill-Ups Inside Cycle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completedFuelCycles.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-6 text-slate-600" colSpan={13}>
+                        No completed fuel cycles yet. Enter at least two full fill-ups to
+                        close the first cycle.
+                      </td>
+                    </tr>
+                  ) : (
+                    completedFuelCycles.map((cycle) => (
+                      <tr key={cycle.id} className="border-b border-slate-100 align-top">
+                        <td className="px-4 py-3 font-medium">
+                          {formatLongDate(cycle.startEntry.date)}
+                        </td>
+                        <td className="px-4 py-3 font-medium">
+                          {formatLongDate(cycle.endEntry.date)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {fmtNumber(Number(cycle.startEntry.odometer || 0), 0)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {fmtNumber(Number(cycle.endEntry.odometer || 0), 0)}
+                        </td>
+                        <td className="px-4 py-3">{fmtNumber(cycle.cycleMiles)} mi</td>
+                        <td className="px-4 py-3">{fmtNumber(cycle.gallons, 3)}</td>
+                        <td className="px-4 py-3">{fmtCurrency(cycle.fuelCost)}</td>
+                        <td className="px-4 py-3">{fmtNumber(cycle.mpg, 1)}</td>
+                        <td className="px-4 py-3">
+                          {fmtCurrency(cycle.fuelCostPerMile)}/mi
+                        </td>
+                        <td className="px-4 py-3">{fmtNumber(cycle.workMiles)} mi</td>
+                        <td className="px-4 py-3">
+                          {fmtNumber(cycle.businessUse * 100, 1)}%
+                        </td>
+                        <td className="px-4 py-3 font-semibold">
+                          {fmtCurrency(cycle.workFuelCost)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {cycle.partialFillUps.length === 0 ? (
+                            <span className="text-slate-500">None</span>
+                          ) : (
+                            <div className="space-y-2">
+                              {cycle.partialFillUps.map((entry) => (
+                                <div
+                                  key={entry.id}
+                                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                                >
+                                  <div className="font-semibold">
+                                    {formatLongDate(entry.date)} at{" "}
+                                    {fmtNumber(Number(entry.odometer || 0), 0)} mi
+                                  </div>
+                                  <div>
+                                    {fmtNumber(Number(entry.gallons || 0), 3)} gal,{" "}
+                                    {fmtCurrency(getFuelEntryCost(entry))}
+                                  </div>
+                                  <div>Partial fill-up: excluded from MPG.</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-6 text-blue-950 shadow-sm">
+            <div className="flex items-center justify-between border-b border-blue-200 pb-4">
+              <div>
+                <h3 className="text-xl font-semibold">Open Fuel Cycle Status</h3>
+                <p className="mt-1 text-sm">
+                  Awaiting next full fill-up to finalize this cycle.
+                </p>
+              </div>
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium">
+                {openFuelCycles.length} open cycle{openFuelCycles.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            {openFuelCycles.length === 0 ? (
+              <p className="mt-5 text-sm">No full fill-up has been entered yet.</p>
+            ) : (
+              <div className="mt-5 overflow-x-auto">
+                <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-blue-200 bg-white/60">
+                      <th className="px-4 py-3 font-semibold">Vehicle Scope</th>
+                      <th className="px-4 py-3 font-semibold">Last Full Fill-Up Date</th>
+                      <th className="px-4 py-3 font-semibold">Last Full Fill-Up Odometer</th>
+                      <th className="px-4 py-3 font-semibold">Partial Fill-Ups Since</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openFuelCycles.map((cycle) => (
+                      <tr key={cycle.vehicleKey} className="border-b border-blue-100 align-top">
+                        <td className="px-4 py-3 font-medium">{cycle.vehicleKey}</td>
+                        <td className="px-4 py-3">
+                          {formatLongDate(cycle.lastFullFillUp.date)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {fmtNumber(Number(cycle.lastFullFillUp.odometer || 0), 0)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {cycle.partialFillUps.length === 0 ? (
+                            "None"
+                          ) : (
+                            <div className="space-y-1">
+                              {cycle.partialFillUps.map((entry) => (
+                                <div key={entry.id}>
+                                  {formatLongDate(entry.date)} -{" "}
+                                  {fmtNumber(Number(entry.odometer || 0), 0)} mi,{" "}
+                                  {fmtCurrency(getFuelEntryCost(entry))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-semibold">
+                          Awaiting next full fill-up to finalize this cycle.
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {unassignedServiceEntries.length > 0 && (
+          <section className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold">Unassigned Service Records</h2>
+                <p className="mt-1 text-sm text-amber-700">
+                  These service records have no vehicle_id and are excluded from
+                  vehicle-specific cost calculations until assigned to a vehicle.
+                </p>
+              </div>
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-900">
+                {unassignedServiceEntries.length} warning
+                {unassignedServiceEntries.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-amber-300 bg-amber-50 shadow-sm">
+              <table className="w-full min-w-[980px] border-collapse text-left text-sm text-amber-950">
+                <thead>
+                  <tr className="border-b border-amber-200 bg-amber-100/70">
                     <th className="px-4 py-3 font-semibold">Service Type</th>
                     <th className="px-4 py-3 font-semibold">Date</th>
                     <th className="px-4 py-3 font-semibold">Odometer</th>
                     <th className="px-4 py-3 font-semibold">Cost</th>
-                    <th className="px-4 py-3 font-semibold">Matching Service Interval</th>
+                    <th className="px-4 py-3 font-semibold">Service ID</th>
+                    <th className="px-4 py-3 font-semibold">Warning</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unassignedServiceEntries.map((entry) => (
+                    <tr key={entry.id} className="border-b border-amber-200 align-top">
+                      <td className="px-4 py-3 font-medium">
+                        {entry.serviceType || "Service"}
+                      </td>
+                      <td className="px-4 py-3">{formatLongDate(entry.date)}</td>
+                      <td className="px-4 py-3">
+                        {entry.odometer ? fmtNumber(Number(entry.odometer || 0), 0) : "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {fmtCurrency(Number(entry.cost || 0))}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">{entry.id}</td>
+                      <td className="px-4 py-3 font-semibold">
+                        This record is excluded from vehicle-specific cost calculations
+                        until assigned to a vehicle.
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        <section className="space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold">Service</h2>
+            <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-medium text-slate-700">
+              {serviceDiagnostics.length} service entries
+            </span>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5 border-b border-slate-200 pb-4">
+              <h3 className="text-xl font-semibold">Service Cost Audit Detail</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Service entries create active mileage windows. Service Cost Per Mile =
+                Service Cost / Service Interval. Allocated Service Cost = selected-period
+                shift miles overlapping the active service window x Cost Per Mile, capped
+                at the original service cost. All-time allocation and remaining value are
+                shown for each active service window. Tires fall back to 50,000 miles when
+                no configured interval exists.
+              </p>
+              <p className="mt-2 text-sm font-medium text-slate-700">
+                Service records may come from earlier dates. They are included only when
+                selected-pay-period work miles fall inside that service&apos;s active mileage
+                window.
+              </p>
+              <p className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                Example: brakes installed before this week can still be charged this week
+                because this week&apos;s work miles used part of that brake life.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1900px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-slate-700">
+                    <th className="px-4 py-3 font-semibold">Service Type</th>
+                    <th className="px-4 py-3 font-semibold">Service Performed Date</th>
+                    <th className="px-4 py-3 font-semibold">Service Odometer</th>
+                    <th className="px-4 py-3 font-semibold">Original Service Cost</th>
+                    <th className="px-4 py-3 font-semibold">Service Interval Miles</th>
+                    <th className="px-4 py-3 font-semibold">Service End Odometer</th>
                     <th className="px-4 py-3 font-semibold">Cost Per Mile</th>
-                    <th className="px-4 py-3 font-semibold">Work Miles Since Service</th>
-                    <th className="px-4 py-3 font-semibold">Allocated Service Cost</th>
+                    <th className="px-4 py-3 font-semibold">
+                      This Pay Period Miles Charged
+                    </th>
+                    <th className="px-4 py-3 font-semibold">
+                      This Pay Period Service Cost
+                    </th>
+                    <th className="px-4 py-3 font-semibold">All-Time Service Cost Used</th>
+                    <th className="px-4 py-3 font-semibold">Remaining Unused Service Value</th>
+                    <th className="px-4 py-3 font-semibold">Remaining Service Miles</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {serviceDiagnostics.length === 0 ? (
                     <tr>
-                      <td className="px-4 py-6 text-slate-600" colSpan={8}>
-                        No service entries in the selected pay period.
+                      <td className="px-4 py-6 text-slate-600" colSpan={13}>
+                        No service entries available for allocation.
                       </td>
                     </tr>
                   ) : (
@@ -897,9 +1848,15 @@ export default function BugcheckPage() {
                         serviceCost,
                         matchingInterval,
                         intervalMileage,
+                        serviceStartOdometer,
+                        serviceEndOdometer,
                         costPerMile,
                         workMilesSinceService,
                         allocatedServiceCost,
+                        allTimeAllocatedServiceCost,
+                        remainingServiceValue,
+                        remainingServiceMiles,
+                        status,
                         usesTireFallback,
                       } = diagnostic;
                       const unallocated = intervalMileage === null;
@@ -919,7 +1876,7 @@ export default function BugcheckPage() {
                           <td className="px-4 py-3">
                             {unallocated ? (
                               <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
-                                Unallocated Service Cost
+                                Unallocated - missing interval
                               </span>
                             ) : (
                               <div className="space-y-1">
@@ -932,6 +1889,21 @@ export default function BugcheckPage() {
                                     : matchingInterval?.vehicleId
                                       ? "Vehicle-specific interval"
                                       : "Default interval"}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {serviceEndOdometer === null ? (
+                              "-"
+                            ) : (
+                              <div className="space-y-1">
+                                <div className="font-medium">
+                                  {fmtNumber(serviceStartOdometer, 0)} -{" "}
+                                  {fmtNumber(serviceEndOdometer, 0)} mi
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  start odometer + interval miles
                                 </div>
                               </div>
                             )}
@@ -960,63 +1932,354 @@ export default function BugcheckPage() {
                               </div>
                             )}
                           </td>
+                          <td className="px-4 py-3">
+                            {allTimeAllocatedServiceCost === null
+                              ? "-"
+                              : fmtCurrency(allTimeAllocatedServiceCost)}
+                          </td>
+                          <td className="px-4 py-3">
+                            {remainingServiceValue === null
+                              ? "-"
+                              : fmtCurrency(remainingServiceValue)}
+                          </td>
+                          <td className="px-4 py-3">
+                            {remainingServiceMiles === null
+                              ? "-"
+                              : `${fmtNumber(remainingServiceMiles)} mi`}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                status === "Active"
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : status === "Fully allocated"
+                                    ? "bg-slate-100 text-slate-700"
+                                    : status === "Future service window"
+                                      ? "bg-blue-50 text-blue-700"
+                                      : "bg-amber-50 text-amber-800"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                          </td>
                         </tr>
                       );
                     })
                   )}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-300 bg-slate-50">
+                    <td className="px-4 py-4 text-base font-bold" colSpan={8}>
+                      Total Allocated Service Cost
+                    </td>
+                    <td className="px-4 py-4 text-base font-bold">
+                      {fmtCurrency(allocatedServiceCost)}
+                    </td>
+                    <td className="px-4 py-4 text-sm text-slate-600" colSpan={4}>
+                      Reconciles to the Allocated Service Cost row in True Cost.
+                    </td>
+                  </tr>
+                  <tr className="bg-slate-50">
+                    <td className="px-4 py-4 text-base font-bold" colSpan={10}>
+                      Total Remaining Service Value
+                    </td>
+                    <td className="px-4 py-4 text-base font-bold">
+                      {fmtCurrency(totalRemainingServiceValue)}
+                    </td>
+                    <td className="px-4 py-4 text-sm text-slate-600" colSpan={2}>
+                      Sum of max(0, service cost - all-time allocated cost).
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
         </section>
 
         <section className="space-y-5">
-          <h2 className="text-2xl font-semibold">True Cost</h2>
-          <div className="grid grid-cols-5 gap-5">
+          <div>
+            <h2 className="text-2xl font-semibold">True Cost</h2>
+            <p className="mt-1 text-sm text-amber-700">
+              Current selected-period view. Not fully verified when selected-period
+              work miles include open-cycle miles that have not been finalized by a
+              next full fill-up.
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+            <table className="w-full min-w-[1180px] table-fixed border-collapse text-left text-sm">
+              <colgroup>
+                <col className="w-[170px]" />
+                <col className="w-[240px]" />
+                <col className="w-[300px]" />
+                <col className="w-[260px]" />
+                <col className="w-[150px]" />
+                <col className="w-[190px]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-700">
+                  <th className="px-4 py-3 font-semibold">Title</th>
+                  <th className="px-4 py-3 font-semibold">Purpose</th>
+                  <th className="px-4 py-3 font-semibold">Formula</th>
+                  <th className="px-4 py-3 font-semibold">Values Used</th>
+                  <th className="px-4 py-3 font-semibold">Result</th>
+                  <th className="px-4 py-3 font-semibold">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-100 align-top">
+                  <td className="px-4 py-4 text-base font-semibold">Total Income</td>
+                  <td className="px-4 py-4 text-slate-700">
+                    Income available before fuel and allocated service costs.
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-950">
+                    Shift Gross Pay + Pay Adjustments
+                  </td>
+                  <td className="px-4 py-4 text-slate-950">
+                    {fmtCurrency(shiftGrossPay)} + {fmtCurrency(adjustmentTotal)}
+                  </td>
+                  <td className="px-4 py-4 text-base font-bold text-slate-950">
+                    {fmtCurrency(totalIncome)}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">Income section</td>
+                </tr>
+                <tr className="border-b border-slate-100 align-top">
+                  <td className="px-4 py-4 text-base font-semibold">Work Fuel Cost</td>
+                  <td className="px-4 py-4 text-slate-700">
+                    Fuel cost allocated to selected-period work miles.
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-950">
+                    Work Miles x Fuel Cost Per Mile
+                  </td>
+                  <td className="px-4 py-4 text-slate-950">
+                    {fmtNumber(workMiles)} mi x{" "}
+                    {fmtCurrency(fuelCostResult.effectiveCostPerMile)}/mi
+                  </td>
+                  <td className="px-4 py-4 text-base font-bold text-slate-950">
+                    {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">Fuel section</td>
+                </tr>
+                <tr className="border-b border-slate-100 align-top">
+                  <td className="px-4 py-4 text-base font-semibold">
+                    Allocated Service Cost
+                  </td>
+                  <td className="px-4 py-4 text-slate-700">
+                    Prior and current services allocated to selected-period work miles
+                    when those miles fall inside active service mileage windows.
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-950">
+                    sum(min(Service Cost, Period Work Miles In Service Window x Cost Per Mile))
+                  </td>
+                  <td className="px-4 py-4 text-slate-950">
+                    {serviceDiagnostics.length} service entries
+                  </td>
+                  <td className="px-4 py-4 text-base font-bold text-slate-950">
+                    {fmtCurrency(allocatedServiceCost)}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">
+                    Service section allocated rows
+                  </td>
+                </tr>
+                <tr className="border-b border-slate-100 align-top">
+                  <td className="px-4 py-4 text-base font-semibold">True Net Profit</td>
+                  <td className="px-4 py-4 text-slate-700">
+                    Income remaining after work fuel and allocated service costs.
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-950">
+                    Total Income - Work Fuel Cost - Allocated Service Cost
+                  </td>
+                  <td className="px-4 py-4 text-slate-950">
+                    {fmtCurrency(totalIncome)} - {fmtCurrency(fuelCostResult.workFuelCost)} -{" "}
+                    {fmtCurrency(allocatedServiceCost)}
+                  </td>
+                  <td className="px-4 py-4 text-base font-bold text-slate-950">
+                    {fmtCurrency(trueNetProfit)}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">True Cost formulas above</td>
+                </tr>
+                <tr className="align-top">
+                  <td className="px-4 py-4 text-base font-semibold">Keep Percentage</td>
+                  <td className="px-4 py-4 text-slate-700">
+                    Percentage of total income kept after true costs.
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-950">
+                    True Net Profit / Total Income
+                  </td>
+                  <td className="px-4 py-4 text-slate-950">
+                    {fmtCurrency(trueNetProfit)} / {fmtCurrency(totalIncome)}
+                  </td>
+                  <td className="px-4 py-4 text-base font-bold text-slate-950">
+                    {totalIncome > 0 ? `${fmtNumber(keepPercentage * 100, 1)}%` : "Pending"}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">True Cost formulas above</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="space-y-5">
+          <div>
+            <h2 className="text-2xl font-semibold">Verified Completed-Cycle True Cost</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Uses only selected-period work miles that fall inside completed fuel
+              cycles. Open-cycle miles are not estimated here.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-5">
             <FormulaCard
-              title="Total Income"
-              purpose="Income available before fuel and allocated service costs."
-              formula="Shift Gross Pay + Pay Adjustments"
-              values={`${fmtCurrency(shiftGrossPay)} + ${fmtCurrency(adjustmentTotal)}`}
-              result={fmtCurrency(totalIncome)}
-              source="Income section"
+              title="Selected-Period Work Miles"
+              purpose="All completed shift work miles in the selected pay period."
+              formula="sum(ending_mileage - beginning_mileage)"
+              values={`${completedPeriodShifts.length} closed shifts`}
+              result={`${fmtNumber(workMiles)} miles`}
+              source="Mileage section"
             />
             <FormulaCard
-              title="Work Fuel Cost"
-              purpose="Fuel cost allocated to selected-period work miles."
-              formula="Work Miles x Fuel Cost Per Mile"
-              values={`${fmtNumber(workMiles)} mi x ${fmtCurrency(
-                fuelCostResult.effectiveCostPerMile
-              )}/mi`}
-              result={fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}
-              source="Fuel section"
+              title="Completed-Cycle Verified Work Miles"
+              purpose="Selected-period work miles that fall inside closed fuel-cycle odometer ranges."
+              formula="sum(shift mileage overlap with completed fuel cycles)"
+              values={`${verifiedCompletedFuelCycles.length} completed fuel cycles with selected-period work miles`}
+              result={`${fmtNumber(verifiedCompletedCycleWorkMiles)} miles`}
+              source="Fuel Cost Audit Detail"
             />
             <FormulaCard
-              title="Allocated Service Cost"
-              purpose="Selected-period service cost allocated by service interval mileage."
-              formula="sum(min(Service Cost, Work Miles Since Service x Cost Per Mile))"
-              values={`${serviceDiagnostics.length} service entries`}
+              title="Open-Cycle / Unverified Work Miles"
+              purpose="Selected-period work miles not yet covered by a completed fuel cycle."
+              formula="Selected-Period Work Miles - Completed-Cycle Verified Work Miles"
+              values={`${fmtNumber(workMiles)} - ${fmtNumber(verifiedCompletedCycleWorkMiles)}`}
+              result={`${fmtNumber(openCycleUnverifiedWorkMiles)} miles`}
+              source="Derived from verified fuel-cycle coverage"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-5">
+            <FormulaCard
+              title="Current-Period Service Cost"
+              purpose="Current-period service wear uses all selected-period work miles inside active service windows."
+              formula="sum(selected-period service-window work miles x service cost per mile)"
+              values={`${fmtNumber(verifiedServiceAudit.selectedPeriodMiles)} service-window miles`}
               result={fmtCurrency(allocatedServiceCost)}
-              source="Service section allocated rows"
+              source="Service Cost Audit Detail / current True Cost"
             />
             <FormulaCard
-              title="True Net Profit"
-              purpose="Income remaining after work fuel and allocated service costs."
-              formula="Total Income - Work Fuel Cost - Allocated Service Cost"
-              values={`${fmtCurrency(totalIncome)} - ${fmtCurrency(
-                fuelCostResult.workFuelCost
-              )} - ${fmtCurrency(allocatedServiceCost)}`}
-              result={fmtCurrency(trueNetProfit)}
-              source="True Cost formulas above"
+              title="Verified Completed-Cycle Service Cost"
+              purpose="Verified service wear uses only work miles that overlap completed fuel cycles and active service windows."
+              formula="sum(overlap(completed shift range, completed fuel cycle range, service window) x service cost per mile)"
+              values={`${fmtNumber(verifiedServiceAudit.verifiedMiles)} verified service-window miles`}
+              result={fmtCurrency(verifiedServiceCost)}
+              source="Completed fuel cycles intersected with service windows"
             />
             <FormulaCard
-              title="Keep Percentage"
-              purpose="Percentage of total income kept after true costs."
-              formula="True Net Profit / Total Income"
-              values={`${fmtCurrency(trueNetProfit)} / ${fmtCurrency(totalIncome)}`}
-              result={totalIncome > 0 ? `${fmtNumber(keepPercentage * 100, 1)}%` : "Pending"}
-              source="True Cost formulas above"
+              title="Open-Cycle Service Wear Excluded"
+              purpose="Service wear tied to open-cycle work miles is excluded from the verified view."
+              formula="Current-period service wear - verified completed-cycle service wear"
+              values={`${fmtCurrency(verifiedServiceAudit.selectedPeriodCost)} - ${fmtCurrency(
+                verifiedServiceCost
+              )}`}
+              result={`${fmtCurrency(openCycleServiceWearCost)} (${fmtNumber(
+                openCycleServiceWearMiles
+              )} mi)`}
+              source="Open-cycle miles excluded from verified completed-cycle view"
             />
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+            <table className="w-full min-w-[1180px] table-fixed border-collapse text-left text-sm">
+              <colgroup>
+                <col className="w-[220px]" />
+                <col className="w-[300px]" />
+                <col className="w-[320px]" />
+                <col className="w-[260px]" />
+                <col className="w-[170px]" />
+                <col className="w-[220px]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-700">
+                  <th className="px-4 py-3 font-semibold">Title</th>
+                  <th className="px-4 py-3 font-semibold">Purpose</th>
+                  <th className="px-4 py-3 font-semibold">Formula</th>
+                  <th className="px-4 py-3 font-semibold">Values Used</th>
+                  <th className="px-4 py-3 font-semibold">Result</th>
+                  <th className="px-4 py-3 font-semibold">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-100 align-top">
+                  <td className="px-4 py-4 text-base font-semibold">
+                    Verified Work Fuel Cost
+                  </td>
+                  <td className="px-4 py-4 text-slate-700">
+                    Fuel cost from completed fuel cycles only. Open-cycle work miles are excluded.
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-950">
+                    sum(completed cycle work fuel cost)
+                  </td>
+                  <td className="px-4 py-4 text-slate-950">
+                    Completed Cycle Fuel Audit Total
+                  </td>
+                  <td className="px-4 py-4 text-base font-bold text-slate-950">
+                    {fmtCurrency(fuelCostAuditTotal)}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">
+                    Fuel Cost Audit Detail
+                  </td>
+                </tr>
+                <tr className="border-b border-slate-100 align-top">
+                  <td className="px-4 py-4 text-base font-semibold">
+                    Verified Service Cost
+                  </td>
+                  <td className="px-4 py-4 text-slate-700">
+                    Service allocation only for selected-period work miles that also
+                    fall inside completed fuel cycles.
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-950">
+                    sum(min(Service Cost, Verified Work Miles In Service Window x Cost Per Mile))
+                  </td>
+                  <td className="px-4 py-4 text-slate-950">
+                    {fmtNumber(verifiedCompletedCycleWorkMiles)} verified work miles
+                  </td>
+                  <td className="px-4 py-4 text-base font-bold text-slate-950">
+                    {fmtCurrency(verifiedServiceCost)}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">
+                    Service windows intersected with completed fuel cycles
+                  </td>
+                </tr>
+                <tr className="align-top">
+                  <td className="px-4 py-4 text-base font-semibold">
+                    Verified True Net Profit
+                  </td>
+                  <td className="px-4 py-4 text-slate-700">
+                    Requires a safe way to tie income to completed fuel-cycle miles.
+                  </td>
+                  <td className="px-4 py-4 font-mono text-slate-950">
+                    Income tied to completed-cycle work miles - Verified Work Fuel Cost - Verified Service Cost
+                  </td>
+                  <td className="px-4 py-4 text-amber-800">
+                    Income allocation by completed fuel cycle is not finalized yet.
+                  </td>
+                  <td className="px-4 py-4 text-base font-bold text-amber-800">
+                    Pending
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">
+                    Requires income allocation policy
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-5 text-amber-950 shadow-sm">
+            <h3 className="text-lg font-semibold">
+              Income allocation by completed fuel cycle is not finalized yet.
+            </h3>
+            <p className="mt-2 text-sm">
+              Verified fuel and service costs are shown, but verified true net profit is
+              not calculated because shift/pay-adjustment income has not been safely
+              allocated to completed fuel cycles.
+            </p>
           </div>
         </section>
 

@@ -25,8 +25,6 @@ import {
   loadServiceEntriesFromSupabase,
   loadServiceIntervalsFromSupabase,
 } from "@/app/lib/garageStorage";
-import BottomNav from "@/app/components/BottomNav";
-
 /* =========================================================
    FORMATTING HELPERS
    ========================================================= */
@@ -1265,7 +1263,6 @@ export default function MetricsPage() {
         )}
 
       </div>
-      <BottomNav />
     </main>
   );
 }

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen, CreditCard, Trash2, X } from "lucide-react";
-import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import { Vehicle, loadVehiclesFromSupabase } from "@/app/lib/garageStorage";
 import { canAccessFullApp, formatTrialEndDate } from "@/app/lib/subscriptionAccess";
@@ -880,7 +879,6 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
-      <BottomNav />
     </main>
   );
 }

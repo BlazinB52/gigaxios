@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
   SubscriptionAccessState,
@@ -269,7 +268,6 @@ export default function NewVehiclePage() {
         </div>
 
       </div>
-      <BottomNav />
     </main>
   );
 }

@@ -13,7 +13,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Trash2 } from "lucide-react";
-import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
   MaintenanceReminder,
@@ -236,7 +235,6 @@ export default function MaintenancePage() {
         </p>
 
       </div>
-      <BottomNav />
     </main>
   );
 }

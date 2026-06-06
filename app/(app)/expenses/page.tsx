@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 
 export default function ExpensesPage() {
@@ -36,7 +35,6 @@ export default function ExpensesPage() {
         <h1 className="text-2xl font-bold">Expenses</h1>
       </div>
 
-      <BottomNav />
     </main>
   );
 }

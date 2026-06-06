@@ -3,7 +3,6 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Trash2 } from "lucide-react";
-import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
   ServiceEntry,
@@ -527,7 +526,6 @@ function ServicePageInner() {
         </div>
 
       </div>
-      <BottomNav />
     </main>
   );
 }

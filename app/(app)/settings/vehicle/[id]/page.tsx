@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -278,7 +277,6 @@ export default function EditVehiclePage() {
         </div>
 
       </div>
-      <BottomNav />
     </main>
   );
 }

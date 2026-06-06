@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Wrench } from "lucide-react";
-import BottomNav from "@/app/components/BottomNav";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
   Vehicle,
@@ -397,7 +396,6 @@ export default function IntervalsPage() {
         </div>
 
       </div>
-      <BottomNav />
     </main>
   );
 }

@@ -53,7 +53,7 @@ export default function FuelPage() {
   const [isFullFillUp, setIsFullFillUp] = useState(true);
   const [allowMileageException, setAllowMileageException] = useState(false);
   const [mileageExceptionReason, setMileageExceptionReason] = useState("");
-  const [highestMileage, setHighestMileage] = useState<number | null>(null);
+  const [showMileageException, setShowMileageException] = useState(false);
   const [accessState, setAccessState] =
     useState<SubscriptionAccessState | null>(null);
   const [startingCheckout, setStartingCheckout] = useState(false);
@@ -104,30 +104,13 @@ export default function FuelPage() {
     load();
   }, [router]);
 
-  useEffect(() => {
-    async function loadMileageThreshold() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const highest = await loadHighestMileageReading({
-        userId: user.id,
-        vehicleId: selectedVehicleId || undefined,
-      });
-
-      setHighestMileage(highest);
-    }
-
-    loadMileageThreshold();
-  }, [selectedVehicleId]);
-
   const trialRequired = accessState?.trialRequired ?? false;
-  const showMileageException = needsMileageException({
-    mileage: odometer,
-    highestMileage,
-  });
+
+  function resetMileageException() {
+    setShowMileageException(false);
+    setAllowMileageException(false);
+    setMileageExceptionReason("");
+  }
 
   async function handleStartTrial() {
     setStartingCheckout(true);
@@ -186,11 +169,11 @@ export default function FuelPage() {
       mileageIsLower &&
       (!allowMileageException || mileageExceptionReason.trim().length === 0)
     ) {
-      alert(
-        "This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data."
-      );
+      setShowMileageException(true);
       return;
     }
+
+    setShowMileageException(false);
 
     const newEntry: FuelEntry = {
       id: crypto.randomUUID(),
@@ -309,7 +292,10 @@ export default function FuelPage() {
               type="number"
               placeholder="Odometer"
               value={odometer}
-              onChange={(e) => setOdometer(e.target.value)}
+              onChange={(e) => {
+                setOdometer(e.target.value);
+                resetMileageException();
+              }}
               className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
             />
 

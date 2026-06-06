@@ -10,6 +10,7 @@ type ActiveShiftCardProps = {
     endMileageExceptionReason: string;
     setEndMileageExceptionReason: (value: string) => void;
     showEndMileageException: boolean;
+    onEndingMileageChange: () => void;
 
     deliveries: string;
     setDeliveries: (value: string) => void;
@@ -38,6 +39,7 @@ export default function ActiveShiftCard({
     endMileageExceptionReason,
     setEndMileageExceptionReason,
     showEndMileageException,
+    onEndingMileageChange,
     deliveries,
     setDeliveries,
     hoursWorked,
@@ -66,7 +68,10 @@ export default function ActiveShiftCard({
                 <input
                     type="number"
                     value={endingMileage}
-                    onChange={(event) => setEndingMileage(event.target.value)}
+                    onChange={(event) => {
+                        setEndingMileage(event.target.value);
+                        onEndingMileageChange();
+                    }}
                     placeholder="Ending Mileage"
                     className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
                 />

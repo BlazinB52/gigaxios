@@ -75,7 +75,7 @@ function ServicePageInner() {
   const [serviceNotes, setServiceNotes] = useState("");
   const [allowMileageException, setAllowMileageException] = useState(false);
   const [mileageExceptionReason, setMileageExceptionReason] = useState("");
-  const [highestMileage, setHighestMileage] = useState<number | null>(null);
+  const [showMileageException, setShowMileageException] = useState(false);
   const [saving, setSaving] = useState(false);
   const [accessState, setAccessState] =
     useState<SubscriptionAccessState | null>(null);
@@ -132,21 +132,6 @@ function ServicePageInner() {
 
     load();
   }, [router, vehicleIdParam]);
-
-  useEffect(() => {
-    async function loadMileageThreshold() {
-      if (!userId) return;
-
-      const highest = await loadHighestMileageReading({
-        userId,
-        vehicleId: selectedVehicleId || undefined,
-      });
-
-      setHighestMileage(highest);
-    }
-
-    loadMileageThreshold();
-  }, [userId, selectedVehicleId]);
 
   async function handleDeleteEntry(id: string) {
     if (!userId) return;
@@ -216,12 +201,12 @@ function ServicePageInner() {
       mileageIsLower &&
       (!allowMileageException || mileageExceptionReason.trim().length === 0)
     ) {
-      alert(
-        "This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data."
-      );
+      setShowMileageException(true);
       setSaving(false);
       return;
     }
+
+    setShowMileageException(false);
 
     const entry: ServiceEntry = {
       id: crypto.randomUUID(),
@@ -261,6 +246,7 @@ function ServicePageInner() {
     setServiceNotes("");
     setAllowMileageException(false);
     setMileageExceptionReason("");
+    setShowMileageException(false);
     setShowForm(false);
     setSaving(false);
   }
@@ -288,10 +274,12 @@ function ServicePageInner() {
 
   const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
   const trialRequired = accessState?.trialRequired ?? false;
-  const showMileageException = needsMileageException({
-    mileage: serviceOdometer,
-    highestMileage,
-  });
+
+  function resetMileageException() {
+    setShowMileageException(false);
+    setAllowMileageException(false);
+    setMileageExceptionReason("");
+  }
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -409,7 +397,10 @@ function ServicePageInner() {
                   type="number"
                   placeholder="Odometer at time of service"
                   value={serviceOdometer}
-                  onChange={(e) => setServiceOdometer(e.target.value)}
+                  onChange={(e) => {
+                    setServiceOdometer(e.target.value);
+                    resetMileageException();
+                  }}
                   className={inputClass}
                 />
 
@@ -469,6 +460,7 @@ function ServicePageInner() {
                     setServiceNotes("");
                     setAllowMileageException(false);
                     setMileageExceptionReason("");
+                    setShowMileageException(false);
                     setShowForm(false);
                   }}
                   className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300"

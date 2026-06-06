@@ -29,9 +29,10 @@ export default function ShiftsPage() {
     const [endingMileage, setEndingMileage] = useState("");
     const [allowStartMileageException, setAllowStartMileageException] = useState(false);
     const [startMileageExceptionReason, setStartMileageExceptionReason] = useState("");
+    const [showStartMileageException, setShowStartMileageException] = useState(false);
     const [allowEndMileageException, setAllowEndMileageException] = useState(false);
     const [endMileageExceptionReason, setEndMileageExceptionReason] = useState("");
-    const [endMileageThreshold, setEndMileageThreshold] = useState<number | null>(null);
+    const [showEndMileageException, setShowEndMileageException] = useState(false);
 
     const [deliveries, setDeliveries] = useState("");
     const [hoursWorked, setHoursWorked] = useState("");
@@ -88,28 +89,18 @@ export default function ShiftsPage() {
     const activeShift = savedShifts.find((shift) => shift.status === "open");
     const isSubscribed = accessState?.isSubscribed ?? false;
     const trialRequired = accessState?.trialRequired ?? false;
-    const showEndMileageException = needsMileageException({
-        mileage: endingMileage,
-        highestMileage: endMileageThreshold,
-    });
 
-    useEffect(() => {
-        async function loadEndMileageThreshold() {
-            if (!activeShift) {
-                setEndMileageThreshold(null);
-                return;
-            }
+    function resetStartMileageException() {
+        setShowStartMileageException(false);
+        setAllowStartMileageException(false);
+        setStartMileageExceptionReason("");
+    }
 
-            const highest = await loadHighestMileageReading({
-                userId: activeShift.userId,
-                vehicleId: activeShift.vehicleId,
-            });
-
-            setEndMileageThreshold(highest);
-        }
-
-        loadEndMileageThreshold();
-    }, [activeShift?.id, activeShift?.userId, activeShift?.vehicleId]);
+    function resetEndMileageException() {
+        setShowEndMileageException(false);
+        setAllowEndMileageException(false);
+        setEndMileageExceptionReason("");
+    }
 
     async function handleStartTrial() {
         setStartingCheckout(true);
@@ -175,9 +166,11 @@ export default function ShiftsPage() {
             startMileageIsLower &&
             (!allowStartMileageException || startMileageExceptionReason.trim().length === 0)
         ) {
-            alert("This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.");
+            setShowStartMileageException(true);
             return;
         }
+
+        setShowStartMileageException(false);
 
 
         // New Shift Block
@@ -259,9 +252,11 @@ export default function ShiftsPage() {
             endMileageIsLower &&
             (!allowEndMileageException || endMileageExceptionReason.trim().length === 0)
         ) {
-            alert("This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.");
+            setShowEndMileageException(true);
             return;
         }
+
+        setShowEndMileageException(false);
 
         const calculatedGrossPay =
             Number(basePay || 0) + Number(tips || 0) + Number(otherPay || 0);
@@ -356,6 +351,7 @@ export default function ShiftsPage() {
                     endMileageExceptionReason={endMileageExceptionReason}
                     setEndMileageExceptionReason={setEndMileageExceptionReason}
                     showEndMileageException={showEndMileageException}
+                    onEndingMileageChange={resetEndMileageException}
                     onEndShift={handleEndShift}
                 />
 
@@ -439,33 +435,38 @@ export default function ShiftsPage() {
                             <input
                                 type="number"
                                 value={beginningMileage}
-                                onChange={(event) => setBeginningMileage(event.target.value)}
+                                onChange={(event) => {
+                                    setBeginningMileage(event.target.value);
+                                    resetStartMileageException();
+                                }}
                                 placeholder="Beginning Mileage"
                                 className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
                             />
 
-                            <div className="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-4">
-                                <p className="text-sm leading-6 text-amber-100">
-                                    This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.
-                                </p>
-                                <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-white">
-                                    <input
-                                        type="checkbox"
-                                        checked={allowStartMileageException}
-                                        onChange={(event) => setAllowStartMileageException(event.target.checked)}
-                                        className="h-4 w-4 accent-blue-500"
-                                    />
-                                    Allow mileage exception
-                                </label>
-                                {allowStartMileageException && (
-                                    <textarea
-                                        value={startMileageExceptionReason}
-                                        onChange={(event) => setStartMileageExceptionReason(event.target.value)}
-                                        placeholder="Reason for exception"
-                                        className="mt-3 min-h-20 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
-                                    />
-                                )}
-                            </div>
+                            {showStartMileageException && (
+                                <div className="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-4">
+                                    <p className="text-sm leading-6 text-amber-100">
+                                        This mileage appears to be lower than an existing entry. Only continue if you are backfilling or correcting older data.
+                                    </p>
+                                    <label className="mt-3 flex items-center gap-3 text-sm font-semibold text-white">
+                                        <input
+                                            type="checkbox"
+                                            checked={allowStartMileageException}
+                                            onChange={(event) => setAllowStartMileageException(event.target.checked)}
+                                            className="h-4 w-4 accent-blue-500"
+                                        />
+                                        Allow mileage exception
+                                    </label>
+                                    {allowStartMileageException && (
+                                        <textarea
+                                            value={startMileageExceptionReason}
+                                            onChange={(event) => setStartMileageExceptionReason(event.target.value)}
+                                            placeholder="Reason for exception"
+                                            className="mt-3 min-h-20 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                                        />
+                                    )}
+                                </div>
+                            )}
 
                             <button
                                 onClick={handleStartShift}

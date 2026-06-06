@@ -21,7 +21,9 @@ import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import {
   ServiceEntry,
+  ServiceInterval,
   loadServiceEntriesFromSupabase,
+  loadServiceIntervalsFromSupabase,
 } from "@/app/lib/garageStorage";
 import BottomNav from "@/app/components/BottomNav";
 
@@ -67,8 +69,61 @@ function parseShiftDate(dateStr: string): Date {
    ========================================================= */
 
 function getWorkMilePercentage(workMiles: number, totalOdometerMiles: number): number {
-  if (totalOdometerMiles <= 0) return 1;
-  return Math.min(workMiles / totalOdometerMiles, 1);
+  if (totalOdometerMiles <= 0) return 0;
+  return workMiles / totalOdometerMiles;
+}
+
+function normalizeServiceType(serviceType: string): string {
+  return serviceType.trim().toLowerCase();
+}
+
+function getMatchingServiceInterval(
+  service: ServiceEntry,
+  intervals: ServiceInterval[]
+): ServiceInterval | null {
+  const serviceType = normalizeServiceType(service.serviceType);
+  const vehicleMatch = intervals.find(
+    (interval) =>
+      normalizeServiceType(interval.serviceType) === serviceType &&
+      interval.vehicleId === service.vehicleId
+  );
+
+  if (vehicleMatch) return vehicleMatch;
+
+  return intervals.find(
+    (interval) =>
+      normalizeServiceType(interval.serviceType) === serviceType &&
+      interval.vehicleId === null
+  ) ?? null;
+}
+
+function getServiceIntervalMileage(
+  service: ServiceEntry,
+  intervals: ServiceInterval[]
+): number | null {
+  const intervalMiles = Number(getMatchingServiceInterval(service, intervals)?.intervalMiles);
+  if (Number.isFinite(intervalMiles) && intervalMiles > 0) return intervalMiles;
+  if (normalizeServiceType(service.serviceType) === "tires") return 50000;
+  return null;
+}
+
+function getWorkMilesSinceService(service: ServiceEntry, shifts: SavedShift[]): number {
+  const serviceDate = parseShiftDate(service.date).getTime();
+  const serviceOdometer = Number(service.odometer);
+  const hasServiceOdometer = Number.isFinite(serviceOdometer) && serviceOdometer > 0;
+
+  return shifts.reduce((sum, shift) => {
+    const shiftDate = parseShiftDate(shift.date).getTime();
+    if (shiftDate < serviceDate) return sum;
+
+    const begin = Number(shift.beginningMileage);
+    const end = Number(shift.endingMileage);
+    if (!(begin > 0 && end > begin)) return sum;
+    if (hasServiceOdometer && end <= serviceOdometer) return sum;
+
+    const effectiveBegin = hasServiceOdometer ? Math.max(begin, serviceOdometer) : begin;
+    return sum + Math.max(0, end - effectiveBegin);
+  }, 0);
 }
 
 /* =========================================================
@@ -85,6 +140,7 @@ export default function MetricsPage() {
   const [shifts, setShifts] = useState<SavedShift[]>([]);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
+  const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
   const [adjustments, setAdjustments] = useState<{ amount: number; week_start: string }[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [isLoaded, setIsLoaded] = useState(false);
@@ -116,10 +172,11 @@ export default function MetricsPage() {
       }
 
       try {
-        const [s, f, sv, adjRes, vRes] = await Promise.all([
+        const [s, f, sv, intervals, adjRes, vRes] = await Promise.all([
           loadShiftsFromSupabase(user.id),
           loadFuelEntriesFromSupabase(user.id),
           loadServiceEntriesFromSupabase(user.id),
+          loadServiceIntervalsFromSupabase(user.id),
           supabase.from("pay_adjustments").select("amount, week_start").eq("user_id", user.id),
           supabase
             .from("vehicles")
@@ -132,6 +189,7 @@ export default function MetricsPage() {
         setShifts(s as SavedShift[]);
         setFuelEntries(f);
         setServiceEntries(sv);
+        setServiceIntervals(intervals);
         setAdjustments((adjRes.data ?? []) as { amount: number; week_start: string }[]);
         const vehicleData = vRes.data || [];
         setVehicles(vehicleData);
@@ -185,6 +243,7 @@ export default function MetricsPage() {
     const yearServices = vehicleServices.filter(
       (sv) => parseShiftDate(sv.date).getFullYear() === selectedYear
     );
+    const completedYearShifts = yearShifts.filter((shift) => shift.status === "closed");
 
     /* Pay adjustments (MGA, bonuses, etc.) — excluded when vehicle has no shifts,
        since adjustments are driver-level and cannot be attributed to a specific vehicle */
@@ -196,13 +255,14 @@ export default function MetricsPage() {
       : yearAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0);
 
     /* Basic shift totals */
-    const totalDeliveries = yearShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
-    const totalHours = yearShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
-    const totalGrossPay = yearShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0) + totalAdjustments;
+    const totalDeliveries = completedYearShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
+    const totalHours = completedYearShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
+    const shiftGrossPay = completedYearShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0);
+    const totalGrossPay = shiftGrossPay + totalAdjustments;
     const totalFuelCost = yearFuel.reduce((s, x) => s + Number(x.totalCost || 0), 0);
 
     /* Work miles — difference between ending and beginning mileage per shift */
-    const totalShiftMiles = yearShifts.reduce((sum, s) => {
+    const totalShiftMiles = completedYearShifts.reduce((sum, s) => {
       const begin = Number(s.beginningMileage);
       const end = Number(s.endingMileage);
       return begin > 0 && end > begin ? sum + (end - begin) : sum;
@@ -225,8 +285,10 @@ export default function MetricsPage() {
       if (lastOdo > firstOdo) totalMilesDriven = lastOdo - firstOdo;
     }
 
-    /* Business use % determines what share of service cost is work-related */
-    const businessUsePct = getWorkMilePercentage(totalShiftMiles, totalMilesDriven);
+    const businessUseInvalid = totalMilesDriven > 0 && totalShiftMiles > totalMilesDriven;
+    const businessUsePct = businessUseInvalid
+      ? null
+      : getWorkMilePercentage(totalShiftMiles, totalMilesDriven);
     const fuelCostResult = calculateWorkFuelCost({
       workMiles: totalShiftMiles,
       fuelEntries: yearFuel,
@@ -241,9 +303,71 @@ export default function MetricsPage() {
     const hourlyRate = totalHours > 0 ? netProfit / totalHours : 0;
     const profitPerDelivery = totalDeliveries > 0 ? netProfit / totalDeliveries : 0;
 
-    /* True cost view — adds proportional vehicle maintenance to the deductions */
-    const yearServiceCost = yearServices.reduce((s, x) => s + Number(x.cost || 0), 0);
-    const businessServiceCost = yearServiceCost * businessUsePct;
+    /* True cost view — allocates service cost by configured service interval mileage */
+    const serviceAllocation = yearServices.reduce(
+      (totals, service) => {
+        const serviceCost = Number(service.cost || 0);
+        if (!(serviceCost > 0)) return totals;
+
+        totals.yearServiceCost += serviceCost;
+
+        const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
+        if (!intervalMileage) {
+          totals.unallocatedServiceCost += serviceCost;
+          totals.serviceDetails.push({
+            serviceType: service.serviceType || "Service",
+            serviceCost,
+            intervalMileage: null,
+            costPerMile: null,
+            workMilesSinceService: 0,
+            allocatedServiceCost: 0,
+            isAllocated: false,
+          });
+          return totals;
+        }
+
+        const serviceShifts = service.vehicleId
+          ? completedYearShifts.filter((shift) => shift.vehicleId === service.vehicleId)
+          : completedYearShifts;
+        const workMilesSinceService = getWorkMilesSinceService(service, serviceShifts);
+        const costPerMile = serviceCost / intervalMileage;
+        const allocatedServiceCost = Math.min(
+          serviceCost,
+          workMilesSinceService * costPerMile
+        );
+
+        totals.businessServiceCost += allocatedServiceCost;
+        totals.serviceDetails.push({
+          serviceType: service.serviceType || "Service",
+          serviceCost,
+          intervalMileage,
+          costPerMile,
+          workMilesSinceService,
+          allocatedServiceCost,
+          isAllocated: true,
+        });
+        return totals;
+      },
+      {
+        yearServiceCost: 0,
+        businessServiceCost: 0,
+        unallocatedServiceCost: 0,
+        serviceDetails: [] as Array<{
+          serviceType: string;
+          serviceCost: number;
+          intervalMileage: number | null;
+          costPerMile: number | null;
+          workMilesSinceService: number;
+          allocatedServiceCost: number;
+          isAllocated: boolean;
+        }>,
+      }
+    );
+
+    const yearServiceCost = serviceAllocation.yearServiceCost;
+    const businessServiceCost = serviceAllocation.businessServiceCost;
+    const unallocatedServiceCost = serviceAllocation.unallocatedServiceCost;
+    const serviceDetails = serviceAllocation.serviceDetails;
     const trueNetProfit = netProfit - businessServiceCost;
     const trueNetPct = totalGrossPay > 0 ? trueNetProfit / totalGrossPay : 0;
     const serviceCostPct = totalGrossPay > 0 ? businessServiceCost / totalGrossPay : 0;
@@ -251,7 +375,7 @@ export default function MetricsPage() {
     /* Monthly breakdown — builds one entry per month that has shift data */
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const monthlyData = MONTHS.map((month, i) => {
-      const mShifts = yearShifts.filter(
+      const mShifts = completedYearShifts.filter(
         (s) => parseShiftDate(s.date).getMonth() === i
       );
       const mAdjTotal = yearAdjustments
@@ -283,15 +407,17 @@ export default function MetricsPage() {
 
     return {
       totalDeliveries, totalHours, totalGrossPay, totalFuelCost, totalAdjustments,
-      totalShiftMiles, totalMilesDriven, businessUsePct,
+      shiftGrossPay, totalShiftMiles, totalMilesDriven, businessUsePct, businessUseInvalid,
       workFuelCost, netProfit, netProfitPct, fuelPct,
+      fuelCostPerMile: fuelCostResult.effectiveCostPerMile,
+      fuelCostSource: fuelCostResult.source,
       fuelCostNeedsMpg: fuelCostResult.needsMpg,
       hourlyRate, profitPerDelivery,
-      yearServiceCost, businessServiceCost, trueNetProfit, trueNetPct, serviceCostPct,
+      yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct, serviceCostPct,
       monthlyData, maxMonthlyValue, avgMpg,
-      hasData: yearShifts.length > 0 || totalAdjustments > 0,
+      hasData: completedYearShifts.length > 0 || totalAdjustments > 0,
     };
-  }, [shifts, fuelEntries, serviceEntries, adjustments, selectedYear, selectedVehicleId]);
+  }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedYear, selectedVehicleId]);
 
   /* =========================================================
      LOADING STATE
@@ -309,10 +435,10 @@ export default function MetricsPage() {
   /* Destructure computed metrics for cleaner JSX references */
   const {
     totalDeliveries, totalHours, totalGrossPay, totalAdjustments,
-    totalShiftMiles, totalMilesDriven, businessUsePct,
-    workFuelCost, netProfit, netProfitPct, fuelPct, fuelCostNeedsMpg,
+    shiftGrossPay, totalShiftMiles, totalMilesDriven, businessUsePct, businessUseInvalid,
+    workFuelCost, netProfit, netProfitPct, fuelPct, fuelCostNeedsMpg, fuelCostPerMile, fuelCostSource,
     profitPerDelivery,
-    yearServiceCost, businessServiceCost, trueNetProfit, trueNetPct,
+    yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct,
     monthlyData, maxMonthlyValue, avgMpg,
     hasData,
   } = metrics;
@@ -387,7 +513,10 @@ export default function MetricsPage() {
                   {[
                     { label: "Deliveries",    value: totalDeliveries.toLocaleString(),    sub: "Total" },
                     { label: "Hours Worked",  value: totalHours.toFixed(2),               sub: "Total" },
-                    { label: "Gross Pay",     value: fmtDollar(totalGrossPay),            sub: "Total" },
+                    { label: "Gross Pay",     value: fmtDollar(shiftGrossPay),            sub: "Completed shifts" },
+                    ...(totalAdjustments !== 0
+                      ? [{ label: "Adjustments", value: fmtDollar(totalAdjustments), sub: "Pay records" }]
+                      : []),
                     {
                       label: "Fuel Cost",
                       value: fuelCostNeedsMpg ? "Pending" : fmtDollar(workFuelCost),
@@ -562,12 +691,23 @@ export default function MetricsPage() {
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-slate-300">Business Use</span>
-                        <span className="font-semibold text-blue-400">{fmtPct(businessUsePct)}</span>
+                        <span className={`font-semibold ${businessUseInvalid ? "text-amber-400" : "text-blue-400"}`}>
+                          {businessUseInvalid || businessUsePct === null ? "Data check needed" : fmtPct(businessUsePct)}
+                        </span>
                       </div>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {totalShiftMiles.toLocaleString()} work mi /{" "}
                         {totalMilesDriven.toLocaleString()} total mi
                       </p>
+                      {businessUseInvalid ? (
+                        <p className="mt-2 rounded-2xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
+                          Data check needed: work miles exceed total miles. Add or correct fuel/odometer entries.
+                        </p>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Business use = work miles / total miles
+                        </p>
+                      )}
                     </div>
 
                     {/* AVG MPG — only shown if fuel entries include MPG data */}
@@ -585,13 +725,20 @@ export default function MetricsPage() {
                     <div className="mt-4 border-t border-slate-800 pt-4">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-slate-300">Gross Pay</span>
-                          <span className="text-sm text-white">{fmtDollar(totalGrossPay)}</span>
+                          <span className="text-sm text-slate-300">Shift Gross Pay</span>
+                          <span className="text-sm text-white">{fmtDollar(shiftGrossPay)}</span>
                         </div>
-                        {totalAdjustments > 0 && (
-                          <p className="text-right text-xs text-slate-500">
-                            incl. {fmtDollar(totalAdjustments)} in adjustments
-                          </p>
+                        {totalAdjustments !== 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-slate-300">Pay Adjustments</span>
+                            <span className="text-sm text-white">{fmtDollar(totalAdjustments)}</span>
+                          </div>
+                        )}
+                        {totalAdjustments !== 0 && (
+                          <div className="flex items-center justify-between border-t border-slate-800 pt-3">
+                            <span className="text-sm text-slate-300">Total Income</span>
+                            <span className="text-sm text-white">{fmtDollar(totalGrossPay)}</span>
+                          </div>
                         )}
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-slate-300">− Work Fuel Cost</span>
@@ -604,15 +751,97 @@ export default function MetricsPage() {
                             Add MPG history to estimate fuel cost
                           </p>
                         )}
+                        {!fuelCostNeedsMpg && (
+                          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-400">
+                            <div className="flex items-center justify-between">
+                              <span>Work miles used</span>
+                              <span>{totalShiftMiles.toLocaleString()} mi</span>
+                            </div>
+                            <div className="mt-1 flex items-center justify-between">
+                              <span>Fuel cost per mile</span>
+                              <span>{fmtDollar(fuelCostPerMile)}/mi</span>
+                            </div>
+                            <p className="mt-2 text-slate-500">
+                              Work fuel cost = {totalShiftMiles.toLocaleString()} mi × {fmtDollar(fuelCostPerMile)}/mi = {fmtDollar(workFuelCost)}
+                            </p>
+                            <p className="mt-1 text-slate-500">
+                              Source: {fuelCostSource === "actual_history" ? "recent fuel cost-per-mile history" : "vehicle MPG estimate"}
+                            </p>
+                          </div>
+                        )}
                         <div>
                           <div className="flex items-center justify-between">
                             <span className="text-sm text-slate-300">− Service (your share)</span>
                             <span className="text-sm text-red-400">−{fmtDollar(businessServiceCost)}</span>
                           </div>
                           <p className="mt-0.5 text-right text-xs text-slate-500">
-                            ${yearServiceCost.toFixed(2)} total × {(businessUsePct * 100).toFixed(1)}% business use
+                            ${yearServiceCost.toFixed(2)} total, allocated by service intervals
                           </p>
                         </div>
+                        {unallocatedServiceCost > 0 && (
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-slate-300">Unallocated service cost</span>
+                              <span className="text-sm text-slate-400">{fmtDollar(unallocatedServiceCost)}</span>
+                            </div>
+                            <p className="mt-0.5 text-right text-xs text-slate-500">
+                              Missing or invalid mileage interval
+                            </p>
+                          </div>
+                        )}
+                        {serviceDetails.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Service allocation detail
+                            </p>
+                            {serviceDetails.map((service, index) => (
+                              <div
+                                key={`${service.serviceType}-${index}`}
+                                className="rounded-2xl border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-400"
+                              >
+                                <div className="mb-2 flex items-center justify-between">
+                                  <span className="font-semibold text-slate-200">{service.serviceType}</span>
+                                  <span className="text-slate-200">{fmtDollar(service.allocatedServiceCost)}</span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span>Service cost</span>
+                                    <span>{fmtDollar(service.serviceCost)}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span>Service interval miles</span>
+                                    <span>
+                                      {service.intervalMileage
+                                        ? `${service.intervalMileage.toLocaleString()} mi`
+                                        : "Missing"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span>Cost per mile</span>
+                                    <span>
+                                      {service.costPerMile !== null
+                                        ? `${fmtDollar(service.costPerMile)}/mi`
+                                        : "Unallocated"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span>Work miles since service</span>
+                                    <span>{service.workMilesSinceService.toLocaleString()} mi</span>
+                                  </div>
+                                </div>
+                                {service.isAllocated && service.costPerMile !== null ? (
+                                  <p className="mt-2 text-slate-500">
+                                    Allocated service cost = min({fmtDollar(service.serviceCost)}, {service.workMilesSinceService.toLocaleString()} mi × {fmtDollar(service.costPerMile)}/mi) = {fmtDollar(service.allocatedServiceCost)}
+                                  </p>
+                                ) : (
+                                  <p className="mt-2 text-slate-500">
+                                    Not allocated because the mileage interval is missing or invalid.
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
                         {/* TRUE NET PROFIT */}
                         <div className="border-t border-slate-800 pt-3">

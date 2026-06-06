@@ -15,6 +15,10 @@ import {
     loadHighestMileageReading,
     needsMileageException,
 } from "@/app/lib/mileageValidation";
+import {
+    DUPLICATE_SHIFT_MESSAGE,
+    hasDuplicateClosedShift,
+} from "@/app/lib/shiftDuplicateValidation";
 
 
 export default function ShiftsPage() {
@@ -260,6 +264,21 @@ export default function ShiftsPage() {
 
         const calculatedGrossPay =
             Number(basePay || 0) + Number(tips || 0) + Number(otherPay || 0);
+
+        const duplicateShiftExists = await hasDuplicateClosedShift({
+            userId: activeShift.userId,
+            vehicleId: activeShift.vehicleId,
+            date: activeShift.date,
+            beginningMileage: activeShift.beginningMileage,
+            endingMileage,
+            platform: activeShift.platform,
+            excludeShiftId: activeShift.id,
+        });
+
+        if (duplicateShiftExists) {
+            alert(DUPLICATE_SHIFT_MESSAGE);
+            return;
+        }
 
         const updatedShifts = savedShifts.map((shift) => {
             if (shift.id === activeShift.id) {

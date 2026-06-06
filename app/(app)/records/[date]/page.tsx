@@ -8,6 +8,10 @@ import { loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { SavedShift } from "@/app/lib/types";
 import { FuelEntry } from "@/app/lib/fuelStorage";
+import {
+  DUPLICATE_SHIFT_MESSAGE,
+  hasDuplicateClosedShift,
+} from "@/app/lib/shiftDuplicateValidation";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -165,6 +169,23 @@ export default function DayDetailPage() {
       otherPay: editOtherPay,
       grossPay,
     };
+
+    if (updated.status === "closed" && updated.beginningMileage && updated.endingMileage) {
+      const duplicateShiftExists = await hasDuplicateClosedShift({
+        userId: updated.userId,
+        vehicleId: editShiftVehicleId || updated.vehicleId,
+        date: updated.date,
+        beginningMileage: updated.beginningMileage,
+        endingMileage: updated.endingMileage,
+        platform: updated.platform,
+        excludeShiftId: updated.id,
+      });
+
+      if (duplicateShiftExists) {
+        alert(DUPLICATE_SHIFT_MESSAGE);
+        return;
+      }
+    }
 
     const { error } = await supabase
       .from("shifts")

@@ -3,12 +3,12 @@
 /* =========================================================
    METRICS PAGE
    ---------------------------------------------------------
-   Full earnings analytics for a selected pay period.
+   Full earnings analytics for a selected date range.
    Pulls shifts, fuel entries, service entries, and pay
    adjustments from Supabase, then computes:
      • KPI overview (deliveries, hours, gross, fuel, net)
      • Retention percentage bar
-     • Pay-period gross vs net summary
+     • Date-range gross vs net summary
      • True Cost View (includes vehicle maintenance share)
    ========================================================= */
 
@@ -41,10 +41,13 @@ const fmtPct = (n: number) => (n * 100).toFixed(1) + "%";
 /** Formats a number as a dollar string, e.g. 123.4 → "$123.40" */
 const fmtDollar = (n: number) => "$" + fmt(n);
 
-type PayPeriodOption = {
+type RangeType = "current_pay_period" | "previous_pay_period" | "month" | "quarter" | "year";
+
+type DateRangeOption = {
   label: string;
-  weekStart: string;
-  weekEnd: string;
+  rangeStart: string;
+  rangeEnd: string;
+  type: RangeType;
 };
 
 const WEEK_START_STORAGE_KEYS = [
@@ -138,9 +141,42 @@ function getPayPeriodForDate(date: Date, weekStartsOn: number) {
   };
 }
 
-function isDateInRange(dateStr: string, weekStart: string, weekEnd: string): boolean {
+function toDateRange(
+  label: string,
+  start: Date,
+  end: Date,
+  type: RangeType
+): DateRangeOption {
+  return {
+    label,
+    rangeStart: formatISODate(start),
+    rangeEnd: formatISODate(end),
+    type,
+  };
+}
+
+function getThisMonthRange(date: Date): DateRangeOption {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  return toDateRange("This month", start, end, "month");
+}
+
+function getThisQuarterRange(date: Date): DateRangeOption {
+  const quarterStartMonth = Math.floor(date.getMonth() / 3) * 3;
+  const start = new Date(date.getFullYear(), quarterStartMonth, 1);
+  const end = new Date(date.getFullYear(), quarterStartMonth + 3, 0);
+  return toDateRange("This quarter", start, end, "quarter");
+}
+
+function getThisYearRange(date: Date): DateRangeOption {
+  const start = new Date(date.getFullYear(), 0, 1);
+  const end = new Date(date.getFullYear(), 11, 31);
+  return toDateRange("This year", start, end, "year");
+}
+
+function isDateInRange(dateStr: string, rangeStart: string, rangeEnd: string): boolean {
   const iso = toISODate(dateStr);
-  return iso >= weekStart && iso <= weekEnd;
+  return iso >= rangeStart && iso <= rangeEnd;
 }
 
 /* =========================================================
@@ -226,7 +262,7 @@ export default function MetricsPage() {
   const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
   const [adjustments, setAdjustments] = useState<{ amount: number; week_start: string }[]>([]);
   const [weekStartsOn, setWeekStartsOn] = useState(1);
-  const [selectedPeriodKey, setSelectedPeriodKey] = useState("");
+  const [selectedRangeKey, setSelectedRangeKey] = useState<RangeType>("current_pay_period");
   const [isLoaded, setIsLoaded] = useState(false);
   const [vehicles, setVehicles] = useState<Array<{
     id: string;
@@ -295,68 +331,52 @@ export default function MetricsPage() {
      year even if no data exists for it yet.
      ========================================================= */
 
-  const currentPayPeriod = useMemo(
-    () => getPayPeriodForDate(new Date(), weekStartsOn),
-    [weekStartsOn]
-  );
+  const rangeOptions = useMemo<DateRangeOption[]>(() => {
+    const today = new Date();
+    const currentPayPeriod = getPayPeriodForDate(today, weekStartsOn);
+    const previousPayPeriodStart = parseShiftDate(currentPayPeriod.weekStart);
+    previousPayPeriodStart.setDate(previousPayPeriodStart.getDate() - 7);
+    const previousPayPeriod = getPayPeriodForDate(previousPayPeriodStart, weekStartsOn);
 
-  const payPeriodOptions = useMemo<PayPeriodOption[]>(() => {
-    const periodMap = new Map<string, PayPeriodOption>();
+    return [
+      {
+        label: "Current pay period",
+        rangeStart: currentPayPeriod.weekStart,
+        rangeEnd: currentPayPeriod.weekEnd,
+        type: "current_pay_period",
+      },
+      {
+        label: "Previous pay period",
+        rangeStart: previousPayPeriod.weekStart,
+        rangeEnd: previousPayPeriod.weekEnd,
+        type: "previous_pay_period",
+      },
+      getThisMonthRange(today),
+      getThisQuarterRange(today),
+      getThisYearRange(today),
+    ];
+  }, [weekStartsOn]);
 
-    function addPeriodForDate(dateStr: string) {
-      const date = parseShiftDate(dateStr);
-      if (date.getTime() === 0 || Number.isNaN(date.getTime())) return;
-      const period = getPayPeriodForDate(date, weekStartsOn);
-      periodMap.set(period.weekStart, {
-        ...period,
-        label: `${formatLongDate(period.weekStart)} - ${formatLongDate(period.weekEnd)}`,
-      });
-    }
-
-    periodMap.set(currentPayPeriod.weekStart, {
-      ...currentPayPeriod,
-      label: `Current pay period: ${formatLongDate(currentPayPeriod.weekStart)} - ${formatLongDate(
-        currentPayPeriod.weekEnd
-      )}`,
-    });
-
-    shifts.forEach((shift) => addPeriodForDate(shift.date));
-    fuelEntries.forEach((entry) => addPeriodForDate(entry.date));
-    serviceEntries.forEach((entry) => addPeriodForDate(entry.date));
-    adjustments.forEach((adjustment) => addPeriodForDate(adjustment.week_start));
-
-    return Array.from(periodMap.values()).sort((a, b) =>
-      b.weekStart.localeCompare(a.weekStart)
-    );
-  }, [adjustments, currentPayPeriod, fuelEntries, serviceEntries, shifts, weekStartsOn]);
-
-  useEffect(() => {
-    if (!selectedPeriodKey && payPeriodOptions.length > 0) {
-      setSelectedPeriodKey(currentPayPeriod.weekStart);
-    }
-  }, [currentPayPeriod.weekStart, payPeriodOptions.length, selectedPeriodKey]);
-
-  const selectedPayPeriod =
-    payPeriodOptions.find((period) => period.weekStart === selectedPeriodKey) ??
-    payPeriodOptions[0] ??
-    currentPayPeriod;
+  const selectedRange =
+    rangeOptions.find((range) => range.type === selectedRangeKey) ??
+    rangeOptions[0];
 
   /* =========================================================
      METRICS COMPUTATION
      All calculations are memoized and re-run whenever the
-     selected pay period or any data source changes.
+     selected date range or any data source changes.
      ========================================================= */
 
   const metrics = useMemo(() => {
 
-    /* Filter by vehicle first (when not "all"), then by selected pay period */
+    /* Filter by vehicle first (when not "all"), then by selected date range */
     const vehicleShifts = selectedVehicleId === "all" ? shifts : shifts.filter((s) => s.vehicleId === selectedVehicleId);
     const vehicleFuel = selectedVehicleId === "all" ? fuelEntries : fuelEntries.filter((f) => f.vehicleId === selectedVehicleId);
     const periodShifts = vehicleShifts.filter(
-      (s) => isDateInRange(s.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
+      (s) => isDateInRange(s.date, selectedRange.rangeStart, selectedRange.rangeEnd)
     );
     const periodFuel = vehicleFuel.filter(
-      (f) => isDateInRange(f.date, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
+      (f) => isDateInRange(f.date, selectedRange.rangeStart, selectedRange.rangeEnd)
     );
     const completedPeriodShifts = periodShifts.filter((shift) => shift.status === "closed");
     const selectedVehicleKeys = [...new Set(completedPeriodShifts.map(getShiftVehicleKey))];
@@ -379,7 +399,7 @@ export default function MetricsPage() {
     /* Pay adjustments (MGA, bonuses, etc.) — excluded when vehicle has no shifts,
        since adjustments are driver-level and cannot be attributed to a specific vehicle */
     const periodAdjustments = adjustments.filter(
-      (a) => isDateInRange(a.week_start, selectedPayPeriod.weekStart, selectedPayPeriod.weekEnd)
+      (a) => isDateInRange(a.week_start, selectedRange.rangeStart, selectedRange.rangeEnd)
     );
     const totalAdjustments = completedPeriodShifts.length === 0
       ? 0
@@ -606,7 +626,7 @@ export default function MetricsPage() {
 
     const maxPeriodSummaryValue = Math.max(totalGrossPay, Math.max(trueNetProfit, 0), 1);
 
-    /* Average MPG from selected-period full fill-up fuel entries that have an mpg value */
+    /* Average MPG from selected-range full fill-up fuel entries that have an mpg value */
     const validMpgEntries = scopedPeriodFuel.filter(
       (f) => (f.isFullFillUp ?? true) && f.mpg && f.mpg > 0
     );
@@ -660,7 +680,7 @@ export default function MetricsPage() {
       periodSummaryData, maxPeriodSummaryValue, avgMpg, periodMpgEntryCount, warnings, openCycleMiles, fuelOnlyProfitPct,
       hasData: completedPeriodShifts.length > 0 || totalAdjustments > 0,
     };
-  }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedPayPeriod, selectedVehicleId]);
+  }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedRange, selectedVehicleId]);
 
   /* =========================================================
      LOADING STATE
@@ -722,24 +742,24 @@ export default function MetricsPage() {
           </div>
         )}
 
-        {/* PAY PERIOD SELECTOR */}
+        {/* DATE RANGE SELECTOR */}
         <div className="mt-5 flex items-center justify-between">
-          <span className="text-sm text-slate-400">Pay period:</span>
+          <span className="text-sm text-slate-400">Range:</span>
           <select
-            value={selectedPayPeriod.weekStart}
-            onChange={(e) => setSelectedPeriodKey(e.target.value)}
+            value={selectedRange.type}
+            onChange={(e) => setSelectedRangeKey(e.target.value as RangeType)}
             className="max-w-[260px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
           >
-            {payPeriodOptions.map((period) => (
-              <option key={period.weekStart} value={period.weekStart}>
-                {period.label}
+            {rangeOptions.map((range) => (
+              <option key={range.type} value={range.type}>
+                {range.label}
               </option>
             ))}
           </select>
         </div>
 
         <p className="mt-2 text-xs text-slate-500">
-          {formatLongDate(selectedPayPeriod.weekStart)} - {formatLongDate(selectedPayPeriod.weekEnd)}
+          {formatLongDate(selectedRange.rangeStart)} - {formatLongDate(selectedRange.rangeEnd)}
         </p>
 
         {warnings.length > 0 && (
@@ -759,7 +779,7 @@ export default function MetricsPage() {
         {/* NO DATA STATE */}
         {!hasData ? (
           <div className="mt-16 text-center">
-            <p className="text-slate-500">No data for this pay period.</p>
+            <p className="text-slate-500">No data for {selectedRange.label.toLowerCase()}.</p>
           </div>
         ) : (
           <>
@@ -771,7 +791,7 @@ export default function MetricsPage() {
                   <span className="text-lg">📊</span>
                   <h2 className="text-lg font-bold">Overview</h2>
                   <span className="ml-1 rounded-full bg-blue-950 px-2 py-0.5 text-xs text-blue-400">
-                    This pay period
+                    {selectedRange.label}
                   </span>
                 </div>
 
@@ -879,9 +899,9 @@ export default function MetricsPage() {
                 <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-purple-500" />
                 <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
                   <div className="mb-5 flex items-center justify-center gap-2">
-                    <h2 className="text-lg font-bold">Pay Period Breakdown</h2>
+                    <h2 className="text-lg font-bold">Range Breakdown</h2>
                     <span className="rounded-full bg-purple-950 px-2 py-0.5 text-xs text-purple-400">
-                      Selected period
+                      {selectedRange.label}
                     </span>
                   </div>
 
@@ -979,7 +999,7 @@ export default function MetricsPage() {
                     {/* AVG MPG */}
                     <div className="mt-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-slate-300">Avg MPG from full fill-ups this pay period</span>
+                        <span className="text-sm text-slate-300">Avg MPG from full fill-ups this range</span>
                         <span className="font-semibold text-amber-400">
                           {periodMpgEntryCount > 0
                             ? avgMpg.toFixed(1)
@@ -988,8 +1008,8 @@ export default function MetricsPage() {
                       </div>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {periodMpgEntryCount > 0
-                          ? `${periodMpgEntryCount} period full fill-up${periodMpgEntryCount === 1 ? "" : "s"}`
-                          : "Needs a period full fill-up with MPG"}
+                          ? `${periodMpgEntryCount} range full fill-up${periodMpgEntryCount === 1 ? "" : "s"}`
+                          : "Needs a range full fill-up with MPG"}
                       </p>
                     </div>
 

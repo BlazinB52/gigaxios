@@ -606,13 +606,14 @@ export default function MetricsPage() {
 
     const maxPeriodSummaryValue = Math.max(totalGrossPay, Math.max(trueNetProfit, 0), 1);
 
-    /* Average MPG from full fill-up fuel entries that have an mpg value */
-    const validMpgEntries = fuelEntries.filter(
+    /* Average MPG from selected-period full fill-up fuel entries that have an mpg value */
+    const validMpgEntries = scopedPeriodFuel.filter(
       (f) => (f.isFullFillUp ?? true) && f.mpg && f.mpg > 0
     );
     const avgMpg = validMpgEntries.length > 0
       ? validMpgEntries.reduce((sum, f) => sum + f.mpg!, 0) / validMpgEntries.length
       : 0;
+    const periodMpgEntryCount = validMpgEntries.length;
     const warnings: Array<{ title: string; description: string }> = [];
 
     if (unassignedServiceRecords.length > 0) {
@@ -656,7 +657,7 @@ export default function MetricsPage() {
       hourlyRate: totalHours > 0 ? trueNetProfit / totalHours : 0,
       profitPerDelivery: totalDeliveries > 0 ? trueNetProfit / totalDeliveries : 0,
       yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct, serviceCostPct,
-      periodSummaryData, maxPeriodSummaryValue, avgMpg, warnings, openCycleMiles, fuelOnlyProfitPct,
+      periodSummaryData, maxPeriodSummaryValue, avgMpg, periodMpgEntryCount, warnings, openCycleMiles, fuelOnlyProfitPct,
       hasData: completedPeriodShifts.length > 0 || totalAdjustments > 0,
     };
   }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedPayPeriod, selectedVehicleId]);
@@ -681,9 +682,12 @@ export default function MetricsPage() {
     workFuelCost, netProfit, netProfitPct, fuelPct, fuelCostNeedsMpg, fuelCostPerMile, fuelCostSource,
     profitPerDelivery,
     yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct,
-    periodSummaryData, maxPeriodSummaryValue, avgMpg, warnings, fuelOnlyProfitPct,
+    periodSummaryData, maxPeriodSummaryValue, avgMpg, periodMpgEntryCount, warnings, fuelOnlyProfitPct,
     hasData,
   } = metrics;
+  const visibleServiceDetails = serviceDetails.filter(
+    (service) => service.workMilesSinceService > 0 || service.allocatedServiceCost > 0
+  );
 
   /* =========================================================
      RENDER
@@ -953,8 +957,8 @@ export default function MetricsPage() {
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-slate-300">Business Use</span>
-                        <span className={`font-semibold ${businessUseInvalid ? "text-amber-400" : "text-blue-400"}`}>
-                          {businessUseInvalid || businessUsePct === null ? "Data check needed" : fmtPct(businessUsePct)}
+                        <span className="font-semibold text-blue-400">
+                          {businessUseInvalid || businessUsePct === null ? "Pending fill-up" : fmtPct(businessUsePct)}
                         </span>
                       </div>
                       <p className="mt-0.5 text-xs text-slate-500">
@@ -962,8 +966,8 @@ export default function MetricsPage() {
                         {totalMilesDriven.toLocaleString()} total mi
                       </p>
                       {businessUseInvalid ? (
-                        <p className="mt-2 rounded-2xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
-                          Data check needed: work miles exceed total miles. Add or correct fuel/odometer entries.
+                        <p className="mt-1 text-xs text-slate-500">
+                          Some work miles are awaiting the next full fill-up for final fuel-cycle verification.
                         </p>
                       ) : (
                         <p className="mt-0.5 text-xs text-slate-500">
@@ -972,16 +976,22 @@ export default function MetricsPage() {
                       )}
                     </div>
 
-                    {/* AVG MPG — only shown if fuel entries include MPG data */}
-                    {avgMpg > 0 && (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-slate-300">Avg MPG from full fill-ups</span>
-                          <span className="font-semibold text-amber-400">{avgMpg.toFixed(1)}</span>
-                        </div>
-                        <p className="mt-0.5 text-xs text-slate-500">all-time average</p>
+                    {/* AVG MPG */}
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-300">Avg MPG from full fill-ups this pay period</span>
+                        <span className="font-semibold text-amber-400">
+                          {periodMpgEntryCount > 0
+                            ? avgMpg.toFixed(1)
+                            : "Not enough full fill-ups this period"}
+                        </span>
                       </div>
-                    )}
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {periodMpgEntryCount > 0
+                          ? `${periodMpgEntryCount} period full fill-up${periodMpgEntryCount === 1 ? "" : "s"}`
+                          : "Needs a period full fill-up with MPG"}
+                      </p>
+                    </div>
 
                     {/* COST BREAKDOWN TABLE */}
                     <div className="mt-4 border-t border-slate-800 pt-4">
@@ -1056,7 +1066,10 @@ export default function MetricsPage() {
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                               Service allocation detail
                             </p>
-                            {serviceDetails.map((service, index) => (
+                            <p className="text-xs text-slate-500">
+                              Expired or non-overlapping service records with $0 charged are hidden.
+                            </p>
+                            {visibleServiceDetails.map((service, index) => (
                               <div
                                 key={`${service.serviceType}-${index}`}
                                 className="rounded-2xl border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-400"

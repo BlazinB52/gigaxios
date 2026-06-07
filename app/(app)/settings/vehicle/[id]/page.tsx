@@ -129,7 +129,8 @@ export default function EditVehiclePage() {
         const { error } = await supabase
           .from("vehicles")
           .update({ ...baseUpdate, starting_odometer: startingOdometer })
-          .eq("id", vehicleId);
+          .eq("id", vehicleId)
+          .eq("user_id", user.id);
         if (!error) updated = true;
       } catch {
         // starting_odometer column not yet in DB — fall through
@@ -137,14 +138,18 @@ export default function EditVehiclePage() {
     }
 
     if (!updated) {
-      await supabase.from("vehicles").update(baseUpdate).eq("id", vehicleId);
+      await supabase
+        .from("vehicles")
+        .update(baseUpdate)
+        .eq("id", vehicleId)
+        .eq("user_id", user.id);
     }
 
     router.push("/settings");
   }
 
-  async function handleDelete() {
-    if (!confirm("Are you sure? This cannot be undone.")) return;
+  async function handleRetire() {
+    if (!confirm("Retire this vehicle? Historical records will be preserved.")) return;
 
     const {
       data: { user },
@@ -157,16 +162,32 @@ export default function EditVehiclePage() {
 
     const { data: activeVehicles } = await supabase
       .from("vehicles")
-      .select("id")
+      .select("id, is_primary")
       .eq("user_id", user.id)
       .eq("status", "active");
 
-    if (!activeVehicles || activeVehicles.length <= 1) {
-      alert("Cannot delete your only vehicle.");
+    const otherActiveVehicle = activeVehicles?.find((vehicle) => vehicle.id !== vehicleId);
+
+    if (!activeVehicles || !otherActiveVehicle) {
+      alert("You must have at least one other active vehicle before retiring this one.");
       return;
     }
 
-    await supabase.from("vehicles").delete().eq("id", vehicleId);
+    const retiringVehicle = activeVehicles.find((vehicle) => vehicle.id === vehicleId);
+
+    if (retiringVehicle?.is_primary) {
+      await supabase
+        .from("vehicles")
+        .update({ is_primary: true })
+        .eq("id", otherActiveVehicle.id)
+        .eq("user_id", user.id);
+    }
+
+    await supabase
+      .from("vehicles")
+      .update({ status: "archived", is_primary: false })
+      .eq("id", vehicleId)
+      .eq("user_id", user.id);
     router.push("/settings");
   }
 
@@ -266,13 +287,13 @@ export default function EditVehiclePage() {
           </section>
         </div>
 
-        {/* DELETE VEHICLE */}
+        {/* RETIRE VEHICLE */}
         <div className="mt-4">
           <button
-            onClick={handleDelete}
+            onClick={handleRetire}
             className="w-full rounded-2xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm font-bold text-red-300"
           >
-            Delete Vehicle
+            Retire Vehicle
           </button>
         </div>
 

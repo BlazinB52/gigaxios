@@ -64,6 +64,7 @@ export default function SettingsPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [retiredVehicles, setRetiredVehicles] = useState<Vehicle[]>([]);
   const [vehicleOdometers, setVehicleOdometers] = useState<Record<string, string>>({});
   const [userEmail, setUserEmail] = useState("");
   const [defaultPlatform, setDefaultPlatform] = useState("GoPuff");
@@ -87,6 +88,30 @@ export default function SettingsPage() {
   async function fetchVehicles(uid: string) {
     const loaded = await loadVehiclesFromSupabase(uid);
     setVehicles(loaded);
+
+    const { data: retiredData } = await supabase
+      .from("vehicles")
+      .select("*")
+      .eq("user_id", uid)
+      .eq("status", "archived")
+      .order("created_at", { ascending: true });
+
+    setRetiredVehicles(
+      (retiredData || []).map((vehicle) => ({
+        id: vehicle.id,
+        userId: vehicle.user_id,
+        year: vehicle.year ?? "",
+        make: vehicle.make ?? "",
+        model: vehicle.model ?? "",
+        trim: vehicle.trim ?? "",
+        color: vehicle.color ?? "",
+        licensePlate: vehicle.license_plate ?? "",
+        vin: vehicle.vin ?? "",
+        notes: vehicle.notes ?? "",
+        status: vehicle.status ?? "archived",
+        isPrimary: vehicle.is_primary ?? false,
+      }))
+    );
 
     const { data: fuelData } = await supabase
       .from("fuel_entries")
@@ -139,19 +164,54 @@ export default function SettingsPage() {
   async function handleSetPrimary(vehicleId: string) {
     if (!userId) return;
     await supabase.from("vehicles").update({ is_primary: false }).eq("user_id", userId);
-    await supabase.from("vehicles").update({ is_primary: true }).eq("id", vehicleId);
+    await supabase
+      .from("vehicles")
+      .update({ is_primary: true })
+      .eq("id", vehicleId)
+      .eq("user_id", userId);
     await fetchVehicles(userId);
   }
 
-  async function handleArchiveVehicle(vehicleId: string) {
-    if (!confirm("Archive this vehicle?")) return;
+  async function handleRetireVehicle(vehicleId: string) {
+    if (!userId) return;
+    if (!confirm("Retire this vehicle?")) return;
     const activeVehicles = vehicles.filter((v) => v.status === "active");
     if (activeVehicles.length <= 1) {
       alert("You must have at least one active vehicle.");
       return;
     }
-    await supabase.from("vehicles").update({ status: "archived" }).eq("id", vehicleId);
-    if (userId) await fetchVehicles(userId);
+
+    const retiringVehicle = activeVehicles.find((vehicle) => vehicle.id === vehicleId);
+    const nextPrimary = activeVehicles.find((vehicle) => vehicle.id !== vehicleId);
+
+    if (retiringVehicle?.isPrimary && nextPrimary) {
+      await supabase
+        .from("vehicles")
+        .update({ is_primary: true })
+        .eq("id", nextPrimary.id)
+        .eq("user_id", userId);
+    }
+
+    await supabase
+      .from("vehicles")
+      .update({ status: "archived", is_primary: false })
+      .eq("id", vehicleId)
+      .eq("user_id", userId);
+    await fetchVehicles(userId);
+  }
+
+  async function handleReactivateVehicle(vehicleId: string) {
+    if (!userId) return;
+
+    const hasActivePrimary = vehicles.some((vehicle) => vehicle.isPrimary);
+
+    await supabase
+      .from("vehicles")
+      .update({ status: "active", is_primary: !hasActivePrimary })
+      .eq("id", vehicleId)
+      .eq("user_id", userId);
+
+    await fetchVehicles(userId);
   }
 
   async function handleExportData() {
@@ -385,11 +445,11 @@ export default function SettingsPage() {
               </button>
             </div>
 
-            {/* VEHICLE LIST */}
+            {/* ACTIVE VEHICLE LIST */}
             {isLoaded && (
               <div className="mt-4 border-t border-slate-800 pt-2">
                 {vehicles.length === 0 ? (
-                  <p className="mt-2 text-sm text-slate-500">No vehicles yet. Add one to get started.</p>
+                  <p className="mt-2 text-sm text-slate-500">No active vehicles yet. Add or reactivate one to get started.</p>
                 ) : (
                   vehicles.map((vehicle) => (
                     <div
@@ -423,10 +483,12 @@ export default function SettingsPage() {
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
                           <button
-                            onClick={() => handleArchiveVehicle(vehicle.id)}
-                            className="flex items-center gap-1 text-xs text-red-400"
+                            onClick={() => handleRetireVehicle(vehicle.id)}
+                            className="flex items-center gap-1 text-xs font-semibold text-red-400"
+                            aria-label={`Retire ${vehicle.year} ${vehicle.make} ${vehicle.model}`}
                           >
                             <Archive size={14} />
+                            Retire
                           </button>
                           <button onClick={() => router.push(`/settings/vehicle/${vehicle.id}`)}>
                             <ChevronRight className="h-5 w-5 text-slate-500" />
@@ -444,6 +506,40 @@ export default function SettingsPage() {
                     </div>
                   ))
                 )}
+              </div>
+            )}
+
+            {isLoaded && retiredVehicles.length > 0 && (
+              <div className="mt-5 border-t border-slate-800 pt-4">
+                <p className="text-xs font-bold tracking-wider text-slate-500">
+                  RETIRED VEHICLES
+                </p>
+                <div className="mt-3 space-y-3">
+                  {retiredVehicles.map((vehicle) => (
+                    <div
+                      key={vehicle.id}
+                      className="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 opacity-80"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-base">
+                          🚗
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-white">
+                            {vehicle.year} {vehicle.make} {vehicle.model}
+                          </p>
+                          <p className="text-sm text-slate-500">Retired</p>
+                        </div>
+                        <button
+                          onClick={() => handleReactivateVehicle(vehicle.id)}
+                          className="shrink-0 rounded-xl border border-blue-500/40 bg-blue-950/30 px-3 py-2 text-xs font-semibold text-blue-200"
+                        >
+                          Reactivate
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -322,13 +322,19 @@ export default function Home() {
             ${netProfit.toFixed(2)}
           </p>
 
-          <p className="mt-2 text-slate-400">
+          <p
+            className={`mt-2 ${
+              fuelCostResult.needsMpg
+                ? "font-semibold text-amber-300"
+                : "text-slate-400"
+            }`}
+          >
             {fuelCostResult.needsMpg ? "Fuel cost pending" : "Net Profit"}
           </p>
 
           <p className="mt-1 text-sm text-slate-500">
             {fuelCostResult.needsMpg
-              ? "Add MPG history to estimate fuel cost"
+              ? "Add at least 2 full fuel entries to unlock fuel cost calculations."
               : fuelCostResult.source === "actual_history"
                 ? "After fuel cost"
                 : "After estimated fuel cost"}
@@ -551,6 +557,12 @@ export default function Home() {
             className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
           >
             {activeShift ? "→ End Shift" : trialRequired ? "Start Trial to Continue" : "→ Start Shift"}
+          </button>
+          <button
+            onClick={() => router.push("/import-day")}
+            className="w-full rounded-full border border-blue-500/40 bg-slate-900 px-4 py-3 text-base font-bold text-blue-100"
+          >
+            Import Day
           </button>
         </div>
       </section>

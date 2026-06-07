@@ -1097,8 +1097,7 @@ export default function ImportDayPage() {
                     fileInputRefs.current[kind] = element;
                   }}
                   type="file"
-                  accept="image/*,.heic,.heif"
-                  capture={kind === "earnings" ? undefined : "environment"}
+                  accept="image/*"
                   onChange={(event) => handleFileChange(kind, event)}
                   className="mt-4 block w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-200 file:mr-4 file:rounded-full file:border-0 file:bg-blue-500 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
                 />

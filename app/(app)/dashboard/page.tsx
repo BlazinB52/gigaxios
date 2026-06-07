@@ -253,6 +253,7 @@ export default function Home() {
 
   const isSubscribed = accessState?.isSubscribed ?? false;
   const trialRequired = accessState?.trialRequired ?? false;
+  const importDayDisabled = trialRequired && !activeShift;
   const showPostShiftCtaModal =
     !isSubscribed &&
     !trialRequired &&
@@ -559,10 +560,14 @@ export default function Home() {
             {activeShift ? "→ End Shift" : trialRequired ? "Start Trial to Continue" : "→ Start Shift"}
           </button>
           <button
-            onClick={() => router.push("/import-day")}
-            className="w-full rounded-full border border-blue-500/40 bg-slate-900 px-4 py-3 text-base font-bold text-blue-100"
+            onClick={() => {
+              if (importDayDisabled) return;
+              router.push("/import-day");
+            }}
+            disabled={importDayDisabled}
+            className="w-full rounded-full border border-blue-500/40 bg-slate-900 px-4 py-3 text-base font-bold text-blue-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
           >
-            Import Day
+            {importDayDisabled ? "Trial required to import" : "Import Day"}
           </button>
         </div>
       </section>

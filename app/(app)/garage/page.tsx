@@ -417,7 +417,6 @@ export default function GaragePage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold">Vehicle Health</h2>
-                  <ChevronRight className="h-5 w-5 text-slate-500" />
                 </div>
                 <p className="mt-1 text-sm leading-6 text-slate-400">
                   Quick overview of your vehicle&apos;s current health.

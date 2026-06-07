@@ -79,6 +79,7 @@ const uploadKinds: ImportDayImageKind[] = [
 ];
 
 const OCR_TIMEOUT_MS = 45_000;
+const showImportDayDebugDetails = process.env.NODE_ENV !== "production";
 
 function createUploadState(): UploadState {
   return {
@@ -1136,44 +1137,46 @@ export default function ImportDayPage() {
                   </div>
                 </div>
 
-                <details className="mt-4 rounded-2xl border border-slate-800 bg-black/30 p-4 text-xs leading-5 text-slate-300">
-                  <summary className="cursor-pointer font-semibold text-slate-200">
-                    Debug details
-                  </summary>
-                  <dl className="mt-3 grid grid-cols-[112px_1fr] gap-x-3 gap-y-1">
-                    <dt className="text-slate-500">Selected</dt>
-                    <dd className="break-all">{upload.selectedFile?.name ?? "-"}</dd>
-                    <dt className="text-slate-500">Type</dt>
-                    <dd>{upload.selectedFile?.type || "-"}</dd>
-                    <dt className="text-slate-500">Size</dt>
-                    <dd>{formatImportDayBytes(upload.selectedFile?.size)}</dd>
-                    <dt className="text-slate-500">HEIC</dt>
-                    <dd>
-                      {upload.heicDetection.isHeic
-                        ? `Yes (${upload.heicDetection.reason})`
-                        : `No (${upload.heicDetection.reason})`}
-                    </dd>
-                    <dt className="text-slate-500">Conversion</dt>
-                    <dd className="capitalize">{upload.conversionStatus}</dd>
-                    <dt className="text-slate-500">Error</dt>
-                    <dd className="break-all">
-                      {upload.conversionErrorMessage || "-"}
-                    </dd>
-                    <dt className="text-slate-500">Sending</dt>
-                    <dd className="break-all">
-                      {upload.sentFile
-                        ? `${upload.sentFile.name} (${upload.sentFile.type || "unknown type"}, ${formatImportDayBytes(upload.sentFile.size)})`
-                        : upload.processedFile
-                          ? `${upload.processedFile.name} will be sent`
-                          : "-"}
-                    </dd>
-                  </dl>
-                  <pre className="mt-3 max-h-56 overflow-auto rounded-xl bg-black/40 p-3">
-                    {upload.rawJson
-                      ? JSON.stringify(upload.rawJson, null, 2)
-                      : "No OCR response yet."}
-                  </pre>
-                </details>
+                {showImportDayDebugDetails && (
+                  <details className="mt-4 rounded-2xl border border-slate-800 bg-black/30 p-4 text-xs leading-5 text-slate-300">
+                    <summary className="cursor-pointer font-semibold text-slate-200">
+                      Debug details
+                    </summary>
+                    <dl className="mt-3 grid grid-cols-[112px_1fr] gap-x-3 gap-y-1">
+                      <dt className="text-slate-500">Selected</dt>
+                      <dd className="break-all">{upload.selectedFile?.name ?? "-"}</dd>
+                      <dt className="text-slate-500">Type</dt>
+                      <dd>{upload.selectedFile?.type || "-"}</dd>
+                      <dt className="text-slate-500">Size</dt>
+                      <dd>{formatImportDayBytes(upload.selectedFile?.size)}</dd>
+                      <dt className="text-slate-500">HEIC</dt>
+                      <dd>
+                        {upload.heicDetection.isHeic
+                          ? `Yes (${upload.heicDetection.reason})`
+                          : `No (${upload.heicDetection.reason})`}
+                      </dd>
+                      <dt className="text-slate-500">Conversion</dt>
+                      <dd className="capitalize">{upload.conversionStatus}</dd>
+                      <dt className="text-slate-500">Error</dt>
+                      <dd className="break-all">
+                        {upload.conversionErrorMessage || "-"}
+                      </dd>
+                      <dt className="text-slate-500">Sending</dt>
+                      <dd className="break-all">
+                        {upload.sentFile
+                          ? `${upload.sentFile.name} (${upload.sentFile.type || "unknown type"}, ${formatImportDayBytes(upload.sentFile.size)})`
+                          : upload.processedFile
+                            ? `${upload.processedFile.name} will be sent`
+                            : "-"}
+                      </dd>
+                    </dl>
+                    <pre className="mt-3 max-h-56 overflow-auto rounded-xl bg-black/40 p-3">
+                      {upload.rawJson
+                        ? JSON.stringify(upload.rawJson, null, 2)
+                        : "No OCR response yet."}
+                    </pre>
+                  </details>
+                )}
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <button

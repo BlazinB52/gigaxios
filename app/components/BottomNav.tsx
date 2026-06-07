@@ -58,7 +58,7 @@ export default function BottomNav() {
      ========================================================= */
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800 bg-[#020814] px-2 pb-2 pt-2 [transform:translateZ(0)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-[100] border-t border-slate-800 bg-[#020814] px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 [transform:translateZ(0)]">
 
       {/* 5-COLUMN GRID — one cell per nav item */}
       <div className="mx-auto grid max-w-md grid-cols-5 text-center">

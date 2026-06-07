@@ -523,8 +523,8 @@ export default function Home() {
       {/* =====================================================
          HOME_ACTION_PANEL
        ===================================================== */}
-      <section className="fixed bottom-20 left-0 right-0 z-40 mx-auto max-w-md px-5">
-        <div className="space-y-3 rounded-3xl border border-slate-700 bg-slate-950/95 p-3 shadow-2xl">
+      <section className="pointer-events-none fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-0 right-0 z-30 mx-auto max-w-md px-5">
+        <div className="pointer-events-auto space-y-3 rounded-3xl border border-slate-700 bg-slate-950/95 p-3 shadow-2xl">
           {trialRequired && !activeShift && (
             <div className="rounded-2xl border border-blue-500/30 bg-blue-950/30 p-4">
               <h2 className="text-lg font-bold">Start your free trial to continue</h2>

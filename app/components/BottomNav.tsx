@@ -74,7 +74,7 @@ export default function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center gap-1 text-xs font-semibold ${
+              className={`flex min-h-14 w-full flex-col items-center justify-center gap-1 text-xs font-semibold ${
                 isActive ? item.color : "text-slate-500"
               }`}
             >

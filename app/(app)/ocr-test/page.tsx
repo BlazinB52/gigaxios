@@ -23,6 +23,8 @@ type HeicDetection = {
   reason: string;
 };
 
+const OCR_TEST_ENABLED = process.env.NODE_ENV === "development";
+
 function formatMileage(mileage: number | null | undefined) {
   if (typeof mileage !== "number") return "Unreadable";
   return mileage.toLocaleString("en-US");
@@ -225,6 +227,11 @@ export default function OcrTestPage() {
     setRawJson(null);
     setSentFile(null);
 
+    if (!OCR_TEST_ENABLED) {
+      setError("OCR test is only available in development.");
+      return;
+    }
+
     if (!selectedFile) {
       setError("Select one odometer image first.");
       return;
@@ -290,6 +297,17 @@ export default function OcrTestPage() {
             only and is not saved.
           </p>
         </header>
+
+        {!OCR_TEST_ENABLED && (
+          <section className="mb-5 rounded-3xl border border-amber-400/30 bg-amber-950/20 p-5">
+            <p className="text-sm font-semibold text-amber-300">
+              Development only
+            </p>
+            <p className="mt-2 text-sm leading-6 text-amber-100">
+              OCR test is only available in development.
+            </p>
+          </section>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <section className="rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5 shadow-[0_0_40px_rgba(59,130,246,0.15)]">
@@ -357,10 +375,12 @@ export default function OcrTestPage() {
             <div className="mt-5 grid gap-3">
               <button
                 type="submit"
-                disabled={isReading || isProcessingImage}
+                disabled={!OCR_TEST_ENABLED || isReading || isProcessingImage}
                 className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
-                {isProcessingImage
+                {!OCR_TEST_ENABLED
+                  ? "Development Only"
+                  : isProcessingImage
                   ? "Preparing image..."
                   : isReading
                     ? "Reading mileage..."

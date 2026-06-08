@@ -92,6 +92,13 @@ function getOutputText(responseBody: unknown) {
 
 export async function POST(request: Request) {
   try {
+    if (process.env.NODE_ENV !== "development") {
+      return NextResponse.json(
+        { error: "OCR test is only available in development." },
+        { status: 404 }
+      );
+    }
+
     const user = await getCurrentUser();
 
     if (!user) {

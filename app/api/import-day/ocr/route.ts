@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { isImportDayKind, isImportDayOcrResult } from "@/app/lib/importDayParsing";
 import { ImportDayImageKind } from "@/app/lib/importDayTypes";
+import { calculateSubscriptionAccess } from "@/app/lib/subscriptionAccess";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -14,7 +15,7 @@ function getRequiredEnv(name: string) {
   return value;
 }
 
-async function getCurrentUser() {
+async function getCurrentUserContext() {
   const cookieStore = await cookies();
 
   const supabase = createServerClient(
@@ -43,7 +44,7 @@ async function getCurrentUser() {
     return null;
   }
 
-  return user;
+  return { supabase, user };
 }
 
 function getOutputText(responseBody: unknown) {
@@ -154,10 +155,27 @@ function getSchema(kind: ImportDayImageKind) {
 
 export async function POST(request: Request) {
   try {
-    const user = await getCurrentUser();
+    const context = await getCurrentUserContext();
 
-    if (!user) {
+    if (!context) {
       return NextResponse.json({ error: "Please log in first." }, { status: 401 });
+    }
+
+    const { data: subscriptionData } = await context.supabase
+      .from("subscriptions")
+      .select("status, trial_end")
+      .eq("user_id", context.user.id)
+      .maybeSingle();
+    const access = calculateSubscriptionAccess({
+      subscription: subscriptionData ?? null,
+      userCreatedAt: context.user.created_at,
+    });
+
+    if (access.trialRequired) {
+      return NextResponse.json(
+        { error: "Your free preview has ended. Start your free trial to use OCR." },
+        { status: 402 }
+      );
     }
 
     const apiKey = process.env.OPENAI_API_KEY;

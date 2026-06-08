@@ -862,6 +862,15 @@ export default function ImportDayPage() {
     }, OCR_TIMEOUT_MS);
     setSaveError("");
 
+    if (trialRequired) {
+      window.clearTimeout(timeoutId);
+      delete ocrAbortControllersRef.current[kind];
+      patchUpload(kind, {
+        error: "Your free preview has ended. Start your free trial to use OCR.",
+      });
+      return;
+    }
+
     if (!upload.processedFile) {
       window.clearTimeout(timeoutId);
       delete ocrAbortControllersRef.current[kind];
@@ -1071,7 +1080,7 @@ export default function ImportDayPage() {
           <section className="mb-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
             <h2 className="text-lg font-bold">Start your free trial to continue</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Your free preview has ended. Start your free trial to import a day.
+              Your free preview has ended. Start your free trial to use OCR and import a day.
             </p>
           </section>
         )}
@@ -1207,6 +1216,7 @@ export default function ImportDayPage() {
                     onClick={() => runOcr(kind)}
                     disabled={
                       isAnyOcrReading ||
+                      trialRequired ||
                       upload.ocrStatus === "preparing" ||
                       upload.ocrStatus === "reading"
                     }

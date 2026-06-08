@@ -31,6 +31,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "GigAxios",
   description: "Know what you actually make",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 /* =========================================================

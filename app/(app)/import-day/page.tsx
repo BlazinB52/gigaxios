@@ -21,6 +21,7 @@ import {
   ImportDayImageKind,
   ImportDayOcrResult,
 } from "@/app/lib/importDayTypes";
+import { loadSubscriptionAccess } from "@/app/lib/subscriptionAccess";
 
 type UploadState = {
   selectedFile: File | null;
@@ -356,6 +357,7 @@ export default function ImportDayPage() {
     earnings: 0,
   });
   const [userId, setUserId] = useState("");
+  const [trialRequired, setTrialRequired] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [uploads, setUploads] = useState<Record<ImportDayImageKind, UploadState>>({
     start_odometer: createUploadState(),
@@ -515,6 +517,12 @@ export default function ImportDayPage() {
 
       setUserId(user.id);
 
+      const access = await loadSubscriptionAccess({
+        userId: user.id,
+        userCreatedAt: user.created_at,
+      });
+      setTrialRequired(access.trialRequired);
+
       const { data: vehicleData } = await supabase
         .from("vehicles")
         .select("id, year, make, model, is_primary, status")
@@ -633,6 +641,7 @@ export default function ImportDayPage() {
   const importDisabled =
     isSaving ||
     isCheckingValidation ||
+    trialRequired ||
     hardBlocks.length > 0 ||
     (validationWarnings.length > 0 && !warningsAcknowledged) ||
     (cautions.length > 0 && !earningsCautionAcknowledged) ||
@@ -931,6 +940,11 @@ export default function ImportDayPage() {
     setSaveError("");
     setSaveSuccess("");
 
+    if (trialRequired) {
+      setSaveError("Your free preview has ended. Start your free trial to import a day.");
+      return;
+    }
+
     const startMileage = toNumber(form.startMileage);
     const endMileage = toNumber(form.endMileage);
 
@@ -1052,6 +1066,15 @@ export default function ImportDayPage() {
             Never use GigAxios while driving.
           </p>
         </header>
+
+        {trialRequired && (
+          <section className="mb-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
+            <h2 className="text-lg font-bold">Start your free trial to continue</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Your free preview has ended. Start your free trial to import a day.
+            </p>
+          </section>
+        )}
 
         <section className="space-y-4">
           <div>

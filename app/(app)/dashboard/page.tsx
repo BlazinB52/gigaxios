@@ -567,7 +567,7 @@ export default function Home() {
             disabled={importDayDisabled}
             className="w-full rounded-full border border-blue-500/40 bg-slate-900 px-4 py-3 text-base font-bold text-blue-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
           >
-            {importDayDisabled ? "Trial required to import" : "Import Day"}
+            {importDayDisabled ? "Trial required to record" : "Record Shift"}
           </button>
         </div>
       </section>

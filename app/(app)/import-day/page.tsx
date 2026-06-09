@@ -410,7 +410,7 @@ export default function ImportDayPage() {
   const payChangeCaution =
     ocrReportedGrossPay !== null &&
     Math.abs(calculatedGrossPay - ocrReportedGrossPay) > 0.01
-      ? `Pay values changed from the OCR result. Platform-reported gross was ${formatCurrency(ocrReportedGrossPay)}. Current calculated gross is ${formatCurrency(calculatedGrossPay)}.`
+      ? `Pay values changed from the scanned result. Platform-reported gross was ${formatCurrency(ocrReportedGrossPay)}. Current calculated gross is ${formatCurrency(calculatedGrossPay)}.`
       : "";
 
   async function getImportValidationState(): Promise<ImportValidationState> {
@@ -470,7 +470,7 @@ export default function ImportDayPage() {
     }
 
     if (endMatchesExistingStart) {
-      warnings.push("This end mileage matches another shift start mileage. Review before importing.");
+      warnings.push("This end mileage matches another shift start mileage. Review before saving.");
     }
 
     const grossPay = calculatedGrossPay;
@@ -616,7 +616,7 @@ export default function ImportDayPage() {
     if (startMileage !== null && endMileage !== null) {
       const miles = endMileage - startMileage;
       if (!mileageWarning && miles >= 0 && miles > 300) {
-        warnings.push("Mileage difference looks unusually high. Review before importing.");
+        warnings.push("Mileage difference looks unusually high. Review before saving.");
       }
     }
 
@@ -862,7 +862,7 @@ export default function ImportDayPage() {
       window.clearTimeout(timeoutId);
       delete ocrAbortControllersRef.current[kind];
       patchUpload(kind, {
-        error: "Your free preview has ended. Start your free trial to use OCR.",
+        error: "Your free preview has ended. Start your free trial to scan photos.",
       });
       return;
     }
@@ -930,7 +930,7 @@ export default function ImportDayPage() {
       patchUpload(kind, {
         ocrStatus: "failed",
         error: abortController.signal.aborted
-          ? "OCR took too long. Please try again."
+          ? "Scan took too long. Please try again."
           : "OpenAI request failed. Please try again.",
       });
     } finally {
@@ -946,7 +946,7 @@ export default function ImportDayPage() {
     setSaveSuccess("");
 
     if (trialRequired) {
-      setSaveError("Your free preview has ended. Start your free trial to import a day.");
+      setSaveError("Your free preview has ended. Start your free trial to save a shift.");
       return;
     }
 
@@ -990,7 +990,7 @@ export default function ImportDayPage() {
       }
 
       if (latestWarnings.length > 0 && !warningsAcknowledged) {
-        setSaveError("Review and acknowledge the warnings before importing.");
+        setSaveError("Review and acknowledge the warnings before saving.");
         return;
       }
 
@@ -998,12 +998,12 @@ export default function ImportDayPage() {
         latestValidationState.cautions.length > 0 &&
         !earningsCautionAcknowledged
       ) {
-        setSaveError("Confirm this is a separate shift before importing.");
+        setSaveError("Confirm this is a separate shift before saving.");
         return;
       }
 
       if (payChangeCaution && !payChangeAcknowledged) {
-        setSaveError("Review and acknowledge the pay changes before importing.");
+        setSaveError("Review and acknowledge the pay changes before saving.");
         return;
       }
 
@@ -1021,7 +1021,7 @@ export default function ImportDayPage() {
       });
       const overrideReason =
         startMileageOverride || endMileageOverride
-          ? "Import Day reviewed mileage exception."
+          ? "Record Shift reviewed mileage exception."
           : null;
 
       const { error } = await supabase.from("shifts").insert({
@@ -1047,11 +1047,11 @@ export default function ImportDayPage() {
       });
 
       if (error) {
-        setSaveError(error.message || "Could not save the imported shift.");
+        setSaveError(error.message || "Could not save the shift.");
         return;
       }
 
-      setSaveSuccess("Imported one closed shift into GigAxios.");
+      setSaveSuccess("Saved one closed shift into GigAxios.");
       router.push("/dashboard");
     } finally {
       setIsSaving(false);
@@ -1062,10 +1062,7 @@ export default function ImportDayPage() {
     <main className="min-h-screen bg-[#020814] text-white">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-28 pt-5">
         <header className="mb-5">
-          <p className="text-sm font-semibold tracking-wide text-blue-400">
-            Import Day
-          </p>
-          <h1 className="mt-2 text-3xl font-bold">Photo-to-shift review</h1>
+          <h1 className="text-3xl font-bold">Record Shift</h1>
           <p className="mt-3 rounded-2xl border border-amber-300/30 bg-amber-950/20 p-4 text-sm leading-6 text-amber-100">
             For your safety, only capture photos when parked and legally stopped.
             Never use GigAxios while driving.
@@ -1076,7 +1073,7 @@ export default function ImportDayPage() {
           <section className="mb-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
             <h2 className="text-lg font-bold">Start your free trial to continue</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Your free preview has ended. Start your free trial to use OCR and import a day.
+              Your free preview has ended. Start your free trial to scan photos or save shifts.
             </p>
           </section>
         )}
@@ -1094,169 +1091,12 @@ export default function ImportDayPage() {
           />
         ))}
 
-        {false && (
-        <section className="space-y-4">
-          <div>
-            <p className="text-sm font-semibold text-blue-300">Step 1</p>
-            <h2 className="text-xl font-bold">Upload photos</h2>
-          </div>
-
-          {isAnyOcrReading && (
-            <div className="rounded-3xl border border-blue-500/30 bg-blue-950/30 p-4">
-              <div className="flex items-center gap-3">
-                <span className="h-5 w-5 rounded-full border-2 border-blue-200/30 border-t-blue-300 animate-spin" />
-                <p className="font-bold text-blue-100">Reading Photos...</p>
-              </div>
-              <div className="mt-3 grid gap-1 text-sm text-slate-300">
-                {uploadKinds.map((kind) => (
-                  <p key={kind} className="flex justify-between gap-3">
-                    <span>{uploadLabels[kind]}</span>
-                    <span className="capitalize text-slate-400">
-                      {uploads[kind].ocrStatus}
-                    </span>
-                  </p>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {uploadKinds.map((kind) => {
-            const upload = uploads[kind];
-            return (
-              <article
-                key={kind}
-                className="rounded-3xl border border-slate-700/70 bg-slate-950/70 p-5"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-lg font-bold">{uploadLabels[kind]}</h3>
-                  <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold capitalize text-slate-300">
-                    {upload.ocrStatus}
-                  </span>
-                </div>
-
-                <input
-                  key={`${kind}-${fileInputKeys[kind]}`}
-                  ref={(element) => {
-                    fileInputRefs.current[kind] = element;
-                  }}
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => handleFileChange(kind, event)}
-                  className="mt-4 block w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-200 file:mr-4 file:rounded-full file:border-0 file:bg-blue-500 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
-                />
-
-                {upload.previewUrl ? (
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950">
-                    <Image
-                      src={upload.previewUrl}
-                      alt={`${uploadLabels[kind]} preview`}
-                      width={900}
-                      height={700}
-                      unoptimized
-                      className="max-h-[360px] w-full object-contain"
-                    />
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-2xl border border-dashed border-slate-700 bg-slate-950/70 px-4 py-10 text-center text-sm text-slate-400">
-                    {upload.ocrStatus === "preparing"
-                      ? "Preparing image preview..."
-                      : "No image selected yet."}
-                  </div>
-                )}
-
-                {(upload.error || upload.warning) && (
-                  <p className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-950/20 p-3 text-sm leading-6 text-amber-100">
-                    {upload.error || upload.warning}
-                  </p>
-                )}
-
-                <div className="mt-4 rounded-2xl bg-slate-900 p-4">
-                  <p className="text-xs font-semibold tracking-wide text-slate-400">
-                    Extracted summary
-                  </p>
-                  <div className="mt-2">
-                    <Summary result={upload.result} />
-                  </div>
-                </div>
-
-                {showImportDayDebugDetails && (
-                  <details className="mt-4 rounded-2xl border border-slate-800 bg-black/30 p-4 text-xs leading-5 text-slate-300">
-                    <summary className="cursor-pointer font-semibold text-slate-200">
-                      Debug details
-                    </summary>
-                    <dl className="mt-3 grid grid-cols-[112px_1fr] gap-x-3 gap-y-1">
-                      <dt className="text-slate-500">Selected</dt>
-                      <dd className="break-all">{upload.selectedFile?.name ?? "-"}</dd>
-                      <dt className="text-slate-500">Type</dt>
-                      <dd>{upload.selectedFile?.type || "-"}</dd>
-                      <dt className="text-slate-500">Size</dt>
-                      <dd>{formatImportDayBytes(upload.selectedFile?.size)}</dd>
-                      <dt className="text-slate-500">HEIC</dt>
-                      <dd>
-                        {upload.heicDetection.isHeic
-                          ? `Yes (${upload.heicDetection.reason})`
-                          : `No (${upload.heicDetection.reason})`}
-                      </dd>
-                      <dt className="text-slate-500">Conversion</dt>
-                      <dd className="capitalize">{upload.conversionStatus}</dd>
-                      <dt className="text-slate-500">Error</dt>
-                      <dd className="break-all">
-                        {upload.conversionErrorMessage || "-"}
-                      </dd>
-                      <dt className="text-slate-500">Sending</dt>
-                      <dd className="break-all">
-                        {upload.sentFile
-                          ? `${upload.sentFile.name} (${upload.sentFile.type || "unknown type"}, ${formatImportDayBytes(upload.sentFile.size)})`
-                          : upload.processedFile
-                            ? `${upload.processedFile.name} will be sent`
-                            : "-"}
-                      </dd>
-                    </dl>
-                    <pre className="mt-3 max-h-56 overflow-auto rounded-xl bg-black/40 p-3">
-                      {upload.rawJson
-                        ? JSON.stringify(upload.rawJson, null, 2)
-                        : "No OCR response yet."}
-                    </pre>
-                  </details>
-                )}
-
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => runOcr(kind)}
-                    disabled={
-                      isAnyOcrReading ||
-                      trialRequired ||
-                      upload.ocrStatus === "preparing" ||
-                      upload.ocrStatus === "reading"
-                    }
-                    className="flex items-center justify-center gap-2 rounded-full bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                  >
-                    {upload.ocrStatus === "reading" && (
-                      <span className="h-4 w-4 rounded-full border-2 border-slate-400/40 border-t-white animate-spin" />
-                    )}
-                    {upload.ocrStatus === "reading" ? "Reading Photos..." : "Run OCR"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => clearUpload(kind)}
-                    className="rounded-full border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200"
-                  >
-                    Replace
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-        )}
-
         <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 shadow-sm shadow-black/20">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-xl font-bold">Import day</h2>
+              <h2 className="text-xl font-bold">Shift Details</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Scan helpers fill drafts only.
+                Scan photos or enter values manually.
               </p>
             </div>
             {isAnyOcrReading && (
@@ -1376,7 +1216,7 @@ export default function ImportDayPage() {
                 />
               </label>
               <label className="block">
-                <span className="text-sm text-slate-400">Hours worked</span>
+                <span className="text-sm text-slate-400">Hours Worked</span>
                 <input
                   type="number"
                   step="0.01"
@@ -1411,7 +1251,7 @@ export default function ImportDayPage() {
             </div>
 
             <label className="block">
-              <span className="text-sm text-slate-400">Notes / warnings</span>
+              <span className="text-sm text-slate-400">Notes</span>
               <textarea
                 value={form.notes}
                 onChange={(event) => updateForm("notes", event.target.value)}
@@ -1439,7 +1279,7 @@ export default function ImportDayPage() {
                     }`}
                   >
                     <span className="font-bold">{uploadLabels[kind]}: </span>
-                    {message || "Scan applied. Review the filled values before importing."}
+                    {message || "Scan applied. Review the filled values before saving."}
                   </p>
                 );
               })}
@@ -1472,7 +1312,7 @@ export default function ImportDayPage() {
                   onChange={(event) => setWarningsAcknowledged(event.target.checked)}
                   className="mt-1 h-4 w-4 shrink-0 accent-blue-500"
                 />
-                <span>I reviewed these warnings and want to import anyway.</span>
+                <span>I reviewed these warnings and want to save anyway.</span>
               </label>
             </div>
           )}
@@ -1509,7 +1349,7 @@ export default function ImportDayPage() {
                     }
                     className="mt-1 h-4 w-4 shrink-0 accent-blue-500"
                   />
-                  <span>I reviewed the pay changes and want to import.</span>
+                  <span>I reviewed the pay changes and want to save.</span>
                 </label>
               )}
             </div>
@@ -1517,11 +1357,10 @@ export default function ImportDayPage() {
         </section>
 
         <section className="mt-5 rounded-3xl border border-emerald-400/20 bg-emerald-950/20 p-5">
-          <p className="text-sm font-semibold text-emerald-300">Step 3</p>
-          <h2 className="mt-1 text-xl font-bold">Confirm import</h2>
+          <p className="text-sm font-semibold text-emerald-300">Save</p>
+          <h2 className="mt-1 text-xl font-bold">Save shift</h2>
           <p className="mt-2 text-sm leading-6 text-slate-300">
-            OCR results are drafts only. GigAxios creates one closed shift after
-            you review and confirm.
+            Review the details, then save this shift.
           </p>
 
           {(saveError || saveSuccess) && (
@@ -1546,10 +1385,10 @@ export default function ImportDayPage() {
               className="rounded-full bg-emerald-500 px-4 py-3 text-base font-bold text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
             >
               {isSaving
-                ? "Importing..."
+                ? "Saving..."
                 : isCheckingValidation
                   ? "Checking..."
-                  : "Import Into GigAxios"}
+                  : "Save Shift"}
             </button>
           </div>
         </section>
@@ -1558,7 +1397,7 @@ export default function ImportDayPage() {
       {showDiscardConfirm && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 px-5 pb-8 pt-8 sm:items-center">
           <section className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-950 p-5 text-white shadow-2xl shadow-black/40">
-            <h2 className="text-xl font-bold">Discard this import?</h2>
+            <h2 className="text-xl font-bold">Discard this shift?</h2>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <button
                 type="button"

@@ -34,7 +34,6 @@ import {
 } from "@/app/lib/importDayImage";
 
 type FuelOcrKind = "odometer" | "receipt";
-type FuelOcrSource = "camera" | "library";
 type FuelOcrStatus = "idle" | "preparing" | "reading";
 type FuelOcrResult =
   | {
@@ -91,11 +90,9 @@ export default function FuelPage() {
      ========================================================= */
 
   const router = useRouter();
-  const fileInputRefs = useRef<
-    Record<FuelOcrKind, Record<FuelOcrSource, HTMLInputElement | null>>
-  >({
-    odometer: { camera: null, library: null },
-    receipt: { camera: null, library: null },
+  const fileInputRefs = useRef<Record<FuelOcrKind, HTMLInputElement | null>>({
+    odometer: null,
+    receipt: null,
   });
 
   /* =========================================================
@@ -125,7 +122,6 @@ export default function FuelPage() {
   });
   const [ocrError, setOcrError] = useState("");
   const [ocrMessage, setOcrMessage] = useState("");
-  const [activeOcrPicker, setActiveOcrPicker] = useState<FuelOcrKind | null>(null);
 
   /* =========================================================
      DATA LOADING
@@ -206,15 +202,7 @@ export default function FuelPage() {
   function openScanPicker(kind: FuelOcrKind) {
     setOcrError("");
     setOcrMessage("");
-    setActiveOcrPicker(kind);
-  }
-
-  function chooseOcrSource(source: FuelOcrSource) {
-    if (!activeOcrPicker) return;
-
-    const kind = activeOcrPicker;
-    setActiveOcrPicker(null);
-    fileInputRefs.current[kind][source]?.click();
+    fileInputRefs.current[kind]?.click();
   }
 
   function applyFuelOcrResult(result: FuelOcrResult) {
@@ -423,17 +411,7 @@ export default function FuelPage() {
 
         <input
           ref={(element) => {
-            fileInputRefs.current.odometer.camera = element;
-          }}
-          type="file"
-          accept="image/*,.heic,.heif"
-          capture="environment"
-          className="hidden"
-          onChange={(event) => handleFuelOcrFileChange("odometer", event)}
-        />
-        <input
-          ref={(element) => {
-            fileInputRefs.current.odometer.library = element;
+            fileInputRefs.current.odometer = element;
           }}
           type="file"
           accept="image/*,.heic,.heif"
@@ -442,17 +420,7 @@ export default function FuelPage() {
         />
         <input
           ref={(element) => {
-            fileInputRefs.current.receipt.camera = element;
-          }}
-          type="file"
-          accept="image/*,.heic,.heif"
-          capture="environment"
-          className="hidden"
-          onChange={(event) => handleFuelOcrFileChange("receipt", event)}
-        />
-        <input
-          ref={(element) => {
-            fileInputRefs.current.receipt.library = element;
+            fileInputRefs.current.receipt = element;
           }}
           type="file"
           accept="image/*,.heic,.heif"
@@ -735,62 +703,6 @@ export default function FuelPage() {
         </section>
 
       </div>
-
-      {activeOcrPicker && (
-        <div
-          className="fixed inset-0 z-50 flex items-end bg-black/60 px-4 pb-5"
-          role="dialog"
-          aria-modal="true"
-          aria-label={
-            activeOcrPicker === "odometer"
-              ? "Choose odometer scan source"
-              : "Choose receipt scan source"
-          }
-        >
-          <button
-            type="button"
-            aria-label="Cancel"
-            className="absolute inset-0 cursor-default"
-            onClick={() => setActiveOcrPicker(null)}
-          />
-          <div className="relative mx-auto w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-black/50">
-            <div className="px-2 pb-2 pt-1">
-              <p className="text-sm font-bold text-white">
-                {activeOcrPicker === "odometer"
-                  ? "Scan odometer"
-                  : "Scan fuel receipt"}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-400">
-                Choose a new photo or an image from your library.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => chooseOcrSource("camera")}
-                className="w-full rounded-xl bg-blue-500 px-4 py-3 text-left text-sm font-bold text-white"
-              >
-                Take Photo
-              </button>
-              <button
-                type="button"
-                onClick={() => chooseOcrSource("library")}
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-left text-sm font-bold text-slate-100"
-              >
-                Choose From Photo Library
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveOcrPicker(null)}
-                className="w-full rounded-xl border border-slate-800 bg-transparent px-4 py-3 text-center text-sm font-bold text-slate-400"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </main>
   );

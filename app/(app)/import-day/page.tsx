@@ -707,6 +707,11 @@ export default function ImportDayPage() {
     }));
   }
 
+  function openScanPicker(kind: ImportDayImageKind) {
+    setSaveError("");
+    fileInputRefs.current[kind]?.click();
+  }
+
   function clearUpload(kind: ImportDayImageKind) {
     ocrAbortControllersRef.current[kind]?.abort();
     delete ocrAbortControllersRef.current[kind];
@@ -740,6 +745,7 @@ export default function ImportDayPage() {
     event: ChangeEvent<HTMLInputElement>
   ) {
     const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
     patchUpload(kind, {
       selectedFile: file,
       processedFile: null,
@@ -784,6 +790,7 @@ export default function ImportDayPage() {
         conversionStatus: "success",
         ocrStatus: "idle",
       });
+      await runOcr(kind, readyFile);
     } catch (conversionError) {
       patchUpload(kind, {
         processedFile: null,
@@ -813,7 +820,6 @@ export default function ImportDayPage() {
         return {
           ...current,
           startMileage: numberToInput(result.mileage) || current.startMileage,
-          notes: [current.notes, result.notes].filter(Boolean).join("\n"),
         };
       }
 
@@ -821,29 +827,18 @@ export default function ImportDayPage() {
         return {
           ...current,
           endMileage: numberToInput(result.mileage) || current.endMileage,
-          notes: [current.notes, result.notes].filter(Boolean).join("\n"),
         };
       }
 
       if (result.kind === "earnings") {
-        const normalizedDate = normalizeOcrDateInput(result.date);
-        const shouldUseOcrPlatform =
-          result.confidence === "high" && Boolean(result.platform?.trim());
-        const platformNote =
-          result.platform && !shouldUseOcrPlatform
-            ? `OCR saw possible platform "${result.platform}" but did not have high-confidence visible evidence, so the saved default was kept.`
-            : "";
-
         return {
           ...current,
-          platform: shouldUseOcrPlatform ? result.platform || current.platform : current.platform,
-          date: normalizedDate.date || current.date || todayIsoDate(),
           deliveries: numberToInput(result.deliveries) || current.deliveries,
           hoursWorked: numberToInput(result.hoursWorked) || current.hoursWorked,
           basePay: numberToInput(result.basePay) || current.basePay,
           tips: numberToInput(result.tips) || current.tips,
           otherPay: numberToInput(result.otherPay) || current.otherPay,
-          notes: [current.notes, result.notes, platformNote, normalizedDate.warning].filter(Boolean).join("\n"),
+          notes: [current.notes, result.notes].filter(Boolean).join("\n"),
         };
       }
 
@@ -851,8 +846,9 @@ export default function ImportDayPage() {
     });
   }
 
-  async function runOcr(kind: ImportDayImageKind) {
+  async function runOcr(kind: ImportDayImageKind, imageFile?: File) {
     const upload = uploads[kind];
+    const fileToRead = imageFile ?? upload.processedFile;
     const abortController = new AbortController();
     const requestId = ocrRequestIdsRef.current[kind] + 1;
     ocrRequestIdsRef.current[kind] = requestId;
@@ -871,7 +867,7 @@ export default function ImportDayPage() {
       return;
     }
 
-    if (!upload.processedFile) {
+    if (!fileToRead) {
       window.clearTimeout(timeoutId);
       delete ocrAbortControllersRef.current[kind];
       patchUpload(kind, {
@@ -882,11 +878,11 @@ export default function ImportDayPage() {
     }
 
     const formData = new FormData();
-    formData.append("image", upload.processedFile);
+    formData.append("image", fileToRead);
     formData.append("kind", kind);
 
     patchUpload(kind, {
-      sentFile: upload.processedFile,
+      sentFile: fileToRead,
       ocrStatus: "reading",
       error: "",
       warning: "",
@@ -1085,6 +1081,20 @@ export default function ImportDayPage() {
           </section>
         )}
 
+        {uploadKinds.map((kind) => (
+          <input
+            key={`inline-${kind}-${fileInputKeys[kind]}`}
+            ref={(element) => {
+              fileInputRefs.current[kind] = element;
+            }}
+            type="file"
+            accept="image/*,.heic,.heif"
+            onChange={(event) => handleFileChange(kind, event)}
+            className="hidden"
+          />
+        ))}
+
+        {false && (
         <section className="space-y-4">
           <div>
             <p className="text-sm font-semibold text-blue-300">Step 1</p>
@@ -1239,10 +1249,23 @@ export default function ImportDayPage() {
             );
           })}
         </section>
+        )}
 
-        <section className="mt-6 rounded-3xl border border-blue-500/30 bg-blue-950/20 p-5">
-          <p className="text-sm font-semibold text-blue-300">Step 2</p>
-          <h2 className="mt-1 text-xl font-bold">Review shift draft</h2>
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 shadow-sm shadow-black/20">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold">Import day</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Scan helpers fill drafts only.
+              </p>
+            </div>
+            {isAnyOcrReading && (
+              <span className="flex shrink-0 items-center gap-2 rounded-full border border-blue-400/30 bg-blue-950/30 px-3 py-1.5 text-xs font-bold text-blue-100">
+                <span className="h-3 w-3 rounded-full border-2 border-blue-200/30 border-t-blue-300 animate-spin" />
+                Reading
+              </span>
+            )}
+          </div>
 
           <div className="mt-5 space-y-3">
             {vehicles.length > 0 && (
@@ -1292,22 +1315,54 @@ export default function ImportDayPage() {
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-sm text-slate-400">Start mileage</span>
-                <input
-                  type="number"
-                  value={form.startMileage}
-                  onChange={(event) => updateForm("startMileage", event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                />
+                <div className="mt-1 flex overflow-hidden rounded-xl border border-slate-700 bg-slate-950 focus-within:border-blue-400/70">
+                  <input
+                    type="number"
+                    value={form.startMileage}
+                    onChange={(event) => updateForm("startMileage", event.target.value)}
+                    className="min-w-0 flex-1 bg-transparent px-3 py-3 text-white outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openScanPicker("start_odometer")}
+                    disabled={trialRequired || uploads.start_odometer.ocrStatus === "preparing" || uploads.start_odometer.ocrStatus === "reading"}
+                    className="shrink-0 border-l border-slate-700 bg-slate-800/80 px-3 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:text-slate-500"
+                  >
+                    {uploads.start_odometer.ocrStatus === "reading" ? "Reading..." : "Scan"}
+                  </button>
+                </div>
               </label>
               <label className="block">
                 <span className="text-sm text-slate-400">End mileage</span>
-                <input
-                  type="number"
-                  value={form.endMileage}
-                  onChange={(event) => updateForm("endMileage", event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-                />
+                <div className="mt-1 flex overflow-hidden rounded-xl border border-slate-700 bg-slate-950 focus-within:border-blue-400/70">
+                  <input
+                    type="number"
+                    value={form.endMileage}
+                    onChange={(event) => updateForm("endMileage", event.target.value)}
+                    className="min-w-0 flex-1 bg-transparent px-3 py-3 text-white outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openScanPicker("end_odometer")}
+                    disabled={trialRequired || uploads.end_odometer.ocrStatus === "preparing" || uploads.end_odometer.ocrStatus === "reading"}
+                    className="shrink-0 border-l border-slate-700 bg-slate-800/80 px-3 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:text-slate-500"
+                  >
+                    {uploads.end_odometer.ocrStatus === "reading" ? "Reading..." : "Scan"}
+                  </button>
+                </div>
               </label>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <h3 className="text-sm font-bold text-slate-200">Earnings</h3>
+              <button
+                type="button"
+                onClick={() => openScanPicker("earnings")}
+                disabled={trialRequired || uploads.earnings.ocrStatus === "preparing" || uploads.earnings.ocrStatus === "reading"}
+                className="rounded-full border border-blue-400/40 bg-blue-500/10 px-3.5 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
+              >
+                {uploads.earnings.ocrStatus === "reading" ? "Reading..." : "Scan Earnings"}
+              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1364,6 +1419,32 @@ export default function ImportDayPage() {
               />
             </label>
           </div>
+
+          {uploadKinds.some(
+            (kind) => uploads[kind].error || uploads[kind].warning || uploads[kind].ocrStatus === "done"
+          ) && (
+            <div className="mt-5 space-y-2">
+              {uploadKinds.map((kind) => {
+                const upload = uploads[kind];
+                const message = upload.error || upload.warning;
+                if (!message && upload.ocrStatus !== "done") return null;
+
+                return (
+                  <p
+                    key={kind}
+                    className={`rounded-2xl border px-4 py-3 text-sm leading-6 ${
+                      message
+                        ? "border-amber-400/30 bg-amber-950/20 text-amber-100"
+                        : "border-emerald-400/30 bg-emerald-950/20 text-emerald-100"
+                    }`}
+                  >
+                    <span className="font-bold">{uploadLabels[kind]}: </span>
+                    {message || "Scan applied. Review the filled values before importing."}
+                  </p>
+                );
+              })}
+            </div>
+          )}
 
           {hardBlocks.length > 0 && (
             <div className="mt-5 rounded-2xl border border-red-400/40 bg-red-950/30 p-4 text-sm leading-6 text-red-100">

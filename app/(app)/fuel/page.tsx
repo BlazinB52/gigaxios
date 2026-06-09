@@ -34,6 +34,7 @@ import {
 } from "@/app/lib/importDayImage";
 
 type FuelOcrKind = "odometer" | "receipt";
+type FuelOcrSource = "camera" | "library";
 type FuelOcrStatus = "idle" | "preparing" | "reading";
 type FuelOcrResult =
   | {
@@ -90,9 +91,11 @@ export default function FuelPage() {
      ========================================================= */
 
   const router = useRouter();
-  const fileInputRefs = useRef<Record<FuelOcrKind, HTMLInputElement | null>>({
-    odometer: null,
-    receipt: null,
+  const fileInputRefs = useRef<
+    Record<FuelOcrKind, Record<FuelOcrSource, HTMLInputElement | null>>
+  >({
+    odometer: { camera: null, library: null },
+    receipt: { camera: null, library: null },
   });
 
   /* =========================================================
@@ -122,6 +125,7 @@ export default function FuelPage() {
   });
   const [ocrError, setOcrError] = useState("");
   const [ocrMessage, setOcrMessage] = useState("");
+  const [activeOcrPicker, setActiveOcrPicker] = useState<FuelOcrKind | null>(null);
 
   /* =========================================================
      DATA LOADING
@@ -202,7 +206,15 @@ export default function FuelPage() {
   function openScanPicker(kind: FuelOcrKind) {
     setOcrError("");
     setOcrMessage("");
-    fileInputRefs.current[kind]?.click();
+    setActiveOcrPicker(kind);
+  }
+
+  function chooseOcrSource(source: FuelOcrSource) {
+    if (!activeOcrPicker) return;
+
+    const kind = activeOcrPicker;
+    setActiveOcrPicker(null);
+    fileInputRefs.current[kind][source]?.click();
   }
 
   function applyFuelOcrResult(result: FuelOcrResult) {
@@ -396,7 +408,7 @@ export default function FuelPage() {
   return (
     <main className="min-h-screen bg-[#020814] text-white">
 
-      <div className="mx-auto flex min-h-screen max-w-md flex-col gap-5 px-5 pb-28 pt-8">
+      <div className="mx-auto flex min-h-screen max-w-md flex-col gap-4 px-5 pb-28 pt-7">
 
         {/* =====================================================
             PAGE HEADER -
@@ -411,7 +423,7 @@ export default function FuelPage() {
 
         <input
           ref={(element) => {
-            fileInputRefs.current.odometer = element;
+            fileInputRefs.current.odometer.camera = element;
           }}
           type="file"
           accept="image/*,.heic,.heif"
@@ -421,11 +433,29 @@ export default function FuelPage() {
         />
         <input
           ref={(element) => {
-            fileInputRefs.current.receipt = element;
+            fileInputRefs.current.odometer.library = element;
+          }}
+          type="file"
+          accept="image/*,.heic,.heif"
+          className="hidden"
+          onChange={(event) => handleFuelOcrFileChange("odometer", event)}
+        />
+        <input
+          ref={(element) => {
+            fileInputRefs.current.receipt.camera = element;
           }}
           type="file"
           accept="image/*,.heic,.heif"
           capture="environment"
+          className="hidden"
+          onChange={(event) => handleFuelOcrFileChange("receipt", event)}
+        />
+        <input
+          ref={(element) => {
+            fileInputRefs.current.receipt.library = element;
+          }}
+          type="file"
+          accept="image/*,.heic,.heif"
           className="hidden"
           onChange={(event) => handleFuelOcrFileChange("receipt", event)}
         />
@@ -459,9 +489,9 @@ export default function FuelPage() {
             Shows the 5 most recent fill-ups.
            ===================================================== */}
 
-        <section className="rounded-3xl border border-slate-700/70 bg-slate-950/70 p-4">
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 shadow-sm shadow-black/20">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold">Recent fuel</h2>
+            <h2 className="text-base font-bold">Recent fuel</h2>
             {fuelEntries.length > 5 && (
               <p className="text-xs text-slate-500">Latest 5</p>
             )}
@@ -481,18 +511,18 @@ export default function FuelPage() {
               {fuelEntries.slice(0, 5).map((entry) => (
                 <div
                   key={entry.id}
-                  className="rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3"
+                  className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2.5"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-semibold">{entry.date}</p>
+                      <p className="text-sm font-semibold">{entry.date}</p>
                       <p className="truncate text-sm text-slate-400">
                         Odometer: {entry.odometer}
                       </p>
                     </div>
 
                     <div className="shrink-0 text-right">
-                      <p className="font-bold">${entry.totalCost}</p>
+                      <p className="text-sm font-bold">${entry.totalCost}</p>
                       <p className="text-xs text-slate-400">
                         {entry.gallons} gal
                       </p>
@@ -500,7 +530,7 @@ export default function FuelPage() {
                   </div>
 
                   {entry.notes && (
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-400">
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-400">
                       {entry.notes}
                     </p>
                   )}
@@ -519,14 +549,17 @@ export default function FuelPage() {
             browser's native calendar icon to render white.
            ===================================================== */}
 
-        <section className="rounded-3xl border border-slate-700/70 bg-slate-950/70 p-5">
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 shadow-sm shadow-black/20">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold">Add fuel</h2>
+            <div>
+              <h2 className="text-lg font-bold">Add fuel</h2>
+              <p className="text-xs text-slate-500">Scan helpers fill drafts only.</p>
+            </div>
             <button
               type="button"
               onClick={() => openScanPicker("receipt")}
               disabled={trialRequired || ocrStatus.receipt !== "idle"}
-              className="rounded-xl border border-blue-400/40 bg-blue-500/10 px-3 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
+              className="shrink-0 rounded-full border border-blue-400/40 bg-blue-500/10 px-3.5 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
             >
               {ocrStatus.receipt === "idle" ? "Scan Receipt" : "Reading..."}
             </button>
@@ -583,11 +616,11 @@ export default function FuelPage() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-white [color-scheme:dark]"
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-white [color-scheme:dark]"
             />
 
             {/* ODOMETER */}
-            <div className="flex gap-2">
+            <div className="flex overflow-hidden rounded-xl border border-slate-700 bg-slate-900 focus-within:border-blue-400/70">
               <input
                 type="number"
                 placeholder="Odometer"
@@ -596,13 +629,13 @@ export default function FuelPage() {
                   setOdometer(e.target.value);
                   resetMileageException();
                 }}
-                className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                className="min-w-0 flex-1 bg-transparent px-3 py-3 text-white outline-none placeholder:text-slate-500"
               />
               <button
                 type="button"
                 onClick={() => openScanPicker("odometer")}
                 disabled={trialRequired || ocrStatus.odometer !== "idle"}
-                className="shrink-0 rounded-xl border border-slate-600 bg-slate-900 px-4 py-2 text-sm font-bold text-slate-200 disabled:cursor-not-allowed disabled:text-slate-500"
+                className="shrink-0 border-l border-slate-700 bg-slate-800/80 px-3.5 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:text-slate-500"
               >
                 {ocrStatus.odometer === "idle" ? "Scan" : "Reading..."}
               </button>
@@ -633,40 +666,42 @@ export default function FuelPage() {
               </div>
             )}
 
-            {/* GALLONS */}
-            <input
-              type="number"
-              placeholder="Gallons"
-              value={gallons}
-              onChange={(e) => setGallons(e.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              {/* GALLONS */}
+              <input
+                type="number"
+                placeholder="Gallons"
+                value={gallons}
+                onChange={(e) => setGallons(e.target.value)}
+                className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+              />
 
-            <label className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
+              {/* PRICE PER GALLON */}
+              <input
+                type="number"
+                placeholder="Price / gal"
+                value={pricePerGallon}
+                onChange={(e) => setPricePerGallon(e.target.value)}
+                className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+              />
+            </div>
+
+            <label className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2.5">
               <input
                 type="checkbox"
                 checked={isFullFillUp}
                 onChange={(e) => setIsFullFillUp(e.target.checked)}
-                className="mt-1 h-4 w-4 accent-blue-500"
+                className="h-4 w-4 accent-blue-500"
               />
-              <span>
+              <span className="min-w-0">
                 <span className="block text-sm font-semibold text-white">
                   Full fill-up
                 </span>
-                <span className="mt-1 block text-xs text-slate-400">
+                <span className="block text-xs text-slate-400">
                   Use this fuel entry for MPG calculations.
                 </span>
               </span>
             </label>
-
-            {/* PRICE PER GALLON */}
-            <input
-              type="number"
-              placeholder="Price per gallon"
-              value={pricePerGallon}
-              onChange={(e) => setPricePerGallon(e.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
-            />
 
             {/* NOTES (optional) */}
             <input
@@ -682,7 +717,7 @@ export default function FuelPage() {
               <button
                 onClick={handleSaveFuel}
                 disabled={trialRequired}
-                className="rounded-xl bg-blue-500 py-2 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                className="rounded-xl bg-blue-500 py-2.5 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
                 {trialRequired ? "Start Trial" : "Save Fuel Entry"}
               </button>
@@ -690,7 +725,7 @@ export default function FuelPage() {
               <button
                 type="button"
                 onClick={() => router.push("/")}
-                className="rounded-xl border border-slate-700 bg-slate-900 py-2 font-bold text-slate-300"
+                className="rounded-xl border border-slate-700 bg-slate-900 py-2.5 font-bold text-slate-300"
               >
                 Cancel
               </button>
@@ -700,6 +735,62 @@ export default function FuelPage() {
         </section>
 
       </div>
+
+      {activeOcrPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/60 px-4 pb-5"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            activeOcrPicker === "odometer"
+              ? "Choose odometer scan source"
+              : "Choose receipt scan source"
+          }
+        >
+          <button
+            type="button"
+            aria-label="Cancel"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setActiveOcrPicker(null)}
+          />
+          <div className="relative mx-auto w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-black/50">
+            <div className="px-2 pb-2 pt-1">
+              <p className="text-sm font-bold text-white">
+                {activeOcrPicker === "odometer"
+                  ? "Scan odometer"
+                  : "Scan fuel receipt"}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Choose a new photo or an image from your library.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => chooseOcrSource("camera")}
+                className="w-full rounded-xl bg-blue-500 px-4 py-3 text-left text-sm font-bold text-white"
+              >
+                Take Photo
+              </button>
+              <button
+                type="button"
+                onClick={() => chooseOcrSource("library")}
+                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-left text-sm font-bold text-slate-100"
+              >
+                Choose From Photo Library
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveOcrPicker(null)}
+                className="w-full rounded-xl border border-slate-800 bg-transparent px-4 py-3 text-center text-sm font-bold text-slate-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </main>
   );

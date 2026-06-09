@@ -67,6 +67,16 @@ type ImportValidationState = {
   cautions: string[];
 };
 
+type ExistingShift = {
+  id: string;
+  platform: string | null;
+  gross_pay: number | string | null;
+  beginning_mileage: number | string | null;
+  ending_mileage: number | string | null;
+  hours_worked: number | string | null;
+  deliveries: number | string | null;
+};
+
 const uploadLabels: Record<ImportDayImageKind, string> = {
   start_odometer: "Start Odometer Photo",
   end_odometer: "End Odometer Photo",
@@ -286,6 +296,35 @@ function formatCurrency(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
+function formatShiftHours(value: number | string | null | undefined): string {
+  const hours = toNumber(String(value ?? ""));
+  if (hours === null || hours <= 0) return "";
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  if (m > 0) return `${m}m`;
+  return "";
+}
+
+function formatShiftMiles(
+  beginning: number | string | null | undefined,
+  ending: number | string | null | undefined
+): string {
+  const start = toNumber(String(beginning ?? ""));
+  const end = toNumber(String(ending ?? ""));
+  if (start === null || end === null) return "";
+  const miles = end - start;
+  if (miles < 0) return "";
+  return `${miles.toLocaleString("en-US")} mi`;
+}
+
+function formatShiftDeliveries(value: number | string | null | undefined): string {
+  const count = toNumber(String(value ?? ""));
+  if (count === null || count <= 0) return "";
+  return `${count} ${count === 1 ? "delivery" : "deliveries"}`;
+}
+
 function mileageValuesMatch(firstValue: string | number | null, secondValue: string) {
   const firstNumber = toNumber(String(firstValue ?? ""));
   const secondNumber = toNumber(secondValue);
@@ -392,6 +431,8 @@ export default function ImportDayPage() {
   const [earningsCautionAcknowledged, setEarningsCautionAcknowledged] =
     useState(false);
   const [payChangeAcknowledged, setPayChangeAcknowledged] = useState(false);
+  const [existingShiftsForDate, setExistingShiftsForDate] = useState<ExistingShift[]>([]);
+  const [isLoadingShiftsForDate, setIsLoadingShiftsForDate] = useState(false);
   const [ocrReportedGrossPay, setOcrReportedGrossPay] = useState<number | null>(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const isAnyOcrReading = Object.values(uploads).some(
@@ -607,6 +648,35 @@ export default function ImportDayPage() {
       isCurrent = false;
     };
   }, [calculatedGrossPayInput, form.date, form.endMileage, form.platform, form.startMileage, userId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadShiftsForDate() {
+      if (!userId || !form.date) {
+        setExistingShiftsForDate([]);
+        return;
+      }
+
+      setIsLoadingShiftsForDate(true);
+      const { data } = await supabase
+        .from("shifts")
+        .select("id, platform, gross_pay, beginning_mileage, ending_mileage, hours_worked, deliveries")
+        .eq("user_id", userId)
+        .eq("date", form.date)
+        .order("beginning_mileage", { ascending: true });
+
+      if (!isCurrent) return;
+      setExistingShiftsForDate(data || []);
+      setIsLoadingShiftsForDate(false);
+    }
+
+    loadShiftsForDate();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [form.date, userId]);
 
   function getWarningMessages(validation = validationState) {
     const warnings: string[] = [];
@@ -1391,6 +1461,43 @@ export default function ImportDayPage() {
                   : "Save Shift"}
             </button>
           </div>
+        </section>
+
+        <section className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 shadow-sm shadow-black/20">
+          <h2 className="text-base font-bold text-slate-200">Shifts recorded for this date</h2>
+          {isLoadingShiftsForDate ? (
+            <p className="mt-3 text-sm text-slate-400">Loading...</p>
+          ) : existingShiftsForDate.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-400">No shifts recorded for this date yet.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {existingShiftsForDate.map((shift) => {
+                const line1Parts: string[] = [];
+                if (shift.platform) line1Parts.push(shift.platform);
+                const gross = toNumber(String(shift.gross_pay ?? ""));
+                if (gross !== null && gross > 0) line1Parts.push(formatCurrency(gross));
+                const miles = formatShiftMiles(shift.beginning_mileage, shift.ending_mileage);
+                if (miles) line1Parts.push(miles);
+
+                const line2Parts: string[] = [];
+                const hours = formatShiftHours(shift.hours_worked);
+                if (hours) line2Parts.push(hours);
+                const deliveries = formatShiftDeliveries(shift.deliveries);
+                if (deliveries) line2Parts.push(deliveries);
+
+                return (
+                  <div key={shift.id} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5">
+                    <p className="text-sm font-semibold text-slate-100">
+                      {line1Parts.join(" • ") || "Shift"}
+                    </p>
+                    {line2Parts.length > 0 && (
+                      <p className="mt-0.5 text-xs text-slate-400">{line2Parts.join(" • ")}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       </div>
 

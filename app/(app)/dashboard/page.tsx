@@ -551,23 +551,13 @@ export default function Home() {
 
           <button
             onClick={() => {
-              if (trialRequired && !activeShift) return;
-              router.push("/shifts");
-            }}
-            disabled={trialRequired && !activeShift}
-            className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-          >
-            {activeShift ? "→ End Shift" : trialRequired ? "Start Trial to Continue" : "→ Start Shift"}
-          </button>
-          <button
-            onClick={() => {
               if (importDayDisabled) return;
               router.push("/import-day");
             }}
             disabled={importDayDisabled}
-            className="w-full rounded-full border border-blue-500/40 bg-slate-900 px-4 py-3 text-base font-bold text-blue-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
+            className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
           >
-            {importDayDisabled ? "Trial required to record" : "Record Shift"}
+            {importDayDisabled ? "Trial required to record" : "→ Record Shift"}
           </button>
         </div>
       </section>

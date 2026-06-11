@@ -12,7 +12,7 @@ import {
     loadSubscriptionAccess,
 } from "@/app/lib/subscriptionAccess";
 import {
-    loadHighestMileageReading,
+    loadPreviousShiftMileageReading,
     needsMileageException,
 } from "@/app/lib/mileageValidation";
 import {
@@ -157,13 +157,15 @@ export default function ShiftsPage() {
             return;
         }
 
-        const highestMileage = await loadHighestMileageReading({
+        const previousShiftMileage = await loadPreviousShiftMileageReading({
             userId: user.id,
             vehicleId: selectedVehicleId || undefined,
+            date: shiftDate,
+            mileage: beginningMileage,
         });
         const startMileageIsLower = needsMileageException({
             mileage: beginningMileage,
-            highestMileage,
+            highestMileage: previousShiftMileage,
         });
 
         if (
@@ -243,13 +245,25 @@ export default function ShiftsPage() {
             return;
         }
 
-        const highestMileage = await loadHighestMileageReading({
+        const previousShiftMileage = await loadPreviousShiftMileageReading({
             userId: activeShift.userId,
             vehicleId: activeShift.vehicleId,
+            date: activeShift.date,
+            mileage: endingMileage,
         });
+        const beginningMileage = Number(activeShift.beginningMileage);
+        const beginningComparisonMileage = Number.isFinite(beginningMileage)
+            ? beginningMileage
+            : null;
+        const endComparisonMileage =
+            previousShiftMileage === null
+                ? beginningComparisonMileage
+                : beginningComparisonMileage === null
+                    ? previousShiftMileage
+                    : Math.max(previousShiftMileage, beginningComparisonMileage);
         const endMileageIsLower = needsMileageException({
             mileage: endingMileage,
-            highestMileage,
+            highestMileage: endComparisonMileage,
         });
 
         if (

@@ -5,7 +5,7 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
-  loadHighestMileageReading,
+  loadPreviousShiftMileageReading,
   needsMileageException,
 } from "@/app/lib/mileageValidation";
 import {
@@ -601,28 +601,43 @@ export default function ImportDayPage() {
     async function checkMileageHistory() {
       if (!userId) return;
 
-      const highestMileage = await loadHighestMileageReading({
+      const previousStartShiftMileage = await loadPreviousShiftMileageReading({
         userId,
         vehicleId: form.vehicleId || undefined,
+        date: form.date,
+        mileage: form.startMileage,
+      });
+      const previousEndShiftMileage = await loadPreviousShiftMileageReading({
+        userId,
+        vehicleId: form.vehicleId || undefined,
+        date: form.date,
+        mileage: form.endMileage,
       });
       const startLooksLower = needsMileageException({
         mileage: form.startMileage,
-        highestMileage,
+        highestMileage: previousStartShiftMileage,
       });
+      const startMileage = toNumber(form.startMileage);
+      const endComparisonMileage =
+        previousEndShiftMileage === null
+          ? startMileage
+          : startMileage === null
+            ? previousEndShiftMileage
+            : Math.max(previousEndShiftMileage, startMileage);
       const endLooksLower = needsMileageException({
         mileage: form.endMileage,
-        highestMileage,
+        highestMileage: endComparisonMileage,
       });
 
       setMileageWarning(
         startLooksLower || endLooksLower
-          ? "This mileage is lower than a later existing record. Continue only if you are backfilling or correcting older data."
+          ? "This mileage is lower than the previous applicable shift record. Continue only if you are correcting older data."
           : ""
       );
     }
 
     checkMileageHistory();
-  }, [form.endMileage, form.startMileage, form.vehicleId, userId]);
+  }, [form.date, form.endMileage, form.startMileage, form.vehicleId, userId]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -1077,17 +1092,29 @@ export default function ImportDayPage() {
         return;
       }
 
-      const highestMileage = await loadHighestMileageReading({
+      const previousStartShiftMileage = await loadPreviousShiftMileageReading({
         userId,
         vehicleId: form.vehicleId || undefined,
+        date: form.date,
+        mileage: form.startMileage,
       });
+      const previousEndShiftMileage = await loadPreviousShiftMileageReading({
+        userId,
+        vehicleId: form.vehicleId || undefined,
+        date: form.date,
+        mileage: form.endMileage,
+      });
+      const endComparisonMileage =
+        previousEndShiftMileage === null
+          ? startMileage
+          : Math.max(previousEndShiftMileage, startMileage);
       const startMileageOverride = needsMileageException({
         mileage: form.startMileage,
-        highestMileage,
+        highestMileage: previousStartShiftMileage,
       });
       const endMileageOverride = needsMileageException({
         mileage: form.endMileage,
-        highestMileage,
+        highestMileage: endComparisonMileage,
       });
       const overrideReason =
         startMileageOverride || endMileageOverride

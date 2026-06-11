@@ -132,6 +132,60 @@ export async function loadPreviousFuelMileageReading({
   return maxFromReadings(data?.map((entry) => ({ value: entry.odometer })) ?? []);
 }
 
+export async function loadPreviousShiftMileageReading({
+  userId,
+  vehicleId,
+  date,
+  mileage,
+  excludeShiftId,
+}: {
+  userId: string;
+  vehicleId?: string;
+  date: string;
+  mileage: string;
+  excludeShiftId?: string;
+}) {
+  const currentMileage = toNumber(mileage);
+
+  if (!date || currentMileage === null) {
+    return null;
+  }
+
+  let query = supabase
+    .from("shifts")
+    .select("id, beginning_mileage, ending_mileage")
+    .eq("user_id", userId)
+    .or(`date.lt.${date},and(date.eq.${date},beginning_mileage.lte.${currentMileage})`)
+    .order("date", { ascending: false })
+    .order("beginning_mileage", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  query = vehicleId
+    ? query.eq("vehicle_id", vehicleId)
+    : query.is("vehicle_id", null);
+
+  if (excludeShiftId) {
+    query = query.neq("id", excludeShiftId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Mileage validation shift sequence load error:", error.message);
+    return null;
+  }
+
+  const previousShift = data?.[0];
+
+  if (!previousShift) {
+    return null;
+  }
+
+  const endingMileage = toNumber(previousShift.ending_mileage);
+  return endingMileage ?? toNumber(previousShift.beginning_mileage);
+}
+
 export function needsMileageException({
   mileage,
   highestMileage,

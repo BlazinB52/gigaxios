@@ -67,22 +67,20 @@ export default function BottomNav() {
              Home uses strict equality; all others use startsWith
              so child routes (e.g. /garage/maintenance) keep the
              Garage tab lit. */
-          const isActive = pathname.startsWith(item.href);
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex min-h-14 w-full flex-col items-center justify-center gap-1 text-xs font-semibold ${
-                isActive ? item.color : "text-slate-500"
-              }`}
+              className="flex min-h-14 w-full flex-col items-center justify-center gap-1 text-xs font-semibold"
             >
               {/* ICON */}
-              <span className="flex h-5 w-5 items-center justify-center text-xl leading-none">
+              <span className={`flex h-5 w-5 items-center justify-center text-xl leading-none ${item.color}`}>
                 {item.icon}
               </span>
 
               {/* LABEL */}
-              <span>{item.label}</span>
+              <span className={isActive ? item.color : "text-slate-500"}>{item.label}</span>
             </Link>
           );
         })}

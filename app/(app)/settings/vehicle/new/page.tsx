@@ -204,28 +204,28 @@ export default function NewVehiclePage() {
             <div className="space-y-3">
               <input
                 type="number"
-                placeholder="2023"
+                placeholder="Year"
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
                 className={inputClass}
               />
               <input
                 type="text"
-                placeholder="Toyota"
+                placeholder="Make"
                 value={make}
                 onChange={(e) => setMake(e.target.value)}
                 className={inputClass}
               />
               <input
                 type="text"
-                placeholder="Tacoma"
+                placeholder="Model"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 className={inputClass}
               />
               <input
                 type="text"
-                placeholder="TRD Sport (optional)"
+                placeholder="Trim (optional)"
                 value={trim}
                 onChange={(e) => setTrim(e.target.value)}
                 className={inputClass}

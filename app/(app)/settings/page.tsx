@@ -70,7 +70,6 @@ export default function SettingsPage() {
   const [defaultPlatform, setDefaultPlatform] = useState("GoPuff");
   const [notifMaintenance, setNotifMaintenance] = useState(true);
   const [notifWeeklySummary, setNotifWeeklySummary] = useState(false);
-  const [notifLowFuel, setNotifLowFuel] = useState(false);
   const [workPaySaved, setWorkPaySaved] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -673,14 +672,6 @@ export default function SettingsPage() {
                 <Toggle on={notifWeeklySummary} onToggle={() => setNotifWeeklySummary((v) => !v)} />
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-300">Low fuel warning</span>
-                  <span className="text-xs text-slate-500">(coming soon)</span>
-                </div>
-                <Toggle on={notifLowFuel} onToggle={() => setNotifLowFuel((v) => !v)} />
-              </div>
-
             </div>
           </section>
         </div>
@@ -739,11 +730,11 @@ export default function SettingsPage() {
         </div>
 
         <div className="relative mt-6">
-          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-slate-500" />
+          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-cyan-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-800">
-                <User className="h-5 w-5 text-slate-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-950/60">
+                <User className="h-5 w-5 text-cyan-300" />
               </div>
               <div>
                 <p className="text-xs font-bold tracking-wider text-slate-400">ACCOUNT</p>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar } from "lucide-react";
 import ActiveShiftCard from "@/app/components/ActiveShiftCard";
+import PlatformField from "@/app/components/PlatformField";
 import { SavedShift } from "@/app/lib/types";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { supabase } from "@/app/lib/supabaseClient";
@@ -157,6 +158,7 @@ export default function ShiftsPage() {
             return;
         }
 
+        const trimmedPlatform = platform.trim();
         const previousShiftMileage = await loadPreviousShiftMileageReading({
             userId: user.id,
             vehicleId: selectedVehicleId || undefined,
@@ -185,7 +187,7 @@ export default function ShiftsPage() {
             id: crypto.randomUUID(),
             userId: user.id,
             vehicleId: selectedVehicleId || undefined,
-            platform,
+            platform: trimmedPlatform,
             date: shiftDate,
             beginningMileage,
             endingMileage: "",
@@ -436,18 +438,11 @@ export default function ShiftsPage() {
                                 </select>
                               </div>
                             )}
-                            <select
+                            <PlatformField
                                 value={platform}
-                                onChange={(event) => setPlatform(event.target.value)}
-                                className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
-                            >
-                                <option value="GoPuff">GoPuff</option>
-                                <option value="Amazon Flex">Amazon Flex</option>
-                                <option value="Uber Eats">Uber Eats</option>
-                                <option value="DoorDash">DoorDash</option>
-                                <option value="Shipt">Shipt</option>
-                                <option value="Other">Other</option>
-                            </select>
+                                onChange={setPlatform}
+                                label="Platform"
+                            />
                             <div className="relative">
                                 <input
                                     aria-label="Shift Date"

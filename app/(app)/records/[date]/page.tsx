@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
+import PlatformField from "@/app/components/PlatformField";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
@@ -33,8 +34,6 @@ function toISODate(dateStr: string): string {
 function formatCurrency(val: number) {
   return val.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
-
-const PLATFORMS = ["GoPuff", "Amazon Flex", "Uber Eats", "DoorDash", "Other"];
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -157,9 +156,10 @@ export default function DayDetailPage() {
       Number(editOtherPay || 0)
     ).toFixed(2);
 
+    const trimmedPlatform = editPlatform.trim();
     const updated: SavedShift = {
       ...shift,
-      platform: editPlatform,
+      platform: trimmedPlatform,
       beginningMileage: editBeginningMileage,
       endingMileage: editEndingMileage,
       deliveries: editDeliveries,
@@ -425,13 +425,10 @@ export default function DayDetailPage() {
                             </div>
                           )}
 
-                          <select
+                          <PlatformField
                             value={editPlatform}
-                            onChange={(e) => setEditPlatform(e.target.value)}
-                            className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
-                          >
-                            {PLATFORMS.map((p) => <option key={p}>{p}</option>)}
-                          </select>
+                            onChange={setEditPlatform}
+                          />
 
                           {[
                             { label: "Beginning Mileage", val: editBeginningMileage, set: setEditBeginningMileage },

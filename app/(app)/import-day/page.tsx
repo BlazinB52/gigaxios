@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import PlatformField from "@/app/components/PlatformField";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
   loadPreviousShiftMileageReading,
@@ -1126,7 +1127,7 @@ export default function ImportDayPage() {
         user_id: userId,
         vehicle_id: form.vehicleId || null,
         date: form.date,
-        platform: form.platform || null,
+        platform: form.platform.trim() || null,
         beginning_mileage: form.startMileage,
         ending_mileage: form.endMileage,
         start_mileage_override: startMileageOverride,
@@ -1223,21 +1224,11 @@ export default function ImportDayPage() {
               </label>
             )}
 
-            <label className="block">
-              <span className="text-sm text-slate-400">Platform</span>
-              <select
-                value={form.platform}
-                onChange={(event) => updateForm("platform", event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
-              >
-                <option value="GoPuff">GoPuff</option>
-                <option value="Amazon Flex">Amazon Flex</option>
-                <option value="Uber Eats">Uber Eats</option>
-                <option value="DoorDash">DoorDash</option>
-                <option value="Shipt">Shipt</option>
-                <option value="Other">Other</option>
-              </select>
-            </label>
+            <PlatformField
+              value={form.platform}
+              onChange={(value) => updateForm("platform", value)}
+              inputClassName="bg-slate-950"
+            />
 
             <label className="block">
               <span className="text-sm text-slate-400">Date</span>

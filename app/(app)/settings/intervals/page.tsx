@@ -136,12 +136,20 @@ export default function IntervalsPage() {
       lastDoneDate: row.lastDoneDate !== "" ? row.lastDoneDate : null,
     }));
 
-    await saveServiceIntervalsToSupabase(userId, selectedVehicleId, intervals);
-    await generateRemindersFromIntervals(userId, selectedVehicleId);
+    try {
+      await saveServiceIntervalsToSupabase(userId, selectedVehicleId, intervals);
+      await generateRemindersFromIntervals(userId, selectedVehicleId);
 
-    setIntervalsSaving(false);
-    setIntervalsSaved(true);
-    setTimeout(() => setIntervalsSaved(false), 3000);
+      setIntervalsSaved(true);
+      window.setTimeout(() => {
+        router.push("/settings");
+      }, 1000);
+    } catch (error) {
+      console.error("Service intervals save error:", error);
+      alert("Could not save service intervals. Please try again.");
+    } finally {
+      setIntervalsSaving(false);
+    }
   }
 
   async function handleStartTrial() {
@@ -382,7 +390,7 @@ export default function IntervalsPage() {
             </div>
 
             {intervalsSaved && (
-              <p className="mt-4 text-sm text-emerald-400">Intervals saved.</p>
+              <p className="mt-4 text-sm text-emerald-400">Records saved</p>
             )}
 
             <button

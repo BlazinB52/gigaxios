@@ -91,6 +91,47 @@ export async function loadHighestMileageReading({
   return maxFromReadings([...shiftReadings, ...fuelReadings, ...serviceReadings]);
 }
 
+export async function loadPreviousFuelMileageReading({
+  userId,
+  vehicleId,
+  date,
+  odometer,
+}: {
+  userId: string;
+  vehicleId?: string;
+  date: string;
+  odometer: string;
+}) {
+  const currentOdometer = toNumber(odometer);
+
+  if (!date || currentOdometer === null) {
+    return null;
+  }
+
+  let query = supabase
+    .from("fuel_entries")
+    .select("odometer")
+    .eq("user_id", userId)
+    .or(`date.lt.${date},and(date.eq.${date},odometer.lte.${currentOdometer})`)
+    .order("date", { ascending: false })
+    .order("odometer", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  query = vehicleId
+    ? query.eq("vehicle_id", vehicleId)
+    : query.is("vehicle_id", null);
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Mileage validation fuel sequence load error:", error.message);
+    return null;
+  }
+
+  return maxFromReadings(data?.map((entry) => ({ value: entry.odometer })) ?? []);
+}
+
 export function needsMileageException({
   mileage,
   highestMileage,

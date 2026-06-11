@@ -23,7 +23,7 @@ import {
   loadSubscriptionAccess,
 } from "@/app/lib/subscriptionAccess";
 import {
-  loadHighestMileageReading,
+  loadPreviousFuelMileageReading,
   needsMileageException,
 } from "@/app/lib/mileageValidation";
 import {
@@ -341,13 +341,15 @@ export default function FuelPage() {
     }
 
     const calculatedTotalCost = Number(gallons) * Number(pricePerGallon);
-    const latestHighestMileage = await loadHighestMileageReading({
+    const previousFuelMileage = await loadPreviousFuelMileageReading({
       userId: user.id,
       vehicleId: selectedVehicleId || undefined,
+      date,
+      odometer,
     });
     const mileageIsLower = needsMileageException({
       mileage: odometer,
-      highestMileage: latestHighestMileage,
+      highestMileage: previousFuelMileage,
     });
 
     if (

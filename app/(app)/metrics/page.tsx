@@ -14,6 +14,15 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ChevronDown,
+  Clock,
+  DollarSign,
+  Info,
+  Lightbulb,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import { supabase } from "@/app/lib/supabaseClient";
 import { SavedShift } from "@/app/lib/types";
 import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
@@ -48,6 +57,23 @@ type DateRangeOption = {
   type: RangeType;
 };
 
+type BestDayBucket = {
+  label: string;
+  fullLabel: string;
+  dayIndex: number;
+  hours: number;
+  grossPay: number;
+  fuelCost: number;
+  serviceCost: number;
+  netProfit: number;
+  netPerHour: number;
+};
+
+type ChartPoint = {
+  x: number;
+  y: number;
+};
+
 const WEEK_START_STORAGE_KEYS = [
   "gigaxios-week-start",
   "gigaxios-week-starts-on",
@@ -62,6 +88,16 @@ const DAY_NAMES = [
   "Thursday",
   "Friday",
   "Saturday",
+];
+
+const WEEKDAY_BUCKETS = [
+  { label: "Mon", fullLabel: "Monday", dayIndex: 1 },
+  { label: "Tue", fullLabel: "Tuesday", dayIndex: 2 },
+  { label: "Wed", fullLabel: "Wednesday", dayIndex: 3 },
+  { label: "Thu", fullLabel: "Thursday", dayIndex: 4 },
+  { label: "Fri", fullLabel: "Friday", dayIndex: 5 },
+  { label: "Sat", fullLabel: "Saturday", dayIndex: 6 },
+  { label: "Sun", fullLabel: "Sunday", dayIndex: 0 },
 ];
 
 function parseOptionalDateTime(value: string | undefined): number {
@@ -175,6 +211,50 @@ function getThisYearRange(date: Date): DateRangeOption {
 function isDateInRange(dateStr: string, rangeStart: string, rangeEnd: string): boolean {
   const iso = toISODate(dateStr);
   return iso >= rangeStart && iso <= rangeEnd;
+}
+
+function roundUpToInterval(value: number, interval: number): number {
+  return Math.ceil(Math.max(value, 0) / interval) * interval;
+}
+
+function fmtAxisDollar(value: number): string {
+  const absValue = Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  return value < 0 ? `-$${absValue}` : `$${absValue}`;
+}
+
+function fmtDollarPerHour(value: number): string {
+  return `${fmtAxisDollar(Math.round(value))}/hr`;
+}
+
+function fmtCompactHours(value: number): string {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 1,
+  });
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function buildAxisTicks(maxValue: number, interval: number): number[] {
+  return Array.from(
+    { length: Math.floor(maxValue / interval) + 1 },
+    (_, index) => index * interval
+  );
+}
+
+function getProfitPerHourYAxisInterval(maxValue: number): number {
+  if (maxValue <= 50) return 10;
+  if (maxValue <= 100) return 25;
+  if (maxValue <= 250) return 50;
+  return 100;
+}
+
+function pointsToPath(points: ChartPoint[]): string {
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
 }
 
 /* =========================================================
@@ -538,10 +618,6 @@ export default function MetricsPage() {
       );
     });
 
-    const verifiedCompletedCycleWorkMiles = cycleFuelAuditByVehicle.reduce(
-      (sum, vehicle) => sum + vehicle.completedCycleWorkMiles,
-      0
-    );
     const completedCycleFuelCost = cycleFuelAuditByVehicle.reduce(
       (sum, vehicle) => sum + vehicle.completedCycleFuelCost,
       0
@@ -681,15 +757,189 @@ export default function MetricsPage() {
     const trueNetPct = totalGrossPay > 0 ? trueNetProfit / totalGrossPay : 0;
     const serviceCostPct = totalGrossPay > 0 ? businessServiceCost / totalGrossPay : 0;
 
-    const periodSummaryData = [
-      {
-        label: "This period",
-        grossPay: totalGrossPay,
-        netProfit: Math.max(trueNetProfit, 0),
-      },
-    ];
+    let bestDayData: BestDayBucket[] = WEEKDAY_BUCKETS.map((weekday) => {
+      const bucketShifts = completedPeriodShifts.filter(
+        (shift) => parseShiftDate(shift.date).getDay() === weekday.dayIndex
+      );
+        const bucketShiftGrossPay = bucketShifts.reduce(
+          (sum, shift) => sum + Number(shift.grossPay || 0),
+          0
+        );
+        const bucketHours = bucketShifts.reduce(
+          (sum, shift) => sum + Number(shift.hoursWorked || 0),
+          0
+        );
+        const bucketAdjustments = totalHours > 0
+          ? totalAdjustments * (bucketHours / totalHours)
+          : 0;
+        const bucketGrossPay = bucketShiftGrossPay + bucketAdjustments;
 
-    const maxPeriodSummaryValue = Math.max(totalGrossPay, Math.max(trueNetProfit, 0), 1);
+        const bucketFuelCost = selectedVehicleKeys.reduce((sum, vehicleKey) => {
+          const vehicleBucketShifts = bucketShifts.filter(
+            (shift) => getShiftVehicleKey(shift) === vehicleKey
+          );
+          const vehicleWorkMiles = vehicleBucketShifts.reduce((miles, shift) => {
+            const begin = Number(shift.beginningMileage);
+            const end = Number(shift.endingMileage);
+            return begin > 0 && end > begin ? miles + (end - begin) : miles;
+          }, 0);
+
+          const completedCycleTotals = vehicleBucketShifts.reduce(
+            (totals, shift) => {
+              const shiftStart = Number(shift.beginningMileage);
+              const shiftEnd = Number(shift.endingMileage);
+              if (!(shiftStart > 0 && shiftEnd > shiftStart)) return totals;
+
+              completedFuelCycles
+                .filter((cycle) => cycle.vehicleKey === vehicleKey)
+                .forEach((cycle) => {
+                  const cycleWorkMiles = getMileageRangeOverlapMiles(
+                    shiftStart,
+                    shiftEnd,
+                    cycle.startOdometer,
+                    cycle.endOdometer
+                  );
+                  totals.workMiles += cycleWorkMiles;
+                  totals.fuelCost += cycleWorkMiles * cycle.fuelCostPerMile;
+                });
+
+              return totals;
+            },
+            { workMiles: 0, fuelCost: 0 }
+          );
+
+          if (fuelCostNeedsMpg) return sum + completedCycleTotals.fuelCost;
+
+          const openCycleWorkMiles = Math.max(0, vehicleWorkMiles - completedCycleTotals.workMiles);
+          const vehicleOpenCycle = openCycleFuelEstimateResults.find(
+            (vehicle) => vehicle.vehicleKey === vehicleKey
+          );
+          const openCycleFuelCost =
+            vehicleOpenCycle && vehicleOpenCycle.openCycleMiles > 0
+              ? (openCycleWorkMiles / vehicleOpenCycle.openCycleMiles) *
+                vehicleOpenCycle.result.workFuelCost
+              : 0;
+
+          return sum + completedCycleTotals.fuelCost + openCycleFuelCost;
+        }, 0);
+
+        const bucketServiceCost = assignedVehicleServices.reduce((sum, service) => {
+          const serviceCost = Number(service.cost || 0);
+          const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
+          if (!(serviceCost > 0) || !intervalMileage) return sum;
+
+          const serviceStartOdometer = Number(service.odometer || 0);
+          const serviceEndOdometer = serviceStartOdometer + intervalMileage;
+          const serviceVehicleKey = service.vehicleId || "unassigned";
+          const costPerMile = serviceCost / intervalMileage;
+          const periodWorkMilesSinceService = completedPeriodShifts
+            .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+            .reduce((miles, shift) => {
+              const shiftStart = Number(shift.beginningMileage);
+              const shiftEnd = Number(shift.endingMileage);
+              return miles + getMileageRangeOverlapMiles(
+                shiftStart,
+                shiftEnd,
+                serviceStartOdometer,
+                serviceEndOdometer
+              );
+            }, 0);
+          if (!(periodWorkMilesSinceService > 0)) return sum;
+
+          const periodAllocatedServiceCost = Math.min(
+            serviceCost,
+            periodWorkMilesSinceService * costPerMile
+          );
+          const bucketWorkMilesSinceService = bucketShifts
+            .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+            .reduce((miles, shift) => {
+              const shiftStart = Number(shift.beginningMileage);
+              const shiftEnd = Number(shift.endingMileage);
+              return miles + getMileageRangeOverlapMiles(
+                shiftStart,
+                shiftEnd,
+                serviceStartOdometer,
+                serviceEndOdometer
+              );
+            }, 0);
+
+          return sum + (
+            bucketWorkMilesSinceService / periodWorkMilesSinceService
+          ) * periodAllocatedServiceCost;
+        }, 0);
+
+      const bucketNetProfit = bucketGrossPay - bucketFuelCost - bucketServiceCost;
+
+      return {
+          label: weekday.label,
+          fullLabel: weekday.fullLabel,
+          dayIndex: weekday.dayIndex,
+          hours: roundCurrency(bucketHours),
+          grossPay: roundCurrency(bucketGrossPay),
+          fuelCost: roundCurrency(bucketFuelCost),
+          serviceCost: roundCurrency(bucketServiceCost),
+          netProfit: roundCurrency(bucketNetProfit),
+          netPerHour: bucketHours > 0 ? bucketNetProfit / bucketHours : 0,
+        };
+    });
+    const bestDayGrossDiff = roundCurrency(
+      roundCurrency(totalGrossPay) -
+        roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.grossPay, 0))
+    );
+    const bestDayNetDiff = roundCurrency(
+      roundCurrency(trueNetProfit) -
+        roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.netProfit, 0))
+    );
+    const reconciliationTolerance = 0.005;
+
+    if (
+      bestDayData.length > 0 &&
+      (Math.abs(bestDayGrossDiff) > reconciliationTolerance ||
+        Math.abs(bestDayNetDiff) > reconciliationTolerance)
+    ) {
+      let reconciliationIndex = bestDayData.length - 1;
+
+      for (let index = bestDayData.length - 1; index >= 0; index -= 1) {
+        if (bestDayData[index].hours > 0) {
+          reconciliationIndex = index;
+          break;
+        }
+      }
+
+      bestDayData = bestDayData.map((bucket, index) => {
+        if (index !== reconciliationIndex) return bucket;
+
+        const grossPay = roundCurrency(bucket.grossPay + bestDayGrossDiff);
+        const netProfit = roundCurrency(bucket.netProfit + bestDayNetDiff);
+
+        return {
+          ...bucket,
+          grossPay,
+          netProfit,
+          netPerHour: bucket.hours > 0 ? netProfit / bucket.hours : 0,
+        };
+      });
+    }
+
+    const activeBestDayData = bestDayData.filter((bucket) => bucket.hours > 0);
+    const sortedBestDayData = [...activeBestDayData].sort(
+      (a, b) => b.netPerHour - a.netPerHour
+    );
+    const bestDayBucket = sortedBestDayData[0] ?? bestDayData[0];
+    const lowestDayBucket = [...activeBestDayData].sort(
+      (a, b) => a.netPerHour - b.netPerHour
+    )[0] ?? bestDayData[0];
+    const avgNetPerHour = totalHours > 0 ? trueNetProfit / totalHours : 0;
+    const hasEnoughBestDayData = activeBestDayData.length >= 2 && completedPeriodShifts.length >= 3;
+    const closeBestThreshold = Math.max(2, Math.abs(bestDayBucket.netPerHour) * 0.1);
+    const closeBestDays = sortedBestDayData.filter(
+      (bucket) => bestDayBucket.netPerHour - bucket.netPerHour <= closeBestThreshold
+    );
+    const bestDaysInsight = !hasEnoughBestDayData
+      ? "Add more completed shifts to reveal your best days to work."
+      : closeBestDays.length >= 2
+        ? `Your strongest days are ${closeBestDays[0].fullLabel} and ${closeBestDays[1].fullLabel}.`
+        : `You earn the most when you work on ${bestDayBucket.fullLabel}.`;
 
     /* Average MPG from selected-range full fill-up fuel entries that have an mpg value */
     const validMpgEntries = scopedPeriodFuel.filter(
@@ -744,7 +994,8 @@ export default function MetricsPage() {
       hourlyRate: totalHours > 0 ? trueNetProfit / totalHours : 0,
       profitPerDelivery: totalDeliveries > 0 ? trueNetProfit / totalDeliveries : 0,
       yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct, serviceCostPct,
-      periodSummaryData, maxPeriodSummaryValue, avgMpg, periodMpgEntryCount, warnings, openCycleMiles, fuelOnlyProfitPct,
+      bestDayData, bestDayBucket, lowestDayBucket, avgNetPerHour, bestDaysInsight,
+      hasEnoughBestDayData, avgMpg, periodMpgEntryCount, warnings, openCycleMiles, fuelOnlyProfitPct,
       hasData: completedPeriodShifts.length > 0 || totalAdjustments > 0,
     };
   }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedRange, selectedVehicleId]);
@@ -770,12 +1021,46 @@ export default function MetricsPage() {
     completedCycleFuelCost, openCycleFuelCostEstimate,
     profitPerDelivery,
     yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct,
-    periodSummaryData, maxPeriodSummaryValue, avgMpg, periodMpgEntryCount, warnings, openCycleMiles, fuelOnlyProfitPct,
+    bestDayData, bestDayBucket, lowestDayBucket, avgNetPerHour, bestDaysInsight,
+    hasEnoughBestDayData, avgMpg, periodMpgEntryCount, warnings, openCycleMiles, fuelOnlyProfitPct,
     hasData,
   } = metrics;
   const visibleServiceDetails = serviceDetails.filter(
     (service) => service.workMilesSinceService > 0 || service.allocatedServiceCost > 0
   );
+  const bestDaysChartHighestValue = Math.max(
+    ...bestDayData.map((bucket) => bucket.netPerHour),
+    avgNetPerHour,
+    0
+  );
+  const bestDaysChartYInterval = getProfitPerHourYAxisInterval(bestDaysChartHighestValue);
+  const bestDaysChartMaxValue = Math.max(
+    roundUpToInterval(bestDaysChartHighestValue, bestDaysChartYInterval),
+    bestDaysChartYInterval
+  );
+  const bestDaysChartYTicks = buildAxisTicks(bestDaysChartMaxValue, bestDaysChartYInterval);
+  const bestDaysChartWidth = 360;
+  const bestDaysChartHeight = 230;
+  const bestDaysChartLeft = 42;
+  const bestDaysChartRight = 16;
+  const bestDaysChartTop = 28;
+  const bestDaysChartPlotHeight = 138;
+  const bestDaysChartBottom = bestDaysChartTop + bestDaysChartPlotHeight;
+  const bestDaysChartPlotWidth = bestDaysChartWidth - bestDaysChartLeft - bestDaysChartRight;
+  const bestDaysChartBucketWidth = bestDaysChartPlotWidth / Math.max(bestDayData.length - 1, 1);
+  const getBestDaysChartX = (index: number) =>
+    bestDaysChartLeft + bestDaysChartBucketWidth * index;
+  const getBestDaysChartY = (value: number) =>
+    bestDaysChartBottom -
+    (Math.max(0, value) / bestDaysChartMaxValue) * bestDaysChartPlotHeight;
+  const bestDaysLinePoints = bestDayData.map((bucket, index) => ({
+    x: getBestDaysChartX(index),
+    y: getBestDaysChartY(bucket.netPerHour),
+  }));
+  const bestDaysLinePath = pointsToPath(bestDaysLinePoints);
+  const bestDaysAreaPath = bestDaysLinePoints.length > 0
+    ? `${bestDaysLinePath} L ${bestDaysLinePoints[bestDaysLinePoints.length - 1].x} ${bestDaysChartBottom} L ${bestDaysLinePoints[0].x} ${bestDaysChartBottom} Z`
+    : "";
 
   /* =========================================================
      RENDER
@@ -961,64 +1246,200 @@ export default function MetricsPage() {
               </section>
             </div>
 
-            {/* ── SECTION 3: PERIOD SUMMARY ── */}
-            {periodSummaryData.length > 0 && (
-              <div className="relative mt-6">
-                <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-purple-500" />
-                <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-                  <div className="mb-5 flex items-center justify-center gap-2">
-                    <h2 className="text-lg font-bold">Range Breakdown</h2>
-                    <span className="rounded-full bg-purple-950 px-2 py-0.5 text-xs text-purple-400">
-                      {selectedRange.label}
-                    </span>
+            {/* ── SECTION 3: BEST DAYS ── */}
+            <div className="relative mt-6">
+              <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-purple-500" />
+              <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-4 shadow-lg">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-bold tracking-tight">Best Days to Work</h2>
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-600 text-slate-400">
+                        <Info size={13} strokeWidth={2.4} />
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-400">Net profit per hour</p>
                   </div>
+                  <span className="mt-1 flex shrink-0 items-center gap-1 rounded-full bg-purple-950/80 px-3 py-1.5 text-xs font-semibold text-purple-300 shadow-[0_0_18px_rgba(168,85,247,0.18)]">
+                    {selectedRange.label}
+                    <ChevronDown size={14} strokeWidth={2.4} />
+                  </span>
+                </div>
 
-                  {/* BAR CHART — grey = gross, green = net */}
-                  <div className="flex items-end justify-center gap-2 overflow-x-auto pb-2">
-                    {periodSummaryData.map((m) => {
-                      const grossH = Math.max(
-                        Math.round((m.grossPay / maxPeriodSummaryValue) * 80),
-                        2
-                      );
-                      const netH = Math.max(
-                        Math.round((m.netProfit / maxPeriodSummaryValue) * 80),
-                        2
-                      );
+                <div className="pt-1">
+                  <svg
+                    className="block w-full"
+                    height={bestDaysChartHeight}
+                    viewBox={`0 0 ${bestDaysChartWidth} ${bestDaysChartHeight}`}
+                    role="img"
+                    aria-label="Net profit per hour by day of week"
+                  >
+                    <defs>
+                      <linearGradient id="best-days-area" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stopColor="rgb(168 85 247)" stopOpacity="0.34" />
+                        <stop offset="100%" stopColor="rgb(168 85 247)" stopOpacity="0.03" />
+                      </linearGradient>
+                      <filter id="best-days-glow" x="-30%" y="-30%" width="160%" height="160%">
+                        <feGaussianBlur stdDeviation="3" result="blur" />
+                        <feMerge>
+                          <feMergeNode in="blur" />
+                          <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                      </filter>
+                    </defs>
+                    {bestDaysChartYTicks.map((tick) => {
+                      const y = getBestDaysChartY(tick);
+
                       return (
-                        <div key={m.label} className="flex flex-col items-center gap-1">
-                          <div
-                            className="flex items-end gap-0.5"
-                            style={{ height: "80px" }}
+                        <g key={tick}>
+                          <line
+                            x1={bestDaysChartLeft}
+                            y1={y}
+                            x2={bestDaysChartWidth - bestDaysChartRight}
+                            y2={y}
+                            stroke={tick === 0 ? "rgb(51 65 85)" : "rgb(30 41 59)"}
+                            strokeWidth={tick === 0 ? "1.25" : "1"}
+                            strokeDasharray={tick === 0 ? undefined : "3 5"}
+                            opacity={tick === 0 ? 1 : 0.65}
+                          />
+                          <text
+                            x={bestDaysChartLeft - 7}
+                            y={y + 3}
+                            textAnchor="end"
+                            className="fill-slate-400 text-[11px]"
                           >
-                            <div
-                              className="w-4 rounded-t-sm bg-slate-600"
-                              style={{ height: `${grossH}px` }}
-                            />
-                            <div
-                              className="w-4 rounded-t-sm bg-emerald-500"
-                              style={{ height: `${netH}px` }}
-                            />
-                          </div>
-                          <span className="text-xs text-slate-400">{m.label}</span>
-                        </div>
+                            {fmtDollarPerHour(tick)}
+                          </text>
+                        </g>
                       );
                     })}
-                  </div>
 
-                  {/* CHART LEGEND */}
-                  <div className="mt-3 flex items-center justify-center gap-4">
-                    <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <span className="inline-block h-2 w-4 rounded-sm bg-slate-600" />
-                      Total Income
-                    </span>
-                    <span className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <span className="inline-block h-2 w-4 rounded-sm bg-emerald-500" />
-                      {fuelCostNeedsMpg ? "Profit pending fuel" : "True Net Profit"}
-                    </span>
+                    <path d={bestDaysAreaPath} fill="url(#best-days-area)" />
+                    <path
+                      d={bestDaysLinePath}
+                      fill="none"
+                      stroke="rgb(168 85 247)"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="3"
+                      filter="url(#best-days-glow)"
+                    />
+
+                    {bestDayData.map((bucket, index) => {
+                      const x = getBestDaysChartX(index);
+                      const y = getBestDaysChartY(bucket.netPerHour);
+                      const labelY = Math.max(8, y - 9);
+                      const labelX = Math.max(
+                        bestDaysChartLeft + 12,
+                        Math.min(bestDaysChartWidth - bestDaysChartRight - 12, x)
+                      );
+
+                      return (
+                        <g key={bucket.label}>
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r="4.5"
+                            fill="rgb(168 85 247)"
+                            stroke="rgb(15 23 42)"
+                            strokeWidth="2"
+                          />
+                          <text
+                            x={labelX}
+                            y={labelY}
+                            textAnchor="middle"
+                            className="fill-purple-300 text-[10px] font-semibold"
+                          >
+                            {fmtDollarPerHour(bucket.netPerHour)}
+                          </text>
+                          <text
+                            x={x}
+                            y={bestDaysChartHeight - 14}
+                            textAnchor="middle"
+                            className="fill-slate-400 text-[12px]"
+                          >
+                            {bucket.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+
+                <div className="mt-2 grid grid-cols-4 overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/70 shadow-inner shadow-black/20">
+                  {[
+                    {
+                      label: "Best Day",
+                      value: hasEnoughBestDayData ? bestDayBucket.fullLabel : "Need data",
+                      sub: hasEnoughBestDayData ? fmtDollarPerHour(bestDayBucket.netPerHour) : "$0/hr",
+                      Icon: TrendingUp,
+                      tone: "text-emerald-400",
+                      iconBg: "bg-emerald-500/10",
+                      iconBorder: "border-emerald-500/30",
+                    },
+                    {
+                      label: "Lowest Day",
+                      value: hasEnoughBestDayData ? lowestDayBucket.fullLabel : "Need data",
+                      sub: hasEnoughBestDayData ? fmtDollarPerHour(lowestDayBucket.netPerHour) : "$0/hr",
+                      Icon: TrendingDown,
+                      tone: "text-amber-400",
+                      iconBg: "bg-amber-500/10",
+                      iconBorder: "border-amber-500/30",
+                    },
+                    {
+                      label: "Total Hours",
+                      value: fmtCompactHours(totalHours),
+                      sub: "hrs",
+                      Icon: Clock,
+                      tone: "text-blue-400",
+                      iconBg: "bg-blue-500/10",
+                      iconBorder: "border-blue-500/30",
+                    },
+                    {
+                      label: "Avg Net / Hr",
+                      value: fmtDollarPerHour(avgNetPerHour),
+                      sub: "per hour",
+                      Icon: DollarSign,
+                      tone: "text-emerald-400",
+                      iconBg: "bg-emerald-500/10",
+                      iconBorder: "border-emerald-500/30",
+                    },
+                  ].map((stat, index) => (
+                    <div
+                      key={stat.label}
+                      className={`min-w-0 px-2 py-3 text-center ${
+                        index === 0 ? "" : "border-l border-slate-800"
+                      }`}
+                    >
+                      <span
+                        className={`mx-auto mb-2 hidden h-8 w-8 items-center justify-center rounded-full border sm:flex ${stat.iconBg} ${stat.iconBorder} ${stat.tone}`}
+                      >
+                        <stat.Icon size={16} strokeWidth={2.4} />
+                      </span>
+                      <p className="truncate text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                        {stat.label}
+                      </p>
+                      <p className={`mt-1 truncate text-sm font-bold ${stat.tone}`}>{stat.value}</p>
+                      <p className="truncate text-[11px] text-slate-300">{stat.sub}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex items-center gap-3 rounded-3xl border border-slate-800 bg-slate-950/70 p-4">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-purple-600/70 text-purple-50 shadow-[0_0_20px_rgba(147,51,234,0.28)]">
+                    <Lightbulb size={22} strokeWidth={2.1} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-white">{bestDaysInsight}</p>
+                    {hasEnoughBestDayData && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Focus your time on these days to maximize your take-home pay.
+                      </p>
+                    )}
                   </div>
-                </section>
-              </div>
-            )}
+                </div>
+              </section>
+            </div>
 
             {/* ── SECTION 4: TRUE COST VIEW ── */}
             <div className="relative mt-6">

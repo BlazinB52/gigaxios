@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 
 import {
+  calculateFuelEntryTotalCostFallback,
   FuelEntry,
   saveFuelEntries,
   loadFuelEntriesFromSupabase,
@@ -340,7 +341,10 @@ export default function FuelPage() {
       return;
     }
 
-    const calculatedTotalCost = Number(gallons) * Number(pricePerGallon);
+    const totalCost = calculateFuelEntryTotalCostFallback({
+      gallons,
+      pricePerGallon,
+    });
     const previousFuelMileage = await loadPreviousFuelMileageReading({
       userId: user.id,
       vehicleId: selectedVehicleId || undefined,
@@ -370,7 +374,8 @@ export default function FuelPage() {
       odometer,
       gallons,
       pricePerGallon,
-      totalCost: calculatedTotalCost.toFixed(2),
+      totalCost,
+      totalCostSource: "fallback",
       notes,
       isFullFillUp,
       overrideMileageValidation: mileageIsLower && allowMileageException,

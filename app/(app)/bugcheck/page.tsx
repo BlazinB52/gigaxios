@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
-import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import {
+  FuelEntry,
+  getFuelEntryTotalCost,
+  loadFuelEntriesFromSupabase,
+} from "@/app/lib/fuelStorage";
 import {
   ServiceEntry,
   ServiceInterval,
@@ -220,13 +224,6 @@ function FormulaCard({
       </dl>
     </article>
   );
-}
-
-function getFuelEntryCost(entry: FuelEntry): number {
-  const storedTotal = Number(entry.totalCost || 0);
-  if (storedTotal > 0) return storedTotal;
-
-  return Number(entry.gallons || 0) * Number(entry.pricePerGallon || 0);
 }
 
 function getFuelSortValue(entry: FuelEntry): number {
@@ -496,7 +493,7 @@ export default function BugcheckPage() {
     [scopedFuelEntries, selectedRange.rangeEnd, selectedRange.rangeStart]
   );
   const totalFuelPurchasedInRange = periodFuelEntries.reduce(
-    (sum, entry) => sum + getFuelEntryCost(entry),
+    (sum, entry) => sum + getFuelEntryTotalCost(entry),
     0
   );
 
@@ -670,7 +667,7 @@ export default function BugcheckPage() {
         const endOdometer = Number(endEntry.odometer || 0);
         const cycleMiles = endOdometer - startOdometer;
         const gallons = Number(endEntry.gallons || 0);
-        const fuelCost = getFuelEntryCost(endEntry);
+        const fuelCost = getFuelEntryTotalCost(endEntry);
 
         if (!(cycleMiles > 0)) continue;
 
@@ -1415,7 +1412,7 @@ export default function BugcheckPage() {
                           <td className="px-4 py-3 font-medium">{formatLongDate(entry.date)}</td>
                           <td className="px-4 py-3">{fmtNumber(Number(entry.odometer || 0), 0)}</td>
                           <td className="px-4 py-3">{fmtNumber(Number(entry.gallons || 0), 3)}</td>
-                          <td className="px-4 py-3">{fmtCurrency(getFuelEntryCost(entry))}</td>
+                          <td className="px-4 py-3">{fmtCurrency(getFuelEntryTotalCost(entry))}</td>
                           <td className="px-4 py-3">
                             <span
                               className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -1561,7 +1558,7 @@ export default function BugcheckPage() {
                                   </div>
                                   <div>
                                     {fmtNumber(Number(entry.gallons || 0), 3)} gal,{" "}
-                                    {fmtCurrency(getFuelEntryCost(entry))}
+                                    {fmtCurrency(getFuelEntryTotalCost(entry))}
                                   </div>
                                   <div>Excluded from MPG. Does not close cycle.</div>
                                 </div>
@@ -1637,7 +1634,7 @@ export default function BugcheckPage() {
                                 <div key={`fuel-audit-open-partial-${entry.id}`}>
                                   {formatLongDate(entry.date)} -{" "}
                                   {fmtNumber(Number(entry.odometer || 0), 0)} mi,{" "}
-                                  {fmtCurrency(getFuelEntryCost(entry))}
+                                  {fmtCurrency(getFuelEntryTotalCost(entry))}
                                 </div>
                               ))}
                             </div>
@@ -1772,7 +1769,7 @@ export default function BugcheckPage() {
                                   </div>
                                   <div>
                                     {fmtNumber(Number(entry.gallons || 0), 3)} gal,{" "}
-                                    {fmtCurrency(getFuelEntryCost(entry))}
+                                    {fmtCurrency(getFuelEntryTotalCost(entry))}
                                   </div>
                                   <div>Partial fill-up: excluded from MPG.</div>
                                 </div>
@@ -1834,7 +1831,7 @@ export default function BugcheckPage() {
                                 <div key={entry.id}>
                                   {formatLongDate(entry.date)} -{" "}
                                   {fmtNumber(Number(entry.odometer || 0), 0)} mi,{" "}
-                                  {fmtCurrency(getFuelEntryCost(entry))}
+                                  {fmtCurrency(getFuelEntryTotalCost(entry))}
                                 </div>
                               ))}
                             </div>

@@ -1,4 +1,4 @@
-import { FuelEntry } from "@/app/lib/fuelStorage";
+import { FuelEntry, getFuelEntryTotalCost } from "@/app/lib/fuelStorage";
 
 export type FuelCostResult = {
   workFuelCost: number;
@@ -25,7 +25,7 @@ function getFuelSortValue(entry: FuelEntry) {
 
 export function getAverageFuelPricePerGallon(fuelEntries: FuelEntry[]) {
   const totalFuelSpend = fuelEntries.reduce(
-    (total, entry) => total + toNumber(entry.totalCost),
+    (total, entry) => total + getFuelEntryTotalCost(entry),
     0
   );
   const totalGallons = fuelEntries.reduce(

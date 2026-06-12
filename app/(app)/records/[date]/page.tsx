@@ -5,10 +5,15 @@ import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import PlatformField from "@/app/components/PlatformField";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
-import { loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import {
+  calculateFuelEntryTotalCostFallback,
+  FuelEntry,
+  formatFuelEntryTotalCost,
+  getFuelEntryTotalCost,
+  loadFuelEntriesFromSupabase,
+} from "@/app/lib/fuelStorage";
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { SavedShift } from "@/app/lib/types";
-import { FuelEntry } from "@/app/lib/fuelStorage";
 import {
   DUPLICATE_SHIFT_MESSAGE,
   hasDuplicateClosedShift,
@@ -228,9 +233,13 @@ export default function DayDetailPage() {
   }
 
   async function handleUpdateFuel(fuel: FuelEntry) {
-    const totalCost = (
-      Number(editFuelGallons || 0) * Number(editFuelPricePerGallon || 0)
-    ).toFixed(2);
+    const totalCost =
+      fuel.totalCostSource === "stored"
+        ? formatFuelEntryTotalCost(fuel)
+        : calculateFuelEntryTotalCostFallback({
+            gallons: editFuelGallons,
+            pricePerGallon: editFuelPricePerGallon,
+          });
 
     const updated: FuelEntry = {
       ...fuel,
@@ -514,7 +523,7 @@ export default function DayDetailPage() {
                       </div>
 
                       <p className="mt-1 text-sm text-slate-400">
-                        {fuel.gallons} gal • ${fuel.pricePerGallon}/gal • {formatCurrency(Number(fuel.totalCost || 0))} total
+                        {fuel.gallons} gal • ${fuel.pricePerGallon}/gal • {formatCurrency(getFuelEntryTotalCost(fuel))} total
                       </p>
                       <p className="text-xs text-slate-500">Odometer: {fuel.odometer} mi</p>
 

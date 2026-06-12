@@ -25,7 +25,11 @@ import {
 } from "lucide-react";
 import { supabase } from "@/app/lib/supabaseClient";
 import { SavedShift } from "@/app/lib/types";
-import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import {
+  FuelEntry,
+  getFuelEntryTotalCost,
+  loadFuelEntriesFromSupabase,
+} from "@/app/lib/fuelStorage";
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import {
@@ -323,13 +327,6 @@ function getFuelVehicleKey(entry: FuelEntry): string {
   return entry.vehicleId || "unassigned";
 }
 
-function getFuelEntryCost(entry: FuelEntry): number {
-  const storedTotal = Number(entry.totalCost || 0);
-  if (storedTotal > 0) return storedTotal;
-
-  return Number(entry.gallons || 0) * Number(entry.pricePerGallon || 0);
-}
-
 /* =========================================================
    METRICS PAGE COMPONENT
    ========================================================= */
@@ -495,7 +492,7 @@ export default function MetricsPage() {
     const totalHours = completedPeriodShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
     const shiftGrossPay = completedPeriodShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0);
     const totalGrossPay = shiftGrossPay + totalAdjustments;
-    const totalFuelCost = scopedPeriodFuel.reduce((s, x) => s + Number(x.totalCost || 0), 0);
+    const totalFuelCost = scopedPeriodFuel.reduce((s, x) => s + getFuelEntryTotalCost(x), 0);
     const shiftsMissingBeginningMileage = completedPeriodShifts.filter(
       (shift) => !(Number(shift.beginningMileage) > 0)
     );
@@ -578,7 +575,7 @@ export default function MetricsPage() {
           endOdometer: Number(endFill.odometer || 0),
           fuelCostPerMile:
             Number(endFill.odometer || 0) > Number(startFill.odometer || 0)
-              ? getFuelEntryCost(endFill) /
+              ? getFuelEntryTotalCost(endFill) /
                 (Number(endFill.odometer || 0) - Number(startFill.odometer || 0))
               : 0,
         };

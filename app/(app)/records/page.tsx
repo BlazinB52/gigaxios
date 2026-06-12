@@ -4,10 +4,17 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
-import { loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
+import {
+    FuelEntry,
+    getFuelEntryTotalCost,
+    loadFuelEntriesFromSupabase,
+} from "@/app/lib/fuelStorage";
+import {
+    ServiceEntry,
+    loadServiceEntriesFromSupabase,
+} from "@/app/lib/garageStorage";
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { SavedShift, PayPeriod, PayAdjustment } from "@/app/lib/types";
-import { FuelEntry } from "@/app/lib/fuelStorage";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -69,11 +76,15 @@ const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 type DaySummary = {
     date: string;
     label: string;
+    fuelEntryCount: number;
+    fuelTotal: number;
     deliveries: number;
     hours: number;
     mileage: number;
     grossPay: number;
+    activityText: string;
     hasData: boolean;
+    hasShiftData: boolean;
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -83,6 +94,7 @@ export default function RecordsPage() {
     const [weekOffset, setWeekOffset] = useState(0);
     const [shifts, setShifts] = useState<SavedShift[]>([]);
     const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+    const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
     const [payPeriod, setPayPeriod] = useState<PayPeriod | null>(null);
     const [adjustments, setAdjustments] = useState<PayAdjustment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -97,9 +109,10 @@ export default function RecordsPage() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) { router.push("/login"); return; }
 
-            const [allShifts, allFuel, periodRes, adjRes] = await Promise.all([
+            const [allShifts, allFuel, allService, periodRes, adjRes] = await Promise.all([
                 loadShiftsFromSupabase(user.id),
                 loadFuelEntriesFromSupabase(user.id),
+                loadServiceEntriesFromSupabase(user.id),
                 supabase
                     .from("pay_periods")
                     .select("*")
@@ -115,6 +128,7 @@ export default function RecordsPage() {
 
             setShifts(allShifts);
             setFuelEntries(allFuel);
+            setServiceEntries(allService);
 
             if (periodRes.data) {
                 const p = periodRes.data;
@@ -212,6 +226,8 @@ export default function RecordsPage() {
     // Daily breakdown rows
     const daySummaries: DaySummary[] = weekDates.map((date, i) => {
         const dayShifts = shifts.filter((s) => toISODate(s.date) === date);
+        const dayFuelEntries = fuelEntries.filter((entry) => toISODate(entry.date) === date);
+        const dayServiceEntries = serviceEntries.filter((entry) => toISODate(entry.date) === date);
         const deliveries = dayShifts.reduce((sum, s) => sum + Number(s.deliveries || 0), 0);
         const hours = dayShifts.reduce((sum, s) => sum + Number(s.hoursWorked || 0), 0);
         const mileage = dayShifts.reduce(
@@ -219,14 +235,34 @@ export default function RecordsPage() {
             0
         );
         const grossPay = dayShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
+        const fuelTotal = dayFuelEntries.reduce(
+            (sum, entry) => sum + getFuelEntryTotalCost(entry),
+            0
+        );
+        const hasShiftData = dayShifts.length > 0;
+        const activityParts = [
+            dayFuelEntries.length > 0
+                ? `${dayFuelEntries.length} fuel entr${dayFuelEntries.length === 1 ? "y" : "ies"}`
+                : "",
+            dayServiceEntries.length > 0
+                ? `${dayServiceEntries.length} service entr${dayServiceEntries.length === 1 ? "y" : "ies"}`
+                : "",
+        ].filter(Boolean);
+
         return {
             date,
             label: DAY_NAMES[i],
+            fuelEntryCount: dayFuelEntries.length,
+            fuelTotal,
             deliveries,
             hours,
             mileage,
             grossPay,
-            hasData: dayShifts.length > 0,
+            activityText: hasShiftData
+                ? `${deliveries} deliveries • ${hours.toFixed(1)} hrs`
+                : activityParts.join(" • "),
+            hasData: hasShiftData || activityParts.length > 0,
+            hasShiftData,
         };
     });
 
@@ -423,7 +459,7 @@ export default function RecordsPage() {
                                         {day.hasData ? (
                                             <div>
                                                 <p className="text-xs text-slate-400">
-                                                    {day.deliveries} deliveries • {day.hours.toFixed(1)} hrs
+                                                    {day.activityText}
                                                 </p>
                                             </div>
                                         ) : (
@@ -433,7 +469,11 @@ export default function RecordsPage() {
 
                                     <div className="flex items-center gap-2">
                                         <span className={`text-sm font-bold ${day.hasData ? "text-white" : "text-slate-700"}`}>
-                                            {day.hasData ? formatCurrency(day.grossPay) : "—"}
+                                            {day.hasShiftData
+                                                ? formatCurrency(day.grossPay)
+                                                : day.fuelEntryCount > 0
+                                                    ? formatCurrency(day.fuelTotal)
+                                                    : "—"}
                                         </span>
                                         <span className="text-slate-600">›</span>
                                     </div>

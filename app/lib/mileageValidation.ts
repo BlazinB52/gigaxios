@@ -4,6 +4,10 @@ type MileageReading = {
   value: string | number | null | undefined;
 };
 
+type VehicleFilterQuery<TQuery> = {
+  eq(column: "vehicle_id", value: string): TQuery;
+};
+
 function toNumber(value: string | number | null | undefined) {
   if (typeof value === "string" && value.trim().length === 0) {
     return null;
@@ -21,12 +25,12 @@ function maxFromReadings(readings: MileageReading[]) {
   }, null);
 }
 
-function applyVehicleFilter<T>(
-  query: T,
+function applyVehicleFilter<TQuery extends VehicleFilterQuery<TQuery>>(
+  query: TQuery,
   vehicleId?: string
-): T {
+): TQuery {
   if (!vehicleId) return query;
-  return (query as { eq(column: string, value: string): T }).eq("vehicle_id", vehicleId);
+  return query.eq("vehicle_id", vehicleId);
 }
 
 export async function loadHighestMileageReading({

@@ -2,16 +2,15 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, Trash2 } from "lucide-react";
+import { ChevronLeft, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
   ServiceEntry,
   loadServiceEntriesFromSupabase,
   saveServiceEntryToSupabase,
+  updateServiceEntryInSupabase,
   deleteServiceEntryFromSupabase,
-  autoUpdateIntervalFromService,
-  clearIntervalLastDone,
-  generateRemindersFromIntervals,
+  recalculateIntervalLastDoneFromServices,
 } from "@/app/lib/garageStorage";
 import {
   SubscriptionAccessState,
@@ -52,6 +51,19 @@ function formatDate(dateStr: string): string {
   });
 }
 
+const SERVICE_TYPE_OPTIONS = [
+  "Oil Change",
+  "Tire Rotation",
+  "Brake Repair",
+  "Transmission Service",
+  "Battery Check",
+  "Tires",
+  "Wipers",
+  "Inspection",
+  "Registration Renewal",
+  "Other",
+];
+
 function ServicePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -67,6 +79,7 @@ function ServicePageInner() {
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
 
   const [showForm, setShowForm] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [serviceDate, setServiceDate] = useState(getTodayLocal());
   const [serviceType, setServiceType] = useState("");
   const [serviceOdometer, setServiceOdometer] = useState("");
@@ -143,43 +156,21 @@ function ServicePageInner() {
 
     await deleteServiceEntryFromSupabase(id);
 
-    if (deletedEntry) {
-      const entryVehicleId = deletedEntry.vehicleId || selectedVehicleId;
-
-      let remainingQuery = supabase
-        .from("service_entries")
-        .select("date, odometer")
-        .eq("user_id", userId)
-        .eq("service_type", deletedEntry.serviceType)
-        .order("date", { ascending: false })
-        .limit(1);
-
-      if (entryVehicleId) {
-        remainingQuery = remainingQuery.eq("vehicle_id", entryVehicleId);
-      }
-
-      const { data: remaining } = await remainingQuery;
-
-      if (remaining && remaining.length > 0) {
-        if (entryVehicleId) {
-          await autoUpdateIntervalFromService(
-            userId,
-            deletedEntry.serviceType,
-            parseFloat(remaining[0].odometer) || 0,
-            remaining[0].date,
-            entryVehicleId
-          );
-        }
-      } else {
-        await clearIntervalLastDone(userId, deletedEntry.serviceType, entryVehicleId);
-        if (entryVehicleId) {
-          await generateRemindersFromIntervals(userId, entryVehicleId);
-        }
-      }
+    const deletedVehicleId = deletedEntry?.vehicleId || selectedVehicleId;
+    if (deletedEntry && deletedVehicleId && deletedEntry.serviceType !== "Other") {
+      await recalculateIntervalLastDoneFromServices(
+        userId,
+        deletedEntry.serviceType,
+        deletedVehicleId
+      );
     }
 
     const updated = await loadServiceEntriesFromSupabase(userId, vehicleId || undefined);
     setServiceEntries(updated);
+    if (editingEntryId === id) {
+      resetServiceForm();
+      setShowForm(false);
+    }
   }
 
   async function handleSaveService() {
@@ -207,10 +198,14 @@ function ServicePageInner() {
 
     setShowMileageException(false);
 
+    const previousEntry = editingEntryId
+      ? serviceEntries.find((entry) => entry.id === editingEntryId) ?? null
+      : null;
+    const entryVehicleId = selectedVehicleId || previousEntry?.vehicleId || vehicleId || undefined;
     const entry: ServiceEntry = {
-      id: crypto.randomUUID(),
+      id: editingEntryId ?? crypto.randomUUID(),
       userId,
-      vehicleId: selectedVehicleId || undefined,
+      vehicleId: entryVehicleId,
       date: serviceDate,
       odometer: serviceOdometer,
       serviceType,
@@ -223,29 +218,27 @@ function ServicePageInner() {
           : null,
     };
 
-    await saveServiceEntryToSupabase(entry);
+    if (isEditing) {
+      await updateServiceEntryInSupabase(entry);
+    } else {
+      await saveServiceEntryToSupabase(entry);
+    }
 
-    if (serviceType !== "Other" && serviceOdometer && selectedVehicleId) {
-      await autoUpdateIntervalFromService(
+    if (previousEntry?.vehicleId && previousEntry.serviceType !== "Other") {
+      await recalculateIntervalLastDoneFromServices(
         userId,
-        serviceType,
-        parseFloat(serviceOdometer),
-        serviceDate,
-        selectedVehicleId
+        previousEntry.serviceType,
+        previousEntry.vehicleId
       );
+    }
+    if (entry.vehicleId && serviceType !== "Other") {
+      await recalculateIntervalLastDoneFromServices(userId, serviceType, entry.vehicleId);
     }
 
     const updated = await loadServiceEntriesFromSupabase(userId, vehicleId || undefined);
     setServiceEntries(updated);
 
-    setServiceDate(getTodayLocal());
-    setServiceType("");
-    setServiceOdometer("");
-    setServiceCost("");
-    setServiceNotes("");
-    setAllowMileageException(false);
-    setMileageExceptionReason("");
-    setShowMileageException(false);
+    resetServiceForm();
     setShowForm(false);
     setSaving(false);
   }
@@ -273,11 +266,39 @@ function ServicePageInner() {
 
   const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
   const trialRequired = accessState?.trialRequired ?? false;
+  const isEditing = editingEntryId !== null;
 
   function resetMileageException() {
     setShowMileageException(false);
     setAllowMileageException(false);
     setMileageExceptionReason("");
+  }
+
+  function resetServiceForm() {
+    setEditingEntryId(null);
+    setServiceDate(getTodayLocal());
+    setServiceType("");
+    setServiceOdometer("");
+    setServiceCost("");
+    setServiceNotes("");
+    setAllowMileageException(false);
+    setMileageExceptionReason("");
+    setShowMileageException(false);
+  }
+
+  function handleEditEntry(entry: ServiceEntry) {
+    if (trialRequired) return;
+    setEditingEntryId(entry.id);
+    setSelectedVehicleId(entry.vehicleId || vehicleId || selectedVehicleId);
+    setServiceDate(entry.date || getTodayLocal());
+    setServiceType(entry.serviceType);
+    setServiceOdometer(entry.odometer);
+    setServiceCost(entry.cost);
+    setServiceNotes(entry.notes);
+    setAllowMileageException(entry.overrideMileageValidation ?? false);
+    setMileageExceptionReason(entry.overrideMileageReason ?? "");
+    setShowMileageException(false);
+    setShowForm(true);
   }
 
   return (
@@ -339,13 +360,22 @@ function ServicePageInner() {
             <button
               onClick={() => {
                 if (trialRequired) return;
-                setShowForm((v) => !v);
+                if (showForm) {
+                  resetServiceForm();
+                  setShowForm(false);
+                } else {
+                  setShowForm(true);
+                }
               }}
               disabled={trialRequired}
               className="flex w-full items-center justify-between disabled:cursor-not-allowed"
             >
-              <p className="text-lg font-semibold text-white">Add Service</p>
-              <span className="text-2xl font-light text-blue-400">{trialRequired ? "" : showForm ? "−" : "+"}</span>
+              <p className="text-lg font-semibold text-white">
+                {isEditing ? "Edit Service" : "Add Service"}
+              </p>
+              <span className="text-2xl font-light text-blue-400">
+                {trialRequired ? "" : showForm ? "-" : "+"}
+              </span>
             </button>
 
             {showForm && (
@@ -380,16 +410,9 @@ function ServicePageInner() {
                   className={inputClass}
                 >
                   <option value="">Select service type</option>
-                  <option value="Oil Change">Oil Change</option>
-                  <option value="Tire Rotation">Tire Rotation</option>
-                  <option value="Brake Repair">Brake Repair</option>
-                  <option value="Transmission Service">Transmission Service</option>
-                  <option value="Battery Check">Battery Check</option>
-                  <option value="Tires">Tires</option>
-                  <option value="Wipers">Wipers</option>
-                  <option value="Inspection">Inspection</option>
-                  <option value="Registration Renewal">Registration Renewal</option>
-                  <option value="Other">Other</option>
+                  {SERVICE_TYPE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
                 </select>
 
                 <input
@@ -448,18 +471,17 @@ function ServicePageInner() {
                   disabled={saving || !serviceType || trialRequired}
                   className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
                 >
-                  {saving ? "Saving…" : trialRequired ? "Start Trial to Save Service" : "Save Service"}
+                  {saving
+                    ? "Saving..."
+                    : trialRequired
+                      ? "Start Trial to Save Service"
+                      : isEditing
+                        ? "Save Changes"
+                        : "Save Service"}
                 </button>
                 <button
                   onClick={() => {
-                    setServiceDate(getTodayLocal());
-                    setServiceType("");
-                    setServiceOdometer("");
-                    setServiceCost("");
-                    setServiceNotes("");
-                    setAllowMileageException(false);
-                    setMileageExceptionReason("");
-                    setShowMileageException(false);
+                    resetServiceForm();
                     setShowForm(false);
                   }}
                   className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300"
@@ -512,8 +534,19 @@ function ServicePageInner() {
                         )}
                       </div>
                       <button
+                        type="button"
+                        onClick={() => handleEditEntry(entry)}
+                        disabled={trialRequired}
+                        aria-label={`Edit ${entry.serviceType} service`}
+                        className="rounded-full border border-slate-700 bg-slate-900 p-2 text-slate-300 transition hover:border-blue-400 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDeleteEntry(entry.id)}
-                        className="text-slate-600 active:text-red-400"
+                        aria-label={`Delete ${entry.serviceType} service`}
+                        className="rounded-full border border-red-500/40 bg-red-950/30 p-2 text-red-300 transition hover:border-red-400 hover:bg-red-950/60 active:text-red-200"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

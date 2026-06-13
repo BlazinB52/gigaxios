@@ -462,8 +462,8 @@ export default function MetricsPage() {
     );
     const assignedVehicleServices = selectedVehicleId === "all"
       ? serviceEntries.filter(
-          (service) => !!service.vehicleId && selectedVehicleIds.includes(service.vehicleId)
-        )
+        (service) => !!service.vehicleId && selectedVehicleIds.includes(service.vehicleId)
+      )
       : serviceEntries.filter((service) => service.vehicleId === selectedVehicleId);
     const unassignedServiceRecords = selectedVehicleId === "all"
       ? serviceEntries.filter((service) => !service.vehicleId)
@@ -524,7 +524,7 @@ export default function MetricsPage() {
           fuelCostPerMile:
             Number(endFill.odometer || 0) > Number(startFill.odometer || 0)
               ? getFuelEntryTotalCost(endFill) /
-                (Number(endFill.odometer || 0) - Number(startFill.odometer || 0))
+              (Number(endFill.odometer || 0) - Number(startFill.odometer || 0))
               : 0,
         };
       }).filter((cycle) => cycle.endOdometer > cycle.startOdometer);
@@ -631,92 +631,92 @@ export default function MetricsPage() {
       const bucketShifts = completedPeriodShifts.filter(
         (shift) => parseShiftDate(shift.date).getDay() === weekday.dayIndex
       );
-        const bucketShiftGrossPay = bucketShifts.reduce(
-          (sum, shift) => sum + Number(shift.grossPay || 0),
-          0
+      const bucketShiftGrossPay = bucketShifts.reduce(
+        (sum, shift) => sum + Number(shift.grossPay || 0),
+        0
+      );
+      const bucketHours = bucketShifts.reduce(
+        (sum, shift) => sum + Number(shift.hoursWorked || 0),
+        0
+      );
+      const bucketAdjustments = totalHours > 0
+        ? totalAdjustments * (bucketHours / totalHours)
+        : 0;
+      const bucketGrossPay = bucketShiftGrossPay + bucketAdjustments;
+
+      const bucketFuelCost = bucketShifts.reduce((sum, shift) => {
+        const begin = Number(shift.beginningMileage);
+        const end = Number(shift.endingMileage);
+        const miles = begin > 0 && end > begin ? end - begin : 0;
+        return sum + miles * fuelCostPerMile;
+      }, 0);
+
+      const bucketServiceCost = assignedVehicleServices.reduce((sum, service) => {
+        const serviceCost = Number(service.cost || 0);
+        const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
+        if (!(serviceCost > 0) || !intervalMileage) return sum;
+
+        const serviceStartOdometer = Number(service.odometer || 0);
+        const serviceEndOdometer = serviceStartOdometer + intervalMileage;
+        const serviceVehicleKey = service.vehicleId || "unassigned";
+        const costPerMile = serviceCost / intervalMileage;
+        const periodWorkMilesSinceService = completedPeriodShifts
+          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+          .reduce((miles, shift) => {
+            const shiftStart = Number(shift.beginningMileage);
+            const shiftEnd = Number(shift.endingMileage);
+            return miles + getMileageRangeOverlapMiles(
+              shiftStart,
+              shiftEnd,
+              serviceStartOdometer,
+              serviceEndOdometer
+            );
+          }, 0);
+        if (!(periodWorkMilesSinceService > 0)) return sum;
+
+        const periodAllocatedServiceCost = Math.min(
+          serviceCost,
+          periodWorkMilesSinceService * costPerMile
         );
-        const bucketHours = bucketShifts.reduce(
-          (sum, shift) => sum + Number(shift.hoursWorked || 0),
-          0
-        );
-        const bucketAdjustments = totalHours > 0
-          ? totalAdjustments * (bucketHours / totalHours)
-          : 0;
-        const bucketGrossPay = bucketShiftGrossPay + bucketAdjustments;
+        const bucketWorkMilesSinceService = bucketShifts
+          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+          .reduce((miles, shift) => {
+            const shiftStart = Number(shift.beginningMileage);
+            const shiftEnd = Number(shift.endingMileage);
+            return miles + getMileageRangeOverlapMiles(
+              shiftStart,
+              shiftEnd,
+              serviceStartOdometer,
+              serviceEndOdometer
+            );
+          }, 0);
 
-        const bucketFuelCost = bucketShifts.reduce((sum, shift) => {
-          const begin = Number(shift.beginningMileage);
-          const end = Number(shift.endingMileage);
-          const miles = begin > 0 && end > begin ? end - begin : 0;
-          return sum + miles * fuelCostPerMile;
-        }, 0);
-
-        const bucketServiceCost = assignedVehicleServices.reduce((sum, service) => {
-          const serviceCost = Number(service.cost || 0);
-          const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
-          if (!(serviceCost > 0) || !intervalMileage) return sum;
-
-          const serviceStartOdometer = Number(service.odometer || 0);
-          const serviceEndOdometer = serviceStartOdometer + intervalMileage;
-          const serviceVehicleKey = service.vehicleId || "unassigned";
-          const costPerMile = serviceCost / intervalMileage;
-          const periodWorkMilesSinceService = completedPeriodShifts
-            .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
-            .reduce((miles, shift) => {
-              const shiftStart = Number(shift.beginningMileage);
-              const shiftEnd = Number(shift.endingMileage);
-              return miles + getMileageRangeOverlapMiles(
-                shiftStart,
-                shiftEnd,
-                serviceStartOdometer,
-                serviceEndOdometer
-              );
-            }, 0);
-          if (!(periodWorkMilesSinceService > 0)) return sum;
-
-          const periodAllocatedServiceCost = Math.min(
-            serviceCost,
-            periodWorkMilesSinceService * costPerMile
-          );
-          const bucketWorkMilesSinceService = bucketShifts
-            .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
-            .reduce((miles, shift) => {
-              const shiftStart = Number(shift.beginningMileage);
-              const shiftEnd = Number(shift.endingMileage);
-              return miles + getMileageRangeOverlapMiles(
-                shiftStart,
-                shiftEnd,
-                serviceStartOdometer,
-                serviceEndOdometer
-              );
-            }, 0);
-
-          return sum + (
-            bucketWorkMilesSinceService / periodWorkMilesSinceService
-          ) * periodAllocatedServiceCost;
-        }, 0);
+        return sum + (
+          bucketWorkMilesSinceService / periodWorkMilesSinceService
+        ) * periodAllocatedServiceCost;
+      }, 0);
 
       const bucketNetProfit = bucketGrossPay - bucketFuelCost - bucketServiceCost;
 
       return {
-          label: weekday.label,
-          fullLabel: weekday.fullLabel,
-          dayIndex: weekday.dayIndex,
-          hours: roundCurrency(bucketHours),
-          grossPay: roundCurrency(bucketGrossPay),
-          fuelCost: roundCurrency(bucketFuelCost),
-          serviceCost: roundCurrency(bucketServiceCost),
-          netProfit: roundCurrency(bucketNetProfit),
-          netPerHour: bucketHours > 0 ? bucketNetProfit / bucketHours : 0,
-        };
+        label: weekday.label,
+        fullLabel: weekday.fullLabel,
+        dayIndex: weekday.dayIndex,
+        hours: roundCurrency(bucketHours),
+        grossPay: roundCurrency(bucketGrossPay),
+        fuelCost: roundCurrency(bucketFuelCost),
+        serviceCost: roundCurrency(bucketServiceCost),
+        netProfit: roundCurrency(bucketNetProfit),
+        netPerHour: bucketHours > 0 ? bucketNetProfit / bucketHours : 0,
+      };
     });
     const bestDayGrossDiff = roundCurrency(
       roundCurrency(totalGrossPay) -
-        roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.grossPay, 0))
+      roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.grossPay, 0))
     );
     const bestDayNetDiff = roundCurrency(
       roundCurrency(trueNetProfit) -
-        roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.netProfit, 0))
+      roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.netProfit, 0))
     );
     const reconciliationTolerance = 0.005;
 
@@ -966,9 +966,9 @@ export default function MetricsPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: "Deliveries",    value: totalDeliveries.toLocaleString(),    sub: "Total" },
-                    { label: "Hours Worked",  value: totalHours.toFixed(2),               sub: "Total" },
-                    { label: "Total Income",  value: fmtDollar(totalGrossPay),            sub: "Shift gross + adjustments" },
+                    { label: "Deliveries", value: totalDeliveries.toLocaleString(), sub: "Total" },
+                    { label: "Hours Worked", value: totalHours.toFixed(2), sub: "Total" },
+                    { label: "Total Income", value: fmtDollar(totalGrossPay), sub: "Shift gross + adjustments" },
                     ...(totalAdjustments !== 0
                       ? [{ label: "Pay Adjustments", value: fmtDollar(totalAdjustments), sub: "Pay records" }]
                       : []),
@@ -978,12 +978,17 @@ export default function MetricsPage() {
                       sub: fuelCostNeedsMpg ? "Add full-fill history" : "MPG x fuel price",
                     },
                     {
+                      label: "Service Cost",
+                      value: fmtDollar(businessServiceCost),
+                      sub: "Mileage-based allocation",
+                    },
+                    {
                       label: "True Net Profit",
                       value: fmtDollar(netProfit),
                       sub: fuelCostNeedsMpg ? "Fuel cost pending" : "After fuel + service",
                       emerald: true,
                     },
-                    { label: "Per Delivery",  value: fmtDollar(profitPerDelivery),        sub: "Average" },
+                    { label: "Per Delivery", value: fmtDollar(profitPerDelivery), sub: "Average" },
                   ].map(({ label, value, sub, emerald }) => (
                     <div
                       key={label}
@@ -1076,9 +1081,8 @@ export default function MetricsPage() {
                     </div>
                     <p className="mt-1 text-sm text-slate-400">Net profit per hour</p>
                   </div>
-                  <span className="mt-1 flex shrink-0 items-center gap-1 rounded-full bg-purple-950/80 px-3 py-1.5 text-xs font-semibold text-purple-300 shadow-[0_0_18px_rgba(168,85,247,0.18)]">
+                  <span className="mt-1 flex shrink-0 items-center rounded-full bg-purple-950/80 px-3 py-1.5 text-xs font-semibold text-purple-300 shadow-[0_0_18px_rgba(168,85,247,0.18)]">
                     {selectedRange.label}
-                    <ChevronDown size={14} strokeWidth={2.4} />
                   </span>
                 </div>
 
@@ -1223,9 +1227,8 @@ export default function MetricsPage() {
                   ].map((stat, index) => (
                     <div
                       key={stat.label}
-                      className={`min-w-0 px-2 py-3 text-center ${
-                        index === 0 ? "" : "border-l border-slate-800"
-                      }`}
+                      className={`min-w-0 px-2 py-3 text-center ${index === 0 ? "" : "border-l border-slate-800"
+                        }`}
                     >
                       <span
                         className={`mx-auto mb-2 hidden h-8 w-8 items-center justify-center rounded-full border sm:flex ${stat.iconBg} ${stat.iconBorder} ${stat.tone}`}

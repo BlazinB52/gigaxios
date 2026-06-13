@@ -130,6 +130,29 @@ export async function saveServiceEntryToSupabase(entry: ServiceEntry) {
   }
 }
 
+export async function updateServiceEntryInSupabase(entry: ServiceEntry) {
+  const { error } = await supabase
+    .from("service_entries")
+    .update({
+      vehicle_id: entry.vehicleId || null,
+      date: entry.date,
+      odometer: entry.odometer || null,
+      service_type: entry.serviceType,
+      cost: entry.cost || null,
+      notes: entry.notes,
+      override_mileage_validation: entry.overrideMileageValidation ?? false,
+      override_mileage_reason: entry.overrideMileageValidation
+        ? entry.overrideMileageReason || null
+        : null,
+    })
+    .eq("id", entry.id)
+    .eq("user_id", entry.userId);
+
+  if (error) {
+    console.error("Supabase service update error:", error.message);
+  }
+}
+
 export async function loadMaintenanceRemindersFromSupabase(
   userId: string,
   vehicleId?: string
@@ -522,7 +545,7 @@ export async function autoUpdateIntervalFromService(
       service_type: serviceType,
       interval_miles: defaults.intervalMiles,
       interval_months: defaults.intervalMonths,
-      last_done_odometer: isDateBased ? null : odometer,
+      last_done_odometer: odometer,
       last_done_date: isDateBased ? serviceDate : null,
     });
     if (error) console.error("autoUpdateInterval insert error:", error.message);
@@ -548,4 +571,52 @@ export async function clearIntervalLastDone(
 
   const { error } = await query;
   if (error) console.error("Clear interval error:", error.message);
+}
+
+export async function recalculateIntervalLastDoneFromServices(
+  userId: string,
+  serviceType: string,
+  vehicleId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("service_entries")
+    .select("date, odometer")
+    .eq("user_id", userId)
+    .eq("vehicle_id", vehicleId)
+    .eq("service_type", serviceType);
+
+  if (error) {
+    console.error("Recalculate interval last done error:", error.message);
+    return;
+  }
+
+  const latestEntry = (data ?? []).reduce<{
+    date: string;
+    odometer: number;
+  } | null>((latest, entry) => {
+    const odometer = Number(entry.odometer || 0);
+    if (odometer <= 0) return latest;
+
+    const serviceDate = entry.date || "";
+    if (!latest) return { date: serviceDate, odometer };
+    if (odometer > latest.odometer) return { date: serviceDate, odometer };
+    if (odometer === latest.odometer && serviceDate > latest.date) {
+      return { date: serviceDate, odometer };
+    }
+
+    return latest;
+  }, null);
+
+  if (latestEntry) {
+    await autoUpdateIntervalFromService(
+      userId,
+      serviceType,
+      latestEntry.odometer,
+      latestEntry.date,
+      vehicleId
+    );
+  } else {
+    await clearIntervalLastDone(userId, serviceType, vehicleId);
+    await generateRemindersFromIntervals(userId, vehicleId);
+  }
 }

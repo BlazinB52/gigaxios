@@ -24,7 +24,7 @@ const DEFAULT_INTERVALS: Array<{
 }> = [
   { serviceType: "Oil Change",            intervalMiles: 5000,  intervalMonths: null },
   { serviceType: "Tire Rotation",         intervalMiles: 5000,  intervalMonths: null },
-  { serviceType: "Brake Inspection",      intervalMiles: 20000, intervalMonths: null },
+  { serviceType: "Brake Repair",      intervalMiles: 20000, intervalMonths: null },
   { serviceType: "Transmission Service",  intervalMiles: 40000, intervalMonths: null },
   { serviceType: "Battery Check",         intervalMiles: 50000, intervalMonths: null },
   { serviceType: "Tires",                 intervalMiles: 50000, intervalMonths: null },

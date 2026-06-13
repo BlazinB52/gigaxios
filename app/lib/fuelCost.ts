@@ -8,6 +8,23 @@ export type FuelCostResult = {
   source: "actual_history" | "vehicle_estimate" | "unavailable";
 };
 
+export type CompletedFuelEfficiencyCycle = {
+  cycleMiles: number;
+  gallons: number;
+  fuelCost: number;
+};
+
+export type SimpleWorkFuelCostResult = {
+  workMiles: number;
+  averageMpg: number;
+  averageFuelPricePerGallon: number;
+  estimatedGallonsUsed: number;
+  workFuelCost: number;
+  effectiveCostPerMile: number;
+  cycleCount: number;
+  needsMpg: boolean;
+};
+
 const RECENT_FUEL_HISTORY_LIMIT = 5;
 
 function toNumber(value: string | number | undefined | null) {
@@ -34,6 +51,48 @@ export function getAverageFuelPricePerGallon(fuelEntries: FuelEntry[]) {
   );
 
   return totalGallons > 0 ? totalFuelSpend / totalGallons : 0;
+}
+
+export function calculateSimpleWorkFuelCost({
+  workMiles,
+  completedFuelCycles,
+}: {
+  workMiles: number;
+  completedFuelCycles: CompletedFuelEfficiencyCycle[];
+}): SimpleWorkFuelCostResult {
+  const usableCycles = completedFuelCycles.filter(
+    (cycle) => cycle.cycleMiles > 0 && cycle.gallons > 0 && cycle.fuelCost > 0
+  );
+  const totalCycleMiles = usableCycles.reduce(
+    (total, cycle) => total + cycle.cycleMiles,
+    0
+  );
+  const totalGallons = usableCycles.reduce(
+    (total, cycle) => total + cycle.gallons,
+    0
+  );
+  const totalFuelCost = usableCycles.reduce(
+    (total, cycle) => total + cycle.fuelCost,
+    0
+  );
+  const averageMpg = totalGallons > 0 ? totalCycleMiles / totalGallons : 0;
+  const averageFuelPricePerGallon =
+    totalGallons > 0 ? totalFuelCost / totalGallons : 0;
+  const estimatedGallonsUsed =
+    averageMpg > 0 ? Math.max(0, workMiles) / averageMpg : 0;
+  const workFuelCost = estimatedGallonsUsed * averageFuelPricePerGallon;
+
+  return {
+    workMiles,
+    averageMpg,
+    averageFuelPricePerGallon,
+    estimatedGallonsUsed,
+    workFuelCost,
+    effectiveCostPerMile:
+      averageMpg > 0 ? averageFuelPricePerGallon / averageMpg : 0,
+    cycleCount: usableCycles.length,
+    needsMpg: usableCycles.length === 0 || averageMpg <= 0 || averageFuelPricePerGallon <= 0,
+  };
 }
 
 export function calculateWorkFuelCost({

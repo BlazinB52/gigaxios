@@ -382,7 +382,7 @@ function ServicePageInner() {
                   <option value="">Select service type</option>
                   <option value="Oil Change">Oil Change</option>
                   <option value="Tire Rotation">Tire Rotation</option>
-                  <option value="Brake Inspection">Brake Inspection</option>
+                  <option value="Brake Repair">Brake Repair</option>
                   <option value="Transmission Service">Transmission Service</option>
                   <option value="Battery Check">Battery Check</option>
                   <option value="Tires">Tires</option>

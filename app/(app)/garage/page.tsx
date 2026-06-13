@@ -143,7 +143,7 @@ function computeHealthStatus(
 const HEALTH_INDICATORS = [
   { label: "Oil Life", serviceType: "Oil Change",       icon: "🛢️" },
   { label: "Tires",    serviceType: "Tires",            icon: "🔄" },
-  { label: "Brakes",   serviceType: "Brake Inspection", icon: "🔵" },
+  { label: "Brakes",   serviceType: "Brake Repair", icon: "🔵" },
   { label: "Battery",  serviceType: "Battery Check",    icon: "🔋" },
 ];
 

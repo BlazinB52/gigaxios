@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
-import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
+import {
+  calculateSimpleWorkFuelCost,
+  calculateWorkFuelCost,
+} from "@/app/lib/fuelCost";
 import {
   FuelEntry,
   getFuelEntryTotalCost,
@@ -492,11 +495,6 @@ export default function BugcheckPage() {
         .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0)),
     [scopedFuelEntries, selectedRange.rangeEnd, selectedRange.rangeStart]
   );
-  const totalFuelPurchasedInRange = periodFuelEntries.reduce(
-    (sum, entry) => sum + getFuelEntryTotalCost(entry),
-    0
-  );
-
   const chronologicalPeriodFuelEntries = useMemo(
     () =>
       scopedFuelEntries
@@ -533,38 +531,6 @@ export default function BugcheckPage() {
     const ending = Number(shift.endingMileage || 0);
     return sum + Math.max(0, ending - beginning);
   }, 0);
-  const fuelOdometerSpans = selectedPeriodVehicleKeys.map((vehicleKey) => {
-    const vehicleFuelEntries = periodFuelEntries
-      .filter((entry) => getRecordVehicleKey(entry) === vehicleKey)
-      .sort((a, b) => Number(a.odometer || 0) - Number(b.odometer || 0));
-    const firstFuelOdometer = Number(vehicleFuelEntries[0]?.odometer || 0);
-    const lastFuelOdometer = Number(vehicleFuelEntries[vehicleFuelEntries.length - 1]?.odometer || 0);
-
-    return {
-      vehicleKey,
-      count: vehicleFuelEntries.length,
-      firstFuelOdometer,
-      lastFuelOdometer,
-      miles:
-        vehicleFuelEntries.length >= 2
-          ? Math.max(0, lastFuelOdometer - firstFuelOdometer)
-          : 0,
-    };
-  });
-  const firstFuelOdometer = fuelOdometerSpans[0]?.firstFuelOdometer ?? 0;
-  const lastFuelOdometer = fuelOdometerSpans[0]?.lastFuelOdometer ?? 0;
-  const totalFuelOdometerMiles = fuelOdometerSpans.reduce(
-    (sum, span) => sum + span.miles,
-    0
-  );
-  const businessUse =
-    totalFuelOdometerMiles > 0 ? workMiles / totalFuelOdometerMiles : 0;
-  const businessUseWarning =
-    workMiles > totalFuelOdometerMiles
-      ? `Work miles (${fmtNumber(workMiles)}) are greater than total fuel odometer miles (${fmtNumber(
-          totalFuelOdometerMiles
-        )}). Business Use % is not shown.`
-      : "";
   const vehicleFuelCostResults = selectedPeriodVehicleKeys.map((vehicleKey) => {
     const vehicleShifts = completedPeriodShifts.filter(
       (shift) => getShiftCycleVehicleKey(shift) === vehicleKey
@@ -588,36 +554,6 @@ export default function BugcheckPage() {
       result,
     };
   });
-  const recentFuelCostResult = {
-    workFuelCost: vehicleFuelCostResults.reduce(
-      (sum, item) => sum + item.result.workFuelCost,
-      0
-    ),
-    effectiveCostPerMile:
-      workMiles > 0
-        ? vehicleFuelCostResults.reduce(
-            (sum, item) => sum + item.result.workFuelCost,
-            0
-          ) / workMiles
-        : 0,
-    isEstimated: vehicleFuelCostResults.some((item) => item.result.isEstimated),
-    needsMpg:
-      vehicleFuelCostResults.length === 0 ||
-      vehicleFuelCostResults.some((item) => item.result.needsMpg),
-    source: vehicleFuelCostResults.some((item) => item.result.source === "actual_history")
-      ? "actual_history"
-      : vehicleFuelCostResults.some((item) => item.result.source === "vehicle_estimate")
-        ? "vehicle_estimate"
-        : "unavailable",
-  };
-  const validMpgEntries = periodFuelEntries.filter(
-    (entry) => (entry.isFullFillUp ?? true) && entry.mpg && entry.mpg > 0
-  );
-  const avgMpg =
-    validMpgEntries.length > 0
-      ? validMpgEntries.reduce((sum, entry) => sum + (entry.mpg ?? 0), 0) /
-        validMpgEntries.length
-      : 0;
   function getLatestKnownOdometer(vehicleId?: string): number {
     const odometerValues = [
       ...fuelEntries
@@ -715,6 +651,41 @@ export default function BugcheckPage() {
       return Number(b.endEntry.odometer || 0) - Number(a.endEntry.odometer || 0);
     });
   }, [closedShifts, scopedFuelEntries]);
+  const periodFuelCycleCoverage = useMemo(
+    () =>
+      completedFuelCycles.filter((cycle) =>
+        isDateInRange(cycle.endEntry.date, selectedRange.rangeStart, selectedRange.rangeEnd)
+      ),
+    [completedFuelCycles, selectedRange.rangeEnd, selectedRange.rangeStart]
+  );
+  const totalFuelOdometerMiles = periodFuelCycleCoverage.reduce(
+    (sum, cycle) => sum + cycle.cycleMiles,
+    0
+  );
+  const fuelCycleCoverageValues =
+    periodFuelCycleCoverage.length > 0
+      ? periodFuelCycleCoverage
+          .map(
+            (cycle) =>
+              `${fmtNumber(Number(cycle.endEntry.odometer || 0), 0)} - ${fmtNumber(
+                Number(cycle.startEntry.odometer || 0),
+                0
+              )}`
+          )
+          .join(" + ")
+      : "No completed full-fill cycles closing in range";
+  const primaryFuelCostResult = calculateSimpleWorkFuelCost({
+    workMiles,
+    completedFuelCycles: periodFuelCycleCoverage,
+  });
+  const businessUse =
+    totalFuelOdometerMiles > 0 ? workMiles / totalFuelOdometerMiles : 0;
+  const businessUseWarning =
+    workMiles > totalFuelOdometerMiles
+      ? `Work miles (${fmtNumber(workMiles)}) are greater than completed fuel-cycle odometer miles (${fmtNumber(
+          totalFuelOdometerMiles
+        )}). Business Use final verification is pending for open-cycle miles.`
+      : "";
   const verifiedCompletedFuelCycles = useMemo<CompletedFuelCycle[]>(
     () =>
       completedFuelCycles
@@ -782,48 +753,20 @@ export default function BugcheckPage() {
     (sum, vehicle) => sum + vehicle.result.workFuelCost,
     0
   );
-  const fuelCostNeedsMpg =
-    workMiles > 0 &&
-    openCycleFuelEstimateResults.some(
-      (vehicle) => vehicle.openCycleWorkMiles > 0 && vehicle.result.needsMpg
-    );
+  const fuelCostNeedsMpg = workMiles > 0 && primaryFuelCostResult.needsMpg;
   const fuelCostResult = {
-    workFuelCost: fuelCostNeedsMpg
-      ? completedCycleFuelCost
-      : completedCycleFuelCost + openCycleFuelCostEstimate,
-    effectiveCostPerMile:
-      workMiles > 0
-        ? (fuelCostNeedsMpg
-            ? completedCycleFuelCost
-            : completedCycleFuelCost + openCycleFuelCostEstimate) / workMiles
-        : 0,
+    workFuelCost: primaryFuelCostResult.workFuelCost,
+    effectiveCostPerMile: primaryFuelCostResult.effectiveCostPerMile,
+    averageMpg: primaryFuelCostResult.averageMpg,
+    averageFuelPricePerGallon: primaryFuelCostResult.averageFuelPricePerGallon,
+    estimatedGallonsUsed: primaryFuelCostResult.estimatedGallonsUsed,
+    cycleCount: primaryFuelCostResult.cycleCount,
     completedCycleFuelCost,
     openCycleFuelCostEstimate,
-    isEstimated:
-      openCycleUnverifiedWorkMiles > 0 ||
-      verifiedCompletedFuelCycles.length === 0 ||
-      recentFuelCostResult.isEstimated,
+    isEstimated: true,
     needsMpg: fuelCostNeedsMpg,
-    source:
-      completedCycleFuelCost > 0
-        ? openCycleUnverifiedWorkMiles > 0
-          ? "cycle_summed_plus_open_estimate"
-          : "cycle_summed"
-        : openCycleFuelEstimateResults.some(
-              (vehicle) => vehicle.result.source === "actual_history"
-            )
-          ? "open_cycle_actual_history_estimate"
-          : openCycleFuelEstimateResults.some(
-                (vehicle) => vehicle.result.source === "vehicle_estimate"
-              )
-            ? "open_cycle_vehicle_estimate"
-            : "unavailable",
+    source: fuelCostNeedsMpg ? "unavailable" : "average_mpg_and_price",
   };
-  const workFuelCostWarning =
-    !fuelCostResult.needsMpg &&
-    fuelCostResult.workFuelCost > totalFuelPurchasedInRange
-      ? "Work fuel cost exceeds fuel purchased in this range. This may indicate open-cycle timing or cost-per-mile overstatement."
-      : "";
   const openFuelCycles = useMemo(() => {
     const fuelByVehicle = new Map<string, FuelEntry[]>();
 
@@ -1065,7 +1008,7 @@ export default function BugcheckPage() {
       warnings.push({
         title: "Work Miles Greater Than Total Fuel Miles",
         description:
-          "Business Use cannot be verified because work miles exceed the fuel odometer span.",
+          "Business Use cannot be fully verified because work miles exceed completed fuel-cycle coverage.",
         detail: `${fmtNumber(workMiles)} work miles > ${fmtNumber(
           totalFuelOdometerMiles
         )} fuel odometer miles.`,
@@ -1282,11 +1225,11 @@ export default function BugcheckPage() {
             />
             <FormulaCard
               title="Total Fuel Odometer Miles"
-              purpose="Odometer span covered by fuel entries in the selected range."
-              formula="last fuel odometer - first fuel odometer"
-              values={`${fmtNumber(lastFuelOdometer, 0)} - ${fmtNumber(firstFuelOdometer, 0)}`}
+              purpose="Completed fuel-cycle odometer coverage for cycles whose closing full fill-up is in the selected range."
+              formula="sum(closing full-fill odometer - previous full-fill odometer)"
+              values={fuelCycleCoverageValues}
               result={`${fmtNumber(totalFuelOdometerMiles)} miles`}
-              source={`fuel_entries count: ${periodFuelEntries.length}`}
+              source={`${periodFuelCycleCoverage.length} completed fuel cycle${periodFuelCycleCoverage.length === 1 ? "" : "s"} closing in range`}
             />
             <FormulaCard
               title="Business Use %"
@@ -1310,66 +1253,53 @@ export default function BugcheckPage() {
 
           <div className="grid grid-cols-3 gap-5">
             <FormulaCard
-              title="Fuel Cost Per Mile"
-              purpose="Blended per-mile fuel cost from the final selected-range fuel model."
-              formula="Total Work Fuel Cost / Work Miles"
-              values={`${validMpgEntries.length} full fill-up MPG entries with cost-per-mile history`}
-              result={
-                fuelCostResult.needsMpg
-                  ? "Pending"
-                  : `${fmtCurrency(fuelCostResult.effectiveCostPerMile)}/mi`
-              }
-              source={`fuel model source: ${fuelCostResult.source}`}
+              title="Selected-Range Work Miles"
+              purpose="Work miles driven during completed shifts in the selected range."
+              formula="sum(ending_mileage - beginning_mileage)"
+              values={`${completedPeriodShifts.length} closed shifts`}
+              result={`${fmtNumber(workMiles)} miles`}
+              source="Shift mileage"
             />
             <FormulaCard
-              title="Completed-Cycle Fuel Cost"
-              purpose="Fuel cost for selected-range work miles inside completed full-fill cycles."
-              formula="sum(cycle work miles x cycle fuel cost per mile)"
-              values={`${fmtNumber(verifiedCompletedCycleWorkMiles)} completed-cycle work miles`}
-              result={fmtCurrency(completedCycleFuelCost)}
-              source="Fuel Cost Audit Detail"
+              title="Selected Fuel Cycles Used"
+              purpose="Completed full-fill cycles used for the primary fuel calculation."
+              formula="cycles where closing full fill-up date is inside selected range"
+              values={fuelCycleCoverageValues}
+              result={`${periodFuelCycleCoverage.length} cycle${periodFuelCycleCoverage.length === 1 ? "" : "s"}`}
+              source="Completed Fuel Cycles"
             />
             <FormulaCard
-              title="Open-Cycle Estimated Fuel Cost"
-              purpose="Estimated fuel cost for selected-range work miles not yet covered by a completed cycle."
-              formula="Open-Cycle Work Miles x recent effective CPM"
-              values={`${fmtNumber(openCycleUnverifiedWorkMiles)} open-cycle work miles`}
-              result={fuelCostResult.needsMpg ? "Pending" : fmtCurrency(openCycleFuelCostEstimate)}
-              source="calculateWorkFuelCost(openCycleWorkMiles, fuelEntries)"
+              title="Average MPG Used"
+              purpose="Weighted average MPG from completed full-fill cycles."
+              formula="sum(cycle miles) / sum(closing fill-up gallons)"
+              values={`${fuelCostResult.cycleCount} completed full-fill cycle${fuelCostResult.cycleCount === 1 ? "" : "s"}`}
+              result={fuelCostResult.needsMpg ? "Pending" : `${fmtNumber(fuelCostResult.averageMpg, 1)} MPG`}
+              source="Completed Fuel Cycles"
+            />
+            <FormulaCard
+              title="Average Fuel Price Used"
+              purpose="Weighted average fuel price from the same completed full-fill cycles."
+              formula="sum(closing fill-up fuel cost) / sum(closing fill-up gallons)"
+              values={`${fuelCostResult.cycleCount} completed full-fill cycle${fuelCostResult.cycleCount === 1 ? "" : "s"}`}
+              result={fuelCostResult.needsMpg ? "Pending" : `${fmtCurrency(fuelCostResult.averageFuelPricePerGallon)}/gal`}
+              source="Completed Fuel Cycles"
+            />
+            <FormulaCard
+              title="Estimated Gallons Used"
+              purpose="Fuel gallons consumed by selected-range work miles."
+              formula="Work Miles / Average MPG"
+              values={`${fmtNumber(workMiles)} / ${fmtNumber(fuelCostResult.averageMpg, 1)}`}
+              result={fuelCostResult.needsMpg ? "Pending" : `${fmtNumber(fuelCostResult.estimatedGallonsUsed)} gal`}
+              source="Primary fuel calculation"
             />
             <FormulaCard
               title="Work Fuel Cost"
-              purpose="Fuel cost allocated to work miles in the selected range."
-              formula="Completed-Cycle Fuel Cost + Open-Cycle Estimated Fuel Cost"
-              values={`${fmtCurrency(completedCycleFuelCost)} + ${fmtCurrency(
-                openCycleFuelCostEstimate
-              )}; Total Fuel Purchased in Range: ${fmtCurrency(totalFuelPurchasedInRange)}`}
+              purpose="Fuel cost for selected-range work miles."
+              formula="Estimated Gallons Used x Average Fuel Price"
+              values={`${fmtNumber(fuelCostResult.estimatedGallonsUsed)} gal x ${fmtCurrency(fuelCostResult.averageFuelPricePerGallon)}/gal`}
               result={fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}
-              source="cycle-summed fuel model plus open-cycle estimate"
-              warning={workFuelCostWarning}
-            />
-            <FormulaCard
-              title="Fuel Purchase Reconciliation"
-              purpose="Compares selected-range work fuel cost with fuel purchased in the same range."
-              formula="Work Fuel Cost - Total Fuel Purchased in Range"
-              values={`${fmtCurrency(fuelCostResult.workFuelCost)} - ${fmtCurrency(
-                totalFuelPurchasedInRange
-              )}`}
-              result={
-                fuelCostResult.needsMpg
-                  ? "Pending"
-                  : fmtCurrency(fuelCostResult.workFuelCost - totalFuelPurchasedInRange)
-              }
-              source={`fuel_entries count: ${periodFuelEntries.length}`}
-              warning={workFuelCostWarning}
-            />
-            <FormulaCard
-              title="Avg MPG from Full Fill-Ups"
-              purpose="Average MPG from full fill-up records that have MPG values."
-              formula="sum(full fill-up MPG) / full fill-up MPG entry count"
-              values={`${validMpgEntries.length} full fill-up entries with MPG`}
-              result={avgMpg > 0 ? `${fmtNumber(avgMpg, 1)} MPG` : "Pending"}
-              source="fuel_entries where Full Fill-Up is Yes and MPG is greater than 0"
+              source="Primary fuel calculation used by Metrics"
+              warning={fuelCostResult.needsMpg ? "Add at least two full fill-ups to calculate average MPG and fuel price." : undefined}
             />
           </div>
 
@@ -1579,8 +1509,7 @@ export default function BugcheckPage() {
                       {fmtCurrency(fuelCostAuditTotal)}
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-600">
-                      Open-cycle estimate: {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(openCycleFuelCostEstimate)}.
-                      Total Work Fuel Cost: {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}.
+                      Diagnostic only. Primary Metrics fuel cost uses average MPG and average fuel price.
                     </td>
                   </tr>
                 </tfoot>
@@ -2170,11 +2099,11 @@ export default function BugcheckPage() {
                     Fuel cost allocated to selected-range work miles.
                   </td>
                   <td className="px-4 py-4 font-mono text-slate-950">
-                    Completed-Cycle Fuel Cost + Open-Cycle Estimated Fuel Cost
+                    (Work Miles / Average MPG) x Average Fuel Price
                   </td>
                   <td className="px-4 py-4 text-slate-950">
-                    {fmtCurrency(completedCycleFuelCost)} +{" "}
-                    {fmtCurrency(openCycleFuelCostEstimate)}
+                    ({fmtNumber(workMiles)} / {fmtNumber(fuelCostResult.averageMpg, 1)}) x{" "}
+                    {fmtCurrency(fuelCostResult.averageFuelPricePerGallon)}
                   </td>
                   <td className="px-4 py-4 text-base font-bold text-slate-950">
                     {fuelCostResult.needsMpg ? "Pending" : fmtCurrency(fuelCostResult.workFuelCost)}

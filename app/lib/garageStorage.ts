@@ -402,7 +402,7 @@ function getDefaultInterval(
   switch (serviceType) {
     case "Oil Change": return { intervalMiles: 5000, intervalMonths: null };
     case "Tire Rotation": return { intervalMiles: 5000, intervalMonths: null };
-    case "Brake Inspection": return { intervalMiles: 20000, intervalMonths: null };
+    case "Brake Repair": return { intervalMiles: 20000, intervalMonths: null };
     case "Transmission Service": return { intervalMiles: 40000, intervalMonths: null };
     case "Battery Check": return { intervalMiles: 50000, intervalMonths: null };
     case "Tires": return { intervalMiles: 50000, intervalMonths: null };

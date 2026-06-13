@@ -460,15 +460,15 @@ export default function FuelPage() {
         )}
 
         {/* =====================================================
-            RECENT FUEL ENTRIES
-            Shows the 5 most recent fill-ups.
+            RECENT FUEL ENTRIES 
+            Shows the 2 most recent fill-ups.
            ===================================================== */}
 
         <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 shadow-sm shadow-black/20">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-bold">Recent fuel</h2>
-            {fuelEntries.length > 5 && (
-              <p className="text-xs text-slate-500">Latest 5</p>
+            {fuelEntries.length > 2 && (
+              <p className="text-xs text-slate-500">Latest 2</p>
             )}
           </div>
 
@@ -483,7 +483,7 @@ export default function FuelPage() {
 
             /* ENTRY LIST */
             <div className="mt-3 space-y-2">
-              {fuelEntries.slice(0, 5).map((entry) => (
+              {fuelEntries.slice(0, 2).map((entry) => (
                 <div
                   key={entry.id}
                   className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2.5"

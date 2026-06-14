@@ -2,7 +2,7 @@ type AppLoadingScreenProps = {
   message?: string;
 };
 
-const loadingWords = ["Fetching", "Hookin UP", "Wrangling", "Grabling", "Snaging", "Yoinking"];
+const loadingWords = ["Fetching", "Hookin UP", "Wranglig", "Grabling", "Snagin", "Yoinking"];
 
 function getRandomLoadingWord() {
   return loadingWords[Math.floor(Math.random() * loadingWords.length)];

@@ -12,6 +12,7 @@
      • True Cost View (includes vehicle maintenance share)
    ========================================================= */
 
+import AppLoadingScreen from "@/app/components/AppLoadingScreen";
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -821,13 +822,9 @@ export default function MetricsPage() {
      Shown while Supabase data is in flight.
      ========================================================= */
 
-  if (!isLoaded) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#020814] text-white">
-        <p className="text-slate-400">Loading metrics…</p>
-      </main>
-    );
-  }
+if (!isLoaded) {
+  return <AppLoadingScreen />;
+}
 
   /* Destructure computed metrics for cleaner JSX references */
   const {

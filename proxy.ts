@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  const startedAt = Date.now()
   const { pathname } = request.nextUrl
 
   // Never block public routes — checked here as belt-and-suspenders
@@ -42,14 +43,21 @@ export async function proxy(request: NextRequest) {
     }
   )
 
+  const authStartedAt = Date.now()
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  const authMs = Date.now() - authStartedAt
 
   if (!user) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    const redirectResponse = NextResponse.redirect(new URL('/login', request.url))
+    redirectResponse.headers.set('x-gigaxios-proxy-auth-ms', String(authMs))
+    redirectResponse.headers.set('x-gigaxios-proxy-total-ms', String(Date.now() - startedAt))
+    return redirectResponse
   }
 
+  response.headers.set('x-gigaxios-proxy-auth-ms', String(authMs))
+  response.headers.set('x-gigaxios-proxy-total-ms', String(Date.now() - startedAt))
   return response
 }
 

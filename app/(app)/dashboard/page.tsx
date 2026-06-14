@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
 
 import { useEffect, useState } from "react";
+import AppLoadingScreen from "@/app/components/AppLoadingScreen";
 
 
 /* =========================================================
@@ -55,6 +56,7 @@ export default function Home() {
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [accessState, setAccessState] =
     useState<SubscriptionAccessState | null>(null);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [hasPostShiftSignal, setHasPostShiftSignal] = useState(false);
 
@@ -66,8 +68,9 @@ export default function Home() {
      ========================================================= */
 
   useEffect(() => {
+    let isMounted = true;
 
-    async function loadCloudShifts() {
+    async function loadDashboardData() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -77,52 +80,44 @@ export default function Home() {
         return;
       }
 
-      const shifts = await loadShiftsFromSupabase(user.id);
-      setSavedShifts(shifts);
+      try {
+        const [shifts, fuel, access] = await Promise.all([
+          loadShiftsFromSupabase(user.id),
+          loadFuelEntriesFromSupabase(user.id),
+          loadSubscriptionAccess({
+            userId: user.id,
+            userCreatedAt: user.created_at,
+          }),
+        ]);
 
-      const access = await loadSubscriptionAccess({
-        userId: user.id,
-        userCreatedAt: user.created_at,
-      });
-      setAccessState(access);
-    }
+        if (!isMounted) return;
 
-    loadCloudShifts();
+        setSavedShifts(shifts);
+        setFuelEntries(fuel);
+        setAccessState(access);
 
-    async function loadCloudFuel() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/login");
-        return;
+        const shiftEnded = sessionStorage.getItem("gigaxios_shift_ended") === "1";
+        if (shiftEnded) {
+          sessionStorage.removeItem("gigaxios_shift_ended");
+          setHasPostShiftSignal(!access.isSubscribed);
+        } else if (access.isSubscribed) {
+          sessionStorage.removeItem("gigaxios_shift_ended");
+          setHasPostShiftSignal(false);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingDashboard(false);
+        }
       }
-
-      const fuel = await loadFuelEntriesFromSupabase(user.id);
-      setFuelEntries(fuel);
     }
 
-    loadCloudFuel();
+    loadDashboardData();
+
+    return () => {
+      isMounted = false;
+    };
 
   }, [router]);
-
-  useEffect(() => {
-    if (!accessState) return;
-
-    const shiftEnded = sessionStorage.getItem("gigaxios_shift_ended") === "1";
-    if (!shiftEnded) return;
-
-    sessionStorage.removeItem("gigaxios_shift_ended");
-    setHasPostShiftSignal(!accessState.isSubscribed);
-  }, [accessState]);
-
-  useEffect(() => {
-    if (!accessState?.isSubscribed) return;
-
-    sessionStorage.removeItem("gigaxios_shift_ended");
-    setHasPostShiftSignal(false);
-  }, [accessState?.isSubscribed]);
 
   /* =========================================================
     ACTIVE_SHIFT_LOOKUP
@@ -287,6 +282,10 @@ export default function Home() {
   /* =========================================================
      MAIN_PAGE_RENDER
      ========================================================= */
+
+  if (isLoadingDashboard) {
+    return <AppLoadingScreen />;
+  }
 
   return (
 

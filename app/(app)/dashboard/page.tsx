@@ -327,13 +327,13 @@ export default function Home() {
             className={`mt-2 ${
               fuelCostResult.needsMpg
                 ? "font-semibold text-amber-300"
-                : "text-slate-400"
+                : "text-slate-200"
             }`}
           >
             {fuelCostResult.needsMpg ? "Fuel cost pending" : "Net Profit"}
           </p>
 
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-amber-300">
             {fuelCostResult.needsMpg
               ? "Add at least 2 full fuel entries to unlock fuel cost calculations."
               : fuelCostResult.source === "actual_history"

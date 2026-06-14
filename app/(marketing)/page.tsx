@@ -1,8 +1,6 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 /* =========================================================
    LANDING PAGE
@@ -16,43 +14,122 @@ import { redirect } from "next/navigation";
    BottomNav exists only within app/(app)/layout.tsx.
    ========================================================= */
 
-export default async function LandingPage() {
-  const cookieStore = await cookies();
+const siteUrl = "https://gigaxios.com";
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // Server Components can read cookies for auth, but may not always
-            // be able to write refreshed cookies during render.
-          }
-        },
+export const metadata: Metadata = {
+  title: "GigAxios | Gig Driver Income & Mileage Tracker | Know What You Actually Make",
+  description:
+    "GigAxios helps gig drivers track mileage, fuel costs, vehicle expenses, and true net profit. Stop guessing what you make. Know what you actually make.",
+  alternates: {
+    canonical: siteUrl,
+  },
+  openGraph: {
+    title: "GigAxios | Gig Driver Income & Mileage Tracker",
+    description:
+      "Track mileage, fuel costs, vehicle expenses, and true net profit for gig work.",
+    url: siteUrl,
+    siteName: "GigAxios",
+    type: "website",
+  },
+};
+
+const faqItems = [
+  {
+    question: "How do I track gig work mileage?",
+    answer:
+      "GigAxios lets you record beginning and ending odometer readings so you can track business mileage more accurately.",
+  },
+  {
+    question: "Can GigAxios track fuel expenses?",
+    answer:
+      "Yes. GigAxios helps you enter fuel purchases and track how fuel costs affect your real gig work profit.",
+  },
+  {
+    question: "Does GigAxios work with DoorDash, Uber Eats, Spark, and other platforms?",
+    answer:
+      "Yes. GigAxios is platform-independent and can be used by drivers working with DoorDash, Uber Eats, Spark Driver, Instacart, Shipt, Roadie, GoPuff, and other gig platforms.",
+  },
+  {
+    question: "Why is gross pay not enough?",
+    answer:
+      "Gross pay does not include fuel, mileage, vehicle service, or other expenses. GigAxios helps drivers see a clearer picture of actual net profit.",
+  },
+  {
+    question: "Can I track more than one vehicle?",
+    answer:
+      "Yes. GigAxios supports multiple vehicles so drivers can keep income, mileage, fuel, and service costs organized.",
+  },
+];
+
+const structuredData = [
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "GigAxios",
+    url: siteUrl,
+    applicationCategory: "FinanceApplication",
+    operatingSystem: "Web",
+    description:
+      "GigAxios helps gig drivers track mileage, fuel costs, vehicle expenses, and true net profit.",
+    offers: {
+      "@type": "Offer",
+      price: "3.99",
+      priceCurrency: "USD",
+    },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "GigAxios",
+    url: siteUrl,
+    logo: `${siteUrl}/Full_Logo.png`,
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqItems.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer,
       },
-    }
-  );
+    })),
+  },
+];
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    redirect("/dashboard");
-  }
-
+export default function LandingPage() {
   const benefits = [
-    ["Real profit", "See earnings, fuel, mileage, tips, and expenses together."],
-    ["Shift clarity", "Understand which days, apps, and routes are actually worth it."],
-    ["Full access", "Use every tracker and insight during your free preview."],
+    ["Delivery driver profit tracker", "See earnings, fuel, mileage, tips, and expenses together so gross pay does not tell the whole story."],
+    ["Mileage tracker for gig drivers", "Record work miles by shift and understand which days, apps, and routes are actually worth it."],
+    ["Fuel expense tracker", "Use every tracker and insight during your free preview, including fuel, service, and true profit views."],
+  ];
+
+  const features = [
+    {
+      title: "Track Mileage",
+      body: "Log beginning and ending odometer readings for each shift so business mileage stays tied to the work that produced it.",
+    },
+    {
+      title: "Track Fuel Costs",
+      body: "Enter fuel purchases and see how gas changes your net profit after expenses.",
+    },
+    {
+      title: "See True Profit After Expenses",
+      body: "Track real profit after fuel and vehicle expenses instead of relying on gross pay alone.",
+    },
+    {
+      title: "Built for Gig Drivers",
+      body: "GigAxios is a gig driver income tracker for delivery, rideshare, shopping, courier, and local route work.",
+    },
+    {
+      title: "Multiple Vehicles Supported",
+      body: "Keep income, mileage, fuel, and service costs organized when you use more than one vehicle.",
+    },
+    {
+      title: "Simple Photo-Based Tracking",
+      body: "Use quick photo-based tools for odometer and receipt details when manual entry slows you down.",
+    },
   ];
 
   const pricingPoints = [
@@ -65,6 +142,10 @@ export default async function LandingPage() {
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_10%,rgba(0,102,255,0.36),transparent_32%),radial-gradient(circle_at_15%_30%,rgba(14,165,233,0.18),transparent_26%),linear-gradient(135deg,#020814_0%,#031329_54%,#061a3a_100%)]" />
         <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#020814] to-transparent" />
@@ -92,11 +173,15 @@ export default async function LandingPage() {
               </p>
 
               <h1 className="mt-6 max-w-3xl text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
-                Know what you actually make.
+                Know What You Actually Make
               </h1>
 
               <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200 sm:text-xl">
-                GigAxios helps gig workers track earnings, mileage, fuel, tips, and expenses so every shift has a clear bottom line.
+                GigAxios is a gig driver income tracker that helps you track mileage, fuel costs, tips, vehicle expenses, and net profit after expenses so every shift has a clear bottom line.
+              </p>
+
+              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+                Built for drivers who know gross pay does not tell the whole story and want to track real profit after fuel and vehicle expenses.
               </p>
 
               <div className="mt-8 grid gap-3 sm:max-w-2xl sm:grid-cols-2">
@@ -151,19 +236,18 @@ export default async function LandingPage() {
             <div>
               <p className="text-sm font-extrabold uppercase text-blue-600">Built for gig work</p>
               <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
-                Track the numbers that decide your real take-home pay.
+                Built for Gig Drivers
               </h2>
+              <p className="mt-5 text-base leading-7 text-slate-600">
+                GigAxios is built for drivers using DoorDash, Uber Eats, Spark Driver, Instacart, Shipt, Roadie, GoPuff, and other gig platforms.
+              </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                "Shifts and deliveries",
-                "Mileage and fuel",
-                "Tips and expenses",
-                "Weekly profit insights",
-              ].map((item) => (
-                <div key={item} className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-800 shadow-lg shadow-slate-200/60">
-                  {item}
+              {features.map((feature) => (
+                <div key={feature.title} className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-lg shadow-slate-200/60">
+                  <h3 className="text-base font-extrabold text-slate-950">{feature.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{feature.body}</p>
                 </div>
               ))}
             </div>
@@ -234,6 +318,24 @@ export default async function LandingPage() {
             <Link href="/login" className="rounded-2xl bg-blue-500 px-8 py-4 text-center font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
               Get started
             </Link>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq" className="bg-[#f8fbff] px-5 py-16 text-slate-950 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <p className="text-sm font-extrabold uppercase text-blue-600">FAQ</p>
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
+            Questions About Tracking Gig Work Profit
+          </h2>
+
+          <div className="mt-8 grid gap-4">
+            {faqItems.map((item) => (
+              <div key={item.question} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/60">
+                <h3 className="text-lg font-extrabold text-slate-950">{item.question}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{item.answer}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

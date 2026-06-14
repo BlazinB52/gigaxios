@@ -15,7 +15,7 @@ export default function AppLoadingScreen({
   const loadingMessage = message ?? `${loadingWord} what you really made...`;
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[#020814] px-5 text-center text-white">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-[#020814] px-5 pb-24 text-center text-white">
       <p className="text-sm font-semibold tracking-wide text-blue-300">
         GigAxios
       </p>

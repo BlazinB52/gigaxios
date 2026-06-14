@@ -141,11 +141,12 @@ export default function LandingPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#020814] text-white">
+    <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
+      <main className="min-h-screen bg-[#020814] text-white">
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_10%,rgba(0,102,255,0.36),transparent_32%),radial-gradient(circle_at_15%_30%,rgba(14,165,233,0.18),transparent_26%),linear-gradient(135deg,#020814_0%,#031329_54%,#061a3a_100%)]" />
         <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#020814] to-transparent" />
@@ -375,6 +376,7 @@ export default function LandingPage() {
 
         <p className="mt-10 text-center text-sm text-slate-400">Copyright 2026 GigAxios. All rights reserved.</p>
       </footer>
-    </main>
+      </main>
+    </>
   );
 }

@@ -120,7 +120,7 @@ export default function Home() {
   }, [router]);
 
   /* =========================================================
-    ACTIVE_SHIFT_LOOKUP
+    ACTIVE_SHIFT_LOOKUP --
     Finds currently open shift
     ========================================================= */
 
@@ -222,11 +222,7 @@ export default function Home() {
   const activeMinutes = Math.round((totalHoursWorked - activeHours) * 60);
 
   /* =========================================================
-     REVENUE_PER_MILE
-     ========================================================= */
-
-  const revenuePerMile =
-    totalWorkMiles > 0 ? totalGrossPay / totalWorkMiles : 0;
+     REVENUE_PER_MILE totalWorkMiles > 0 ? totalGrossPay / totalWorkMiles : 0;
 
   /* =========================================================
      REAL_HOURLY_RATE

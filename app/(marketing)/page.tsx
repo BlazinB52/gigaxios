@@ -177,6 +177,7 @@ export default function LandingPage() {
               <a href="#features" className="transition hover:text-white">Features</a>
               <a href="#pricing" className="transition hover:text-white">Pricing</a>
               <a href="#workers" className="transition hover:text-white">For Gig Workers</a>
+              <Link href="/blog" className="transition hover:text-white">Blog</Link>
               <Link href="/login" className="rounded-full bg-blue-500 px-5 py-3 text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-400">
                 Start free
               </Link>
@@ -369,6 +370,7 @@ export default function LandingPage() {
             <div className="mt-3 grid gap-2 text-sm text-slate-300">
               <a href="#features">Features</a>
               <a href="#pricing">Pricing</a>
+              <Link href="/blog">Blog</Link>
               <Link href="/privacy">Privacy Policy</Link>
               <Link href="/terms">Terms of Service</Link>
             </div>

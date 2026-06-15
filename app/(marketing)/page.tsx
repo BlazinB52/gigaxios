@@ -29,7 +29,23 @@ export const metadata: Metadata = {
       "Track mileage, fuel costs, vehicle expenses, and true net profit for gig work.",
     url: siteUrl,
     siteName: "GigAxios",
+    images: [
+      {
+        url: `${siteUrl}/og-image.png`,
+        width: 1200,
+        height: 600,
+        alt: "GigAxios - Know What You Actually Make",
+      },
+    ],
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title:
+      "GigAxios | Gig Driver Income & Mileage Tracker | Know What You Actually Make",
+    description:
+      "GigAxios helps gig drivers track mileage, fuel costs, vehicle expenses, and true net profit. Stop guessing what you make. Know what you actually make.",
+    images: [`${siteUrl}/og-image.png`],
   },
 };
 

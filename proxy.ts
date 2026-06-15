@@ -14,8 +14,12 @@ export async function proxy(request: NextRequest) {
     pathname === '/api/stripe/webhook' ||
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/terms') ||
+    pathname === '/blog' ||
+    pathname.startsWith('/blog/') ||
     pathname === '/robots.txt' ||
-    pathname === '/sitemap.xml'
+    pathname === '/sitemap.xml' ||
+    pathname === '/manifest.json' ||
+    pathname.endsWith('.pdf')
   ) {
     return NextResponse.next()
   }
@@ -65,6 +69,6 @@ export async function proxy(request: NextRequest) {
 // The function body also guards /login and /auth/callback explicitly as a second layer.
 export const config = {
   matcher: [
-    '/((?!login|auth/callback|api/stripe/webhook|privacy|terms|robots\\.txt|sitemap\\.xml|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!login|auth/callback|api/stripe/webhook|privacy|terms|blog(?:/|$)|robots\\.txt|sitemap\\.xml|manifest\\.json|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|pdf)$).*)',
   ],
 }

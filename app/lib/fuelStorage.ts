@@ -227,5 +227,6 @@ export async function saveFuelEntryToSupabase(entry: FuelEntry) {
 
   if (error) {
     console.error("Supabase fuel save error:", error.message);
+    throw error;
   }
 }

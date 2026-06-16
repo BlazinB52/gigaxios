@@ -91,6 +91,7 @@ export default function FuelPage() {
      ========================================================= */
 
   const router = useRouter();
+  const saveInProgressRef = useRef(false);
   const fileInputRefs = useRef<Record<FuelOcrKind, HTMLInputElement | null>>({
     odometer: null,
     receipt: null,
@@ -117,6 +118,8 @@ export default function FuelPage() {
   const [accessState, setAccessState] =
     useState<SubscriptionAccessState | null>(null);
   const [startingCheckout, setStartingCheckout] = useState(false);
+  const [savingFuel, setSavingFuel] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [ocrStatus, setOcrStatus] = useState<Record<FuelOcrKind, FuelOcrStatus>>({
     odometer: "idle",
     receipt: "idle",
@@ -323,77 +326,88 @@ export default function FuelPage() {
      ========================================================= */
 
   async function handleSaveFuel() {
-    if (trialRequired) {
+    if (trialRequired || saveInProgressRef.current) {
       return;
     }
 
-    if (!date || !odometer || !gallons || !pricePerGallon) {
-      alert("Date, odometer, gallons, and price per gallon are required.");
-      return;
+    saveInProgressRef.current = true;
+    setSavingFuel(true);
+    setSaveError("");
+
+    try {
+      if (!date || !odometer || !gallons || !pricePerGallon) {
+        alert("Date, odometer, gallons, and price per gallon are required.");
+        return;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const totalCost = calculateFuelEntryTotalCostFallback({
+        gallons,
+        pricePerGallon,
+      });
+      const previousFuelMileage = await loadPreviousFuelMileageReading({
+        userId: user.id,
+        vehicleId: selectedVehicleId || undefined,
+        date,
+        odometer,
+      });
+      const mileageIsLower = needsMileageException({
+        mileage: odometer,
+        highestMileage: previousFuelMileage,
+      });
+
+      if (
+        mileageIsLower &&
+        (!allowMileageException || mileageExceptionReason.trim().length === 0)
+      ) {
+        setShowMileageException(true);
+        return;
+      }
+
+      setShowMileageException(false);
+
+      const newEntry: FuelEntry = {
+        id: crypto.randomUUID(),
+        userId: user.id,
+        vehicleId: selectedVehicleId || undefined,
+        date,
+        odometer,
+        gallons,
+        pricePerGallon,
+        totalCost,
+        totalCostSource: "fallback",
+        notes,
+        isFullFillUp,
+        overrideMileageValidation: mileageIsLower && allowMileageException,
+        overrideMileageReason:
+          mileageIsLower && allowMileageException
+            ? mileageExceptionReason.trim()
+            : null,
+      };
+
+      await saveFuelEntryToSupabase(newEntry);
+
+      const updatedEntries = [newEntry, ...fuelEntries];
+      saveFuelEntries(updatedEntries);
+      setFuelEntries(updatedEntries);
+
+      alert("Fuel entry saved.");
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Fuel save failed:", error);
+      setSaveError("Fuel entry could not be saved. Please try again.");
+    } finally {
+      saveInProgressRef.current = false;
+      setSavingFuel(false);
     }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    const totalCost = calculateFuelEntryTotalCostFallback({
-      gallons,
-      pricePerGallon,
-    });
-    const previousFuelMileage = await loadPreviousFuelMileageReading({
-      userId: user.id,
-      vehicleId: selectedVehicleId || undefined,
-      date,
-      odometer,
-    });
-    const mileageIsLower = needsMileageException({
-      mileage: odometer,
-      highestMileage: previousFuelMileage,
-    });
-
-    if (
-      mileageIsLower &&
-      (!allowMileageException || mileageExceptionReason.trim().length === 0)
-    ) {
-      setShowMileageException(true);
-      return;
-    }
-
-    setShowMileageException(false);
-
-    const newEntry: FuelEntry = {
-      id: crypto.randomUUID(),
-      userId: user.id,
-      vehicleId: selectedVehicleId || undefined,
-      date,
-      odometer,
-      gallons,
-      pricePerGallon,
-      totalCost,
-      totalCostSource: "fallback",
-      notes,
-      isFullFillUp,
-      overrideMileageValidation: mileageIsLower && allowMileageException,
-      overrideMileageReason:
-        mileageIsLower && allowMileageException
-          ? mileageExceptionReason.trim()
-          : null,
-    };
-
-    const updatedEntries = [newEntry, ...fuelEntries];
-
-    saveFuelEntries(updatedEntries);
-    setFuelEntries(updatedEntries);
-
-    await saveFuelEntryToSupabase(newEntry);
-
-    alert("Fuel entry saved.");
-    router.push("/");
   }
 
   /* =========================================================
@@ -540,8 +554,13 @@ export default function FuelPage() {
             </button>
           </div>
 
-          {(ocrError || ocrMessage || ocrStatus.odometer !== "idle" || ocrStatus.receipt !== "idle") && (
+          {(saveError || ocrError || ocrMessage || ocrStatus.odometer !== "idle" || ocrStatus.receipt !== "idle") && (
             <div className="mt-3 space-y-2">
+              {saveError && (
+                <p className="rounded-2xl border border-red-400/30 bg-red-950/20 px-4 py-3 text-sm text-red-100">
+                  {saveError}
+                </p>
+              )}
               {(ocrStatus.odometer !== "idle" || ocrStatus.receipt !== "idle") && (
                 <p className="rounded-2xl border border-blue-400/30 bg-blue-950/30 px-4 py-3 text-sm text-blue-100">
                   {ocrStatus.odometer !== "idle"
@@ -691,15 +710,15 @@ export default function FuelPage() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={handleSaveFuel}
-                disabled={trialRequired}
+                disabled={trialRequired || savingFuel}
                 className="rounded-xl bg-blue-500 py-2.5 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
-                {trialRequired ? "Start Trial" : "Save Fuel Entry"}
+                {trialRequired ? "Start Trial" : savingFuel ? "Saving..." : "Save Fuel Entry"}
               </button>
 
               <button
                 type="button"
-                onClick={() => router.push("/")}
+                onClick={() => router.push("/dashboard")}
                 className="rounded-xl border border-slate-700 bg-slate-900 py-2.5 font-bold text-slate-300"
               >
                 Cancel

@@ -447,7 +447,8 @@ export default function ImportDayPage() {
   const [existingShiftsForDate, setExistingShiftsForDate] = useState<ExistingShift[]>([]);
   const [isLoadingShiftsForDate, setIsLoadingShiftsForDate] = useState(false);
   const [ocrReportedGrossPay, setOcrReportedGrossPay] = useState<number | null>(null);
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showChangesDiscardedNotice, setShowChangesDiscardedNotice] =
+    useState(false);
   const isAnyOcrReading = Object.values(uploads).some(
     (upload) => upload.ocrStatus === "reading"
   );
@@ -745,20 +746,6 @@ export default function ImportDayPage() {
     (cautions.length > 0 && !earningsCautionAcknowledged) ||
     (Boolean(payChangeCaution) && !payChangeAcknowledged);
 
-  const hasImportDraft = useMemo(() => {
-    const hasImageWork = Object.values(uploads).some(
-      (upload) => upload.selectedFile || upload.processedFile || upload.result
-    );
-    const initialForm = initialFormRef.current;
-    const hasEditedValues = initialForm
-      ? (Object.keys(form) as Array<keyof ReviewForm>).some(
-          (field) => form[field] !== initialForm[field]
-        )
-      : false;
-
-    return hasImageWork || hasEditedValues;
-  }, [form, uploads]);
-
   function updateForm(field: keyof ReviewForm, value: string) {
     if (
       field === "date" ||
@@ -830,12 +817,7 @@ export default function ImportDayPage() {
   }
 
   function handleCancel() {
-    if (!hasImportDraft) {
-      router.push("/dashboard");
-      return;
-    }
-
-    setShowDiscardConfirm(true);
+    setShowChangesDiscardedNotice(true);
   }
 
   async function handleFileChange(
@@ -1537,24 +1519,17 @@ export default function ImportDayPage() {
         </section>
       </div>
 
-      {showDiscardConfirm && (
+      {showChangesDiscardedNotice && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 px-5 pb-8 pt-8 sm:items-center">
           <section className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-950 p-5 text-white shadow-2xl shadow-black/40">
-            <h2 className="text-xl font-bold">Discard this shift?</h2>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setShowDiscardConfirm(false)}
-                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-3 text-base font-bold text-slate-200"
-              >
-                Keep Editing
-              </button>
+            <h2 className="text-xl font-bold">Changes discarded</h2>
+            <div className="mt-5">
               <button
                 type="button"
                 onClick={() => router.push("/dashboard")}
-                className="rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white"
+                className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white"
               >
-                Discard
+                OK
               </button>
             </div>
           </section>

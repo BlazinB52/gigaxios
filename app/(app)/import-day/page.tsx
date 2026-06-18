@@ -447,8 +447,6 @@ export default function ImportDayPage() {
   const [existingShiftsForDate, setExistingShiftsForDate] = useState<ExistingShift[]>([]);
   const [isLoadingShiftsForDate, setIsLoadingShiftsForDate] = useState(false);
   const [ocrReportedGrossPay, setOcrReportedGrossPay] = useState<number | null>(null);
-  const [showChangesDiscardedNotice, setShowChangesDiscardedNotice] =
-    useState(false);
   const isAnyOcrReading = Object.values(uploads).some(
     (upload) => upload.ocrStatus === "reading"
   );
@@ -817,7 +815,7 @@ export default function ImportDayPage() {
   }
 
   function handleCancel() {
-    setShowChangesDiscardedNotice(true);
+    router.push("/dashboard");
   }
 
   async function handleFileChange(
@@ -1519,22 +1517,6 @@ export default function ImportDayPage() {
         </section>
       </div>
 
-      {showChangesDiscardedNotice && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 px-5 pb-8 pt-8 sm:items-center">
-          <section className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-950 p-5 text-white shadow-2xl shadow-black/40">
-            <h2 className="text-xl font-bold">Changes discarded</h2>
-            <div className="mt-5">
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard")}
-                className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white"
-              >
-                OK
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
     </main>
   );
 }

@@ -161,7 +161,16 @@ function normalizeYear(yearText: string) {
   return Number(yearText);
 }
 
-function normalizeOcrDateInput(value: string | null | undefined) {
+function getDateContextYear(contextDate: string | null | undefined) {
+  if (!contextDate || !isDateInAllowedImportRange(contextDate)) return null;
+
+  return Number(contextDate.slice(0, 4));
+}
+
+function normalizeOcrDateInput(
+  value: string | null | undefined,
+  contextDate?: string
+) {
   if (!value) return { date: "", warning: "" };
 
   const trimmedValue = value
@@ -255,7 +264,10 @@ function normalizeOcrDateInput(value: string | null | undefined) {
     const [, monthName, dayText] = monthDayMatch;
     const monthText = monthNames[monthName.toLowerCase()];
     if (monthText) {
-      const year = new Date().getFullYear();
+      const year = getDateContextYear(contextDate);
+      if (year === null) {
+        return { date: "", warning: "OCR date appears invalid and was ignored." };
+      }
       const month = Number(monthText);
       const day = Number(dayText);
       const normalizedDate = `${year}-${monthText}-${dayText.padStart(2, "0")}`;
@@ -917,8 +929,14 @@ export default function ImportDayPage() {
       }
 
       if (result.kind === "earnings") {
+        const normalizedOcrDate = normalizeOcrDateInput(
+          result.date,
+          current.date
+        ).date;
+
         return {
           ...current,
+          date: normalizedOcrDate || current.date,
           deliveries: numberToInput(result.deliveries) || current.deliveries,
           hoursWorked: numberToInput(result.hoursWorked) || current.hoursWorked,
           basePay: numberToInput(result.basePay) || current.basePay,
@@ -1000,7 +1018,7 @@ export default function ImportDayPage() {
 
       const ocrDateWarning =
         data.result.kind === "earnings"
-          ? normalizeOcrDateInput(data.result.date).warning
+          ? normalizeOcrDateInput(data.result.date, form.date).warning
           : "";
 
       if (ocrRequestIdsRef.current[kind] !== requestId) return;

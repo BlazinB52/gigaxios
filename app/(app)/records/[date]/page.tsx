@@ -37,6 +37,19 @@ function toISODate(dateStr: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function isValidISODate(dateStr: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
 function formatCurrency(val: number) {
   return val.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
@@ -65,6 +78,7 @@ export default function DayDetailPage() {
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [editShiftVehicleId, setEditShiftVehicleId] = useState("");
   const [editPlatform, setEditPlatform] = useState("");
+  const [editShiftDate, setEditShiftDate] = useState("");
   const [editBeginningMileage, setEditBeginningMileage] = useState("");
   const [editEndingMileage, setEditEndingMileage] = useState("");
   const [editDeliveries, setEditDeliveries] = useState("");
@@ -147,6 +161,7 @@ export default function DayDetailPage() {
   function openEditShift(shift: SavedShift) {
     setEditingShiftId(shift.id);
     setEditPlatform(shift.platform);
+    setEditShiftDate(toISODate(shift.date));
     setEditBeginningMileage(shift.beginningMileage);
     setEditEndingMileage(shift.endingMileage);
     setEditDeliveries(shift.deliveries);
@@ -159,6 +174,11 @@ export default function DayDetailPage() {
   }
 
   async function handleUpdateShift(shift: SavedShift) {
+    if (!isValidISODate(editShiftDate)) {
+      alert("Enter a valid shift date in YYYY-MM-DD format.");
+      return;
+    }
+
     const grossPay = (
       Number(editBasePay || 0) +
       Number(editTips || 0) +
@@ -168,6 +188,7 @@ export default function DayDetailPage() {
     const trimmedPlatform = editPlatform.trim();
     const updated: SavedShift = {
       ...shift,
+      date: editShiftDate,
       platform: trimmedPlatform,
       beginningMileage: editBeginningMileage,
       endingMileage: editEndingMileage,
@@ -199,6 +220,7 @@ export default function DayDetailPage() {
     const { error } = await supabase
       .from("shifts")
       .update({
+        date: updated.date,
         vehicle_id: editShiftVehicleId || null,
         platform: updated.platform,
         beginning_mileage: updated.beginningMileage,
@@ -214,8 +236,14 @@ export default function DayDetailPage() {
 
     if (error) { alert(error.message); return; }
 
-    await reloadDateData(userId!);
     setEditingShiftId(null);
+
+    if (updated.date !== dateStr) {
+      router.replace(`/records/${updated.date}`);
+      return;
+    }
+
+    await reloadDateData(userId!);
   }
 
   async function handleDeleteShift(id: string) {
@@ -442,6 +470,18 @@ export default function DayDetailPage() {
                             value={editPlatform}
                             onChange={setEditPlatform}
                           />
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-400">
+                              Date
+                            </label>
+                            <input
+                              type="date"
+                              value={editShiftDate}
+                              onChange={(e) => setEditShiftDate(e.target.value)}
+                              className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white"
+                            />
+                          </div>
 
                           {[
                             { label: "Beginning Mileage", val: editBeginningMileage, set: setEditBeginningMileage },

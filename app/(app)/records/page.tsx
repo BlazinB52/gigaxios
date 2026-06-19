@@ -83,7 +83,8 @@ type DaySummary = {
     hours: number;
     mileage: number;
     grossPay: number;
-    activityText: string;
+    primaryActivityText: string;
+    secondaryActivityText: string;
     hasData: boolean;
     hasShiftData: boolean;
 };
@@ -262,9 +263,10 @@ export default function RecordsPage() {
             hours,
             mileage,
             grossPay,
-            activityText: hasShiftData
+            primaryActivityText: hasShiftData
                 ? `${deliveries} deliveries • ${hours.toFixed(1)} hrs`
                 : activityParts.join(" • "),
+            secondaryActivityText: hasShiftData ? activityParts.join(" • ") : "",
             hasData: hasShiftData || activityParts.length > 0,
             hasShiftData,
         };
@@ -453,7 +455,7 @@ export default function RecordsPage() {
                                     className={`flex w-full items-center justify-between px-5 py-4 text-left active:bg-slate-800 ${i < 6 ? "border-b border-slate-800" : ""
                                         }`}
                                 >
-                                    <div className="flex items-center gap-3">
+                                    <div className="min-w-0 flex items-center gap-3">
                                         <div className="w-10">
                                             <p className="text-sm font-bold text-slate-300">{day.label}</p>
                                             <p className="text-xs text-slate-600">
@@ -461,10 +463,15 @@ export default function RecordsPage() {
                                             </p>
                                         </div>
                                         {day.hasData ? (
-                                            <div>
+                                            <div className="min-w-0">
                                                 <p className="text-xs text-slate-400">
-                                                    {day.activityText}
+                                                    {day.primaryActivityText}
                                                 </p>
+                                                {day.secondaryActivityText && (
+                                                    <p className="mt-0.5 text-xs text-emerald-400">
+                                                        {day.secondaryActivityText}
+                                                    </p>
+                                                )}
                                             </div>
                                         ) : (
                                             <p className="text-xs text-slate-600">No activity</p>

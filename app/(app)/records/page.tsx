@@ -15,6 +15,7 @@ import {
 } from "@/app/lib/garageStorage";
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { SavedShift, PayPeriod, PayAdjustment } from "@/app/lib/types";
+import { useRefreshOnFocus } from "@/app/lib/useRefreshOnFocus";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,9 @@ export default function RecordsPage() {
     const [payPeriod, setPayPeriod] = useState<PayPeriod | null>(null);
     const [adjustments, setAdjustments] = useState<PayAdjustment[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshToken, setRefreshToken] = useState(0);
+
+    useRefreshOnFocus(() => setRefreshToken((current) => current + 1));
 
     const { weekStart, weekEnd } = getWeekBounds(weekOffset);
 
@@ -172,7 +176,7 @@ export default function RecordsPage() {
         }
 
         load();
-    }, [weekOffset, router, weekStart]);
+    }, [refreshToken, router, weekStart]);
 
     // ─── Derived Data ──────────────────────────────────────────────────────────
 

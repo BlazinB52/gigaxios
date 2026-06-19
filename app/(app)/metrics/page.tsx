@@ -25,6 +25,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { supabase } from "@/app/lib/supabaseClient";
+import { useRefreshOnFocus } from "@/app/lib/useRefreshOnFocus";
 import { SavedShift } from "@/app/lib/types";
 import {
   FuelEntry,
@@ -352,6 +353,9 @@ export default function MetricsPage() {
     is_primary: boolean;
   }>>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("all");
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useRefreshOnFocus(() => setRefreshToken((current) => current + 1));
 
   /* =========================================================
      DATA LOADING
@@ -396,14 +400,18 @@ export default function MetricsPage() {
         setAdjustments((adjRes.data ?? []) as { amount: number; week_start: string }[]);
         const vehicleData = vRes.data || [];
         setVehicles(vehicleData);
-        setSelectedVehicleId("all");
+        setSelectedVehicleId((current) =>
+          current === "all" || vehicleData.some((vehicle) => vehicle.id === current)
+            ? current
+            : "all"
+        );
       } finally {
         setIsLoaded(true);
       }
     }
 
     load();
-  }, [router]);
+  }, [refreshToken, router]);
 
   /* =========================================================
      AVAILABLE YEARS

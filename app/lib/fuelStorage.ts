@@ -132,6 +132,7 @@ export async function loadFuelEntriesFromSupabase(userId: string): Promise<FuelE
     .from("fuel_entries")
     .select("*")
     .eq("user_id", userId)
+    .order("date", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (error) {

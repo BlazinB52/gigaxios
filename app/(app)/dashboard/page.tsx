@@ -17,6 +17,7 @@ import { supabase } from "@/app/lib/supabaseClient";
 
 import { useEffect, useState } from "react";
 import AppLoadingScreen from "@/app/components/AppLoadingScreen";
+import { useRefreshOnFocus } from "@/app/lib/useRefreshOnFocus";
 
 
 /* =========================================================
@@ -25,12 +26,102 @@ import AppLoadingScreen from "@/app/components/AppLoadingScreen";
 
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "@/app/lib/types";
-import { FuelEntry, loadFuelEntriesFromSupabase } from "@/app/lib/fuelStorage";
-import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
+import {
+  FuelEntry,
+  getFuelEntryTotalCost,
+  loadFuelEntriesFromSupabase,
+} from "@/app/lib/fuelStorage";
+import { calculateSimpleWorkFuelCost } from "@/app/lib/fuelCost";
+import {
+  ServiceEntry,
+  ServiceInterval,
+  loadServiceEntriesFromSupabase,
+  loadServiceIntervalsFromSupabase,
+} from "@/app/lib/garageStorage";
 import {
   SubscriptionAccessState,
   loadSubscriptionAccess,
 } from "@/app/lib/subscriptionAccess";
+
+type PayAdjustment = {
+  amount: number;
+  week_start: string;
+};
+
+function parseOptionalDateTime(value: string | undefined) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function formatISODate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function isDateInRange(dateStr: string, rangeStart: string, rangeEnd: string) {
+  return dateStr >= rangeStart && dateStr <= rangeEnd;
+}
+
+function normalizeServiceType(serviceType: string) {
+  return serviceType.trim().toLowerCase();
+}
+
+function getShiftVehicleKey(shift: SavedShift) {
+  return shift.vehicleId || "unassigned";
+}
+
+function getFuelVehicleKey(entry: FuelEntry) {
+  return entry.vehicleId || "unassigned";
+}
+
+function getMatchingServiceInterval(
+  service: ServiceEntry,
+  intervals: ServiceInterval[]
+) {
+  const serviceType = normalizeServiceType(service.serviceType);
+  const vehicleMatch = intervals.find(
+    (interval) =>
+      normalizeServiceType(interval.serviceType) === serviceType &&
+      interval.vehicleId === service.vehicleId
+  );
+
+  if (vehicleMatch) return vehicleMatch;
+
+  return (
+    intervals.find(
+      (interval) =>
+        normalizeServiceType(interval.serviceType) === serviceType &&
+        interval.vehicleId === null
+    ) ?? null
+  );
+}
+
+function getServiceIntervalMileage(
+  service: ServiceEntry,
+  intervals: ServiceInterval[]
+) {
+  const intervalMiles = Number(
+    getMatchingServiceInterval(service, intervals)?.intervalMiles
+  );
+  if (Number.isFinite(intervalMiles) && intervalMiles > 0) return intervalMiles;
+  if (normalizeServiceType(service.serviceType) === "tires") return 50000;
+  return null;
+}
+
+function getMileageRangeOverlapMiles(
+  rangeStart: number,
+  rangeEnd: number,
+  windowStart: number,
+  windowEnd: number
+) {
+  if (!(rangeStart > 0 && rangeEnd > rangeStart && windowStart > 0 && windowEnd > windowStart)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(rangeEnd, windowEnd) - Math.max(rangeStart, windowStart));
+}
 
 /* =========================================================
    HOME COMPONENT
@@ -54,11 +145,17 @@ export default function Home() {
   const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
 
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
+  const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
+  const [payAdjustments, setPayAdjustments] = useState<PayAdjustment[]>([]);
   const [accessState, setAccessState] =
     useState<SubscriptionAccessState | null>(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [hasPostShiftSignal, setHasPostShiftSignal] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useRefreshOnFocus(() => setRefreshToken((current) => current + 1));
 
   const activeShift = savedShifts.find((shift) => shift.status === "open");
 
@@ -81,9 +178,15 @@ export default function Home() {
       }
 
       try {
-        const [shifts, fuel, access] = await Promise.all([
+        const [shifts, fuel, service, intervals, adjustmentsResult, access] = await Promise.all([
           loadShiftsFromSupabase(user.id),
           loadFuelEntriesFromSupabase(user.id),
+          loadServiceEntriesFromSupabase(user.id),
+          loadServiceIntervalsFromSupabase(user.id),
+          supabase
+            .from("pay_adjustments")
+            .select("amount, week_start")
+            .eq("user_id", user.id),
           loadSubscriptionAccess({
             userId: user.id,
             userCreatedAt: user.created_at,
@@ -94,6 +197,9 @@ export default function Home() {
 
         setSavedShifts(shifts);
         setFuelEntries(fuel);
+        setServiceEntries(service);
+        setServiceIntervals(intervals);
+        setPayAdjustments((adjustmentsResult.data ?? []) as PayAdjustment[]);
         setAccessState(access);
 
         const shiftEnded = sessionStorage.getItem("gigaxios_shift_ended") === "1";
@@ -117,7 +223,7 @@ export default function Home() {
       isMounted = false;
     };
 
-  }, [router]);
+  }, [refreshToken, router]);
 
   /* =========================================================
     ACTIVE_SHIFT_LOOKUP --
@@ -150,6 +256,8 @@ export default function Home() {
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
   endOfWeek.setHours(23, 59, 59, 999);
+  const currentPeriodStart = formatISODate(startOfWeek);
+  const currentPeriodEnd = formatISODate(endOfWeek);
 
   const currentWeekShifts = savedShifts.filter((shift) => {
     const shiftDate = parseLocalDate(shift.date);
@@ -194,21 +302,105 @@ export default function Home() {
      PAY_CALCULATIONS
      ========================================================= */
 
-  const totalGrossPay = currentWeekShifts.reduce((total, shift) => {
+  const shiftGrossPay = closedShifts.reduce((total, shift) => {
     return total + Number(shift.grossPay || 0);
   }, 0);
+  const currentPeriodAdjustments = payAdjustments.filter((adjustment) =>
+    isDateInRange(adjustment.week_start, currentPeriodStart, currentPeriodEnd)
+  );
+  const totalAdjustments =
+    closedShifts.length === 0
+      ? 0
+      : currentPeriodAdjustments.reduce(
+          (total, adjustment) => total + Number(adjustment.amount || 0),
+          0
+        );
+  const totalGrossPay = shiftGrossPay + totalAdjustments;
 
   /* =========================================================
      NET_PROFIT_CALCULATIONS
      ========================================================= */
 
-  const fuelCostResult = calculateWorkFuelCost({
+  const selectedVehicleKeys = [...new Set(closedShifts.map(getShiftVehicleKey))];
+  const selectedVehicleIds = selectedVehicleKeys.filter(
+    (vehicleId) => vehicleId !== "unassigned"
+  );
+  const scopedFuelEntries = fuelEntries.filter((entry) =>
+    selectedVehicleKeys.includes(getFuelVehicleKey(entry))
+  );
+  const completedFuelCycles = selectedVehicleKeys.flatMap((vehicleKey) => {
+    const fullFillUps = scopedFuelEntries
+      .filter((entry) => getFuelVehicleKey(entry) === vehicleKey)
+      .filter((entry) => entry.isFullFillUp ?? true)
+      .sort((a, b) => {
+        const odometerDiff = Number(a.odometer || 0) - Number(b.odometer || 0);
+        if (odometerDiff !== 0) return odometerDiff;
+
+        const dateDiff = parseLocalDate(a.date).getTime() - parseLocalDate(b.date).getTime();
+        if (dateDiff !== 0) return dateDiff;
+
+        return parseOptionalDateTime(a.createdAt) - parseOptionalDateTime(b.createdAt);
+      });
+
+    return fullFillUps
+      .slice(1)
+      .map((endFill, index) => {
+        const startFill = fullFillUps[index];
+        return {
+          vehicleKey,
+          startOdometer: Number(startFill.odometer || 0),
+          endOdometer: Number(endFill.odometer || 0),
+          endDate: endFill.date,
+          cycleMiles: Number(endFill.odometer || 0) - Number(startFill.odometer || 0),
+          gallons: Number(endFill.gallons || 0),
+          fuelCost: getFuelEntryTotalCost(endFill),
+        };
+      })
+      .filter((cycle) => cycle.endOdometer > cycle.startOdometer);
+  });
+  const selectedRangeFuelCycles = completedFuelCycles.filter((cycle) =>
+    isDateInRange(cycle.endDate, currentPeriodStart, currentPeriodEnd)
+  );
+  const fuelCostResult = calculateSimpleWorkFuelCost({
     workMiles: totalWorkMiles,
-    fuelEntries,
+    completedFuelCycles: selectedRangeFuelCycles,
   });
   const workFuelCost = fuelCostResult.workFuelCost;
+  const assignedVehicleServices = serviceEntries.filter(
+    (service) =>
+      !!service.vehicleId && selectedVehicleIds.includes(service.vehicleId)
+  );
+  const serviceCostUsed = assignedVehicleServices.reduce((total, service) => {
+    const serviceCost = Number(service.cost || 0);
+    if (!(serviceCost > 0)) return total;
 
-  const netProfit = totalGrossPay - workFuelCost;
+    const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
+    if (!intervalMileage) return total;
+
+    const serviceStartOdometer = Number(service.odometer || 0);
+    const serviceEndOdometer = serviceStartOdometer + intervalMileage;
+    const serviceVehicleKey = service.vehicleId || "unassigned";
+    const costPerMile = serviceCost / intervalMileage;
+    const workMilesSinceService = closedShifts
+      .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+      .reduce((sum, shift) => {
+        const shiftStart = Number(shift.beginningMileage);
+        const shiftEnd = Number(shift.endingMileage);
+        return (
+          sum +
+          getMileageRangeOverlapMiles(
+            shiftStart,
+            shiftEnd,
+            serviceStartOdometer,
+            serviceEndOdometer
+          )
+        );
+      }, 0);
+
+    return total + Math.min(serviceCost, workMilesSinceService * costPerMile);
+  }, 0);
+
+  const netProfit = totalGrossPay - workFuelCost - serviceCostUsed;
 
   /* =========================================================
      HOURS_WORKED_CALCULATIONS
@@ -319,21 +511,13 @@ export default function Home() {
           </p>
 
           <p
-            className={`mt-2 ${
-              fuelCostResult.needsMpg
-                ? "font-semibold text-amber-300"
-                : "text-slate-200"
-            }`}
+            className="mt-2 text-slate-200"
           >
-            {fuelCostResult.needsMpg ? "Fuel cost pending" : "Net Profit"}
+            True Net Profit
           </p>
 
           <p className="mt-1 text-sm text-amber-300">
-            {fuelCostResult.needsMpg
-              ? "Add at least 2 full fuel entries to unlock fuel cost calculations."
-              : fuelCostResult.source === "actual_history"
-                ? "After fuel cost"
-                : "After estimated fuel cost"}
+            After fuel + service
           </p>
 
           {/* MAIN_CARD_METRICS */}

@@ -11,6 +11,7 @@
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
+import { useRefreshOnFocus } from "@/app/lib/useRefreshOnFocus";
 
 import {
   calculateFuelEntryTotalCostFallback,
@@ -92,6 +93,7 @@ export default function FuelPage() {
 
   const router = useRouter();
   const saveInProgressRef = useRef(false);
+  const hasInitializedFormRef = useRef(false);
   const fileInputRefs = useRef<Record<FuelOcrKind, HTMLInputElement | null>>({
     odometer: null,
     receipt: null,
@@ -102,6 +104,7 @@ export default function FuelPage() {
      ========================================================= */
 
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [vehicles, setVehicles] = useState<Array<{
     id: string; year: string; make: string; model: string; is_primary: boolean;
   }>>([]);
@@ -127,10 +130,12 @@ export default function FuelPage() {
   const [ocrError, setOcrError] = useState("");
   const [ocrMessage, setOcrMessage] = useState("");
 
+  useRefreshOnFocus(() => setRefreshToken((current) => current + 1));
+
   /* =========================================================
      DATA LOADING
-     Runs once on mount — verifies auth, loads saved fuel
-     entries from Supabase, and pre-fills today's date.
+     Runs on mount and when the app returns to the foreground —
+     verifies auth and reloads saved fuel entries from Supabase.
      ========================================================= */
 
   useEffect(() => {
@@ -162,16 +167,20 @@ export default function FuelPage() {
 
       const loadedVehicles = vehicleData || [];
       setVehicles(loadedVehicles);
-      const primary = loadedVehicles.find((v) => v.is_primary) || loadedVehicles[0] || null;
-      setSelectedVehicleId(primary?.id || "");
 
-      const today = new Date();
-      const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      setDate(localDate);
+      if (!hasInitializedFormRef.current) {
+        const primary = loadedVehicles.find((v) => v.is_primary) || loadedVehicles[0] || null;
+        setSelectedVehicleId(primary?.id || "");
+
+        const today = new Date();
+        const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+        setDate(localDate);
+        hasInitializedFormRef.current = true;
+      }
     }
 
     load();
-  }, [router]);
+  }, [refreshToken, router]);
 
   const trialRequired = accessState?.trialRequired ?? false;
 

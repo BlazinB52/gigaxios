@@ -18,6 +18,7 @@ import {
   DUPLICATE_SHIFT_MESSAGE,
   hasDuplicateClosedShift,
 } from "@/app/lib/shiftDuplicateValidation";
+import { useRefreshOnFocus } from "@/app/lib/useRefreshOnFocus";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,9 @@ export default function DayDetailPage() {
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [allFuelEntries, setAllFuelEntries] = useState<FuelEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useRefreshOnFocus(() => setRefreshToken((current) => current + 1));
 
   const [vehicles, setVehicles] = useState<Array<{
     id: string; year: string; make: string; model: string; is_primary: boolean;
@@ -106,7 +110,7 @@ export default function DayDetailPage() {
       setLoading(false);
     }
     load();
-  }, [dateStr, router]);
+  }, [dateStr, refreshToken, router]);
 
   // ─── Derived ────────────────────────────────────────────────────────────────
 

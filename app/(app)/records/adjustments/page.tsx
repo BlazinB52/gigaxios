@@ -44,7 +44,7 @@ const ADJUSTMENT_COLORS: Record<AdjustmentType, string> = {
   overtime: "text-cyan-400",
 };
 
-const PLATFORMS = ["GoPuff", "Amazon Flex", "Uber Eats", "DoorDash", "Other"];
+const PLATFORMS = ["GoPuff", "Amazon Flex", "Uber Eats", "DoorDash", "Shipt", "Veho", "Other"];
 const ADJUSTMENT_TYPES: AdjustmentType[] = [
   "mga",
   "delayed_tip",

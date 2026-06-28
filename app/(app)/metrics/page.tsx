@@ -13,10 +13,10 @@
    ========================================================= */
 
 import AppLoadingScreen from "@/app/components/AppLoadingScreen";
+import { COMMON_PLATFORMS } from "@/app/components/PlatformField";
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ChevronDown,
   Clock,
   DollarSign,
   Info,
@@ -65,6 +65,14 @@ type DateRangeOption = {
   type: RangeType;
 };
 
+type PlatformFilterValue = "__all__" | string;
+
+type PayAdjustmentMetric = {
+  amount: number;
+  week_start: string;
+  platform: string | null;
+};
+
 type BestDayBucket = {
   label: string;
   fullLabel: string;
@@ -77,10 +85,27 @@ type BestDayBucket = {
   netPerHour: number;
 };
 
+type BreakdownBucket = {
+  key: string;
+  label: string;
+  platformLabel: string;
+  deliveries: number;
+  hours: number;
+  grossPay: number;
+  workMiles: number;
+  fuelCost: number;
+  serviceCost: number;
+  trueNet: number;
+  netPerHour: number;
+  netPerMile: number;
+};
+
 type ChartPoint = {
   x: number;
   y: number;
 };
+
+const ALL_PLATFORMS_VALUE = "__all__";
 
 const WEEK_START_STORAGE_KEYS = [
   "gigaxios-week-start",
@@ -326,6 +351,12 @@ function getFuelVehicleKey(entry: FuelEntry): string {
   return entry.vehicleId || "unassigned";
 }
 
+function getShiftMiles(shift: SavedShift): number {
+  const begin = Number(shift.beginningMileage);
+  const end = Number(shift.endingMileage);
+  return begin > 0 && end > begin ? end - begin : 0;
+}
+
 /* =========================================================
    METRICS PAGE COMPONENT
    ========================================================= */
@@ -341,9 +372,10 @@ export default function MetricsPage() {
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
-  const [adjustments, setAdjustments] = useState<{ amount: number; week_start: string }[]>([]);
+  const [adjustments, setAdjustments] = useState<PayAdjustmentMetric[]>([]);
   const [weekStartsOn, setWeekStartsOn] = useState(1);
   const [selectedRangeKey, setSelectedRangeKey] = useState<RangeType>("current_pay_period");
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformFilterValue>(ALL_PLATFORMS_VALUE);
   const [isLoaded, setIsLoaded] = useState(false);
   const [vehicles, setVehicles] = useState<Array<{
     id: string;
@@ -384,7 +416,7 @@ export default function MetricsPage() {
           loadFuelEntriesFromSupabase(user.id),
           loadServiceEntriesFromSupabase(user.id),
           loadServiceIntervalsFromSupabase(user.id),
-          supabase.from("pay_adjustments").select("amount, week_start").eq("user_id", user.id),
+          supabase.from("pay_adjustments").select("amount, week_start, platform").eq("user_id", user.id),
           supabase
             .from("vehicles")
             .select("id, year, make, model, is_primary, status")
@@ -397,7 +429,7 @@ export default function MetricsPage() {
         setFuelEntries(f);
         setServiceEntries(sv);
         setServiceIntervals(intervals);
-        setAdjustments((adjRes.data ?? []) as { amount: number; week_start: string }[]);
+        setAdjustments((adjRes.data ?? []) as PayAdjustmentMetric[]);
         const vehicleData = vRes.data || [];
         setVehicles(vehicleData);
         setSelectedVehicleId((current) =>
@@ -449,6 +481,24 @@ export default function MetricsPage() {
     rangeOptions.find((range) => range.type === selectedRangeKey) ??
     rangeOptions[0];
 
+  const platformOptions = useMemo(() => {
+    const values = new Set<string>(COMMON_PLATFORMS);
+
+    shifts.forEach((shift) => {
+      const platform = shift.platform?.trim();
+      if (platform) values.add(platform);
+    });
+    adjustments.forEach((adjustment) => {
+      const platform = adjustment.platform?.trim();
+      if (platform) values.add(platform);
+    });
+
+    return Array.from(values);
+  }, [adjustments, shifts]);
+
+  const selectedPlatformLabel =
+    selectedPlatform === ALL_PLATFORMS_VALUE ? "All platforms" : selectedPlatform;
+
   /* =========================================================
      METRICS COMPUTATION
      All calculations are memoized and re-run whenever the
@@ -463,7 +513,10 @@ export default function MetricsPage() {
     const periodShifts = vehicleShifts.filter(
       (s) => isDateInRange(s.date, selectedRange.rangeStart, selectedRange.rangeEnd)
     );
-    const completedPeriodShifts = periodShifts.filter((shift) => shift.status === "closed");
+    const platformPeriodShifts = selectedPlatform === ALL_PLATFORMS_VALUE
+      ? periodShifts
+      : periodShifts.filter((shift) => shift.platform?.trim() === selectedPlatform);
+    const completedPeriodShifts = platformPeriodShifts.filter((shift) => shift.status === "closed");
     const selectedVehicleKeys = [...new Set(completedPeriodShifts.map(getShiftVehicleKey))];
     const selectedVehicleIds = selectedVehicleKeys.filter((vehicleId) => vehicleId !== "unassigned");
     const scopedAllFuel = vehicleFuel.filter((entry) =>
@@ -481,7 +534,9 @@ export default function MetricsPage() {
     /* Pay adjustments (MGA, bonuses, etc.) — excluded when vehicle has no shifts,
        since adjustments are driver-level and cannot be attributed to a specific vehicle */
     const periodAdjustments = adjustments.filter(
-      (a) => isDateInRange(a.week_start, selectedRange.rangeStart, selectedRange.rangeEnd)
+      (a) =>
+        isDateInRange(a.week_start, selectedRange.rangeStart, selectedRange.rangeEnd) &&
+        (selectedPlatform === ALL_PLATFORMS_VALUE || a.platform?.trim() === selectedPlatform)
     );
     const totalAdjustments = completedPeriodShifts.length === 0
       ? 0
@@ -501,9 +556,7 @@ export default function MetricsPage() {
 
     /* Work miles — difference between ending and beginning mileage per shift */
     const totalShiftMiles = completedPeriodShifts.reduce((sum, s) => {
-      const begin = Number(s.beginningMileage);
-      const end = Number(s.endingMileage);
-      return begin > 0 && end > begin ? sum + (end - begin) : sum;
+      return sum + getShiftMiles(s);
     }, 0);
 
     const completedFuelCycles = selectedVehicleKeys.flatMap((vehicleKey) => {
@@ -808,6 +861,131 @@ export default function MetricsPage() {
       });
     }
 
+    const calculateAllocatedServiceCost = (bucketShifts: SavedShift[]) => {
+      return assignedVehicleServices.reduce((sum, service) => {
+        const serviceCost = Number(service.cost || 0);
+        const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
+        if (!(serviceCost > 0) || !intervalMileage) return sum;
+
+        const serviceStartOdometer = Number(service.odometer || 0);
+        const serviceEndOdometer = serviceStartOdometer + intervalMileage;
+        const serviceVehicleKey = service.vehicleId || "unassigned";
+        const costPerMile = serviceCost / intervalMileage;
+        const periodWorkMilesSinceService = completedPeriodShifts
+          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+          .reduce((miles, shift) => {
+            const shiftStart = Number(shift.beginningMileage);
+            const shiftEnd = Number(shift.endingMileage);
+            return miles + getMileageRangeOverlapMiles(
+              shiftStart,
+              shiftEnd,
+              serviceStartOdometer,
+              serviceEndOdometer
+            );
+          }, 0);
+        if (!(periodWorkMilesSinceService > 0)) return sum;
+
+        const periodAllocatedServiceCost = Math.min(
+          serviceCost,
+          periodWorkMilesSinceService * costPerMile
+        );
+        const bucketWorkMilesSinceService = bucketShifts
+          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+          .reduce((miles, shift) => {
+            const shiftStart = Number(shift.beginningMileage);
+            const shiftEnd = Number(shift.endingMileage);
+            return miles + getMileageRangeOverlapMiles(
+              shiftStart,
+              shiftEnd,
+              serviceStartOdometer,
+              serviceEndOdometer
+            );
+          }, 0);
+
+        return sum + (
+          bucketWorkMilesSinceService / periodWorkMilesSinceService
+        ) * periodAllocatedServiceCost;
+      }, 0);
+    };
+
+    const buildBreakdownBucket = ({
+      key,
+      label,
+      platformLabel,
+      bucketShifts,
+      bucketAdjustments,
+    }: {
+      key: string;
+      label: string;
+      platformLabel: string;
+      bucketShifts: SavedShift[];
+      bucketAdjustments: number;
+    }): BreakdownBucket => {
+      const deliveries = bucketShifts.reduce((sum, shift) => sum + Number(shift.deliveries || 0), 0);
+      const hours = bucketShifts.reduce((sum, shift) => sum + Number(shift.hoursWorked || 0), 0);
+      const shiftGross = bucketShifts.reduce((sum, shift) => sum + Number(shift.grossPay || 0), 0);
+      const workMiles = bucketShifts.reduce((sum, shift) => sum + getShiftMiles(shift), 0);
+      const fuelCost = workMiles * fuelCostPerMile;
+      const serviceCost = calculateAllocatedServiceCost(bucketShifts);
+      const grossPay = shiftGross + bucketAdjustments;
+      const trueNet = grossPay - fuelCost - serviceCost;
+
+      return {
+        key,
+        label,
+        platformLabel,
+        deliveries: roundCurrency(deliveries),
+        hours: roundCurrency(hours),
+        grossPay: roundCurrency(grossPay),
+        workMiles: roundCurrency(workMiles),
+        fuelCost: roundCurrency(fuelCost),
+        serviceCost: roundCurrency(serviceCost),
+        trueNet: roundCurrency(trueNet),
+        netPerHour: hours > 0 ? trueNet / hours : 0,
+        netPerMile: workMiles > 0 ? trueNet / workMiles : 0,
+      };
+    };
+
+    const byPlatformBreakdown = selectedPlatform === ALL_PLATFORMS_VALUE
+      ? Array.from(new Set([
+        ...(completedPeriodShifts.map((shift) => shift.platform?.trim()).filter(Boolean) as string[]),
+        ...(periodAdjustments.map((adjustment) => adjustment.platform?.trim()).filter(Boolean) as string[]),
+      ]))
+        .sort((a, b) => a.localeCompare(b))
+        .map((platform) => {
+          const bucketShifts = completedPeriodShifts.filter((shift) => shift.platform?.trim() === platform);
+          const bucketAdjustments = periodAdjustments
+            .filter((adjustment) => adjustment.platform?.trim() === platform)
+            .reduce((sum, adjustment) => sum + Number(adjustment.amount || 0), 0);
+
+          return buildBreakdownBucket({
+            key: platform,
+            label: platform,
+            platformLabel: platform,
+            bucketShifts,
+            bucketAdjustments,
+          });
+        })
+      : [];
+
+    const sortedDayKeys = Array.from(new Set(completedPeriodShifts.map((shift) => toISODate(shift.date))))
+      .filter(Boolean)
+      .sort((a, b) => b.localeCompare(a));
+
+    const byDayBreakdown = sortedDayKeys.map((dayKey) => {
+      const bucketShifts = completedPeriodShifts.filter((shift) => toISODate(shift.date) === dayKey);
+      const bucketHours = bucketShifts.reduce((sum, shift) => sum + Number(shift.hoursWorked || 0), 0);
+      const bucketAdjustments = totalHours > 0 ? totalAdjustments * (bucketHours / totalHours) : 0;
+
+      return buildBreakdownBucket({
+        key: dayKey,
+        label: formatLongDate(dayKey),
+        platformLabel: selectedPlatform === ALL_PLATFORMS_VALUE ? "All platforms" : selectedPlatform,
+        bucketShifts,
+        bucketAdjustments,
+      });
+    });
+
     return {
       totalDeliveries, totalHours, totalGrossPay, totalAdjustments,
       shiftGrossPay, totalShiftMiles,
@@ -821,9 +999,10 @@ export default function MetricsPage() {
       yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct, serviceCostPct,
       bestDayData, bestDayBucket, lowestDayBucket, avgNetPerHour, bestDaysInsight,
       hasEnoughBestDayData, avgMpg, warnings, fuelOnlyProfitPct,
+      byPlatformBreakdown, byDayBreakdown,
       hasData: completedPeriodShifts.length > 0 || totalAdjustments > 0,
     };
-  }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedRange, selectedVehicleId]);
+  }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedRange, selectedVehicleId, selectedPlatform]);
 
   /* =========================================================
      LOADING STATE
@@ -844,6 +1023,7 @@ if (!isLoaded) {
     yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct,
     bestDayData, bestDayBucket, lowestDayBucket, avgNetPerHour, bestDaysInsight,
     hasEnoughBestDayData, avgMpg, warnings, fuelOnlyProfitPct,
+    byPlatformBreakdown, byDayBreakdown,
     hasData,
   } = metrics;
   const visibleServiceDetails = serviceDetails.filter(
@@ -916,24 +1096,42 @@ if (!isLoaded) {
           </div>
         )}
 
-        {/* DATE RANGE SELECTOR */}
-        <div className="mt-5 flex items-center justify-between">
-          <span className="text-sm text-slate-400">Range:</span>
-          <select
-            value={selectedRange.type}
-            onChange={(e) => setSelectedRangeKey(e.target.value as RangeType)}
-            className="max-w-[260px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-          >
-            {rangeOptions.map((range) => (
-              <option key={range.type} value={range.type}>
-                {range.label}
-              </option>
-            ))}
-          </select>
+        {/* FILTERS */}
+        <div className="mt-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-slate-400">Range:</span>
+            <select
+              value={selectedRange.type}
+              onChange={(e) => setSelectedRangeKey(e.target.value as RangeType)}
+              className="max-w-[260px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+            >
+              {rangeOptions.map((range) => (
+                <option key={range.type} value={range.type}>
+                  {range.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-slate-400">Platform:</span>
+            <select
+              value={selectedPlatform}
+              onChange={(e) => setSelectedPlatform(e.target.value)}
+              className="max-w-[260px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+            >
+              <option value={ALL_PLATFORMS_VALUE}>All platforms</option>
+              {platformOptions.map((platform) => (
+                <option key={platform} value={platform}>
+                  {platform}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <p className="mt-2 text-xs text-slate-500">
-          {formatLongDate(selectedRange.rangeStart)} - {formatLongDate(selectedRange.rangeEnd)}
+          {formatLongDate(selectedRange.rangeStart)} - {formatLongDate(selectedRange.rangeEnd)} - {selectedPlatformLabel}
         </p>
 
         {warnings.length > 0 && (
@@ -965,7 +1163,7 @@ if (!isLoaded) {
                   <span className="text-lg">📊</span>
                   <h2 className="text-lg font-bold">Overview</h2>
                   <span className="ml-1 rounded-full bg-blue-950 px-2 py-0.5 text-xs text-blue-400">
-                    {selectedRange.label}
+                    {selectedRange.label} / {selectedPlatformLabel}
                   </span>
                 </div>
 
@@ -1009,6 +1207,134 @@ if (!isLoaded) {
                 </div>
               </section>
             </div>
+
+            {selectedPlatform === ALL_PLATFORMS_VALUE && byPlatformBreakdown.length > 0 && (
+              <div className="relative mt-6">
+                <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-cyan-500" />
+                <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-bold">By Platform</h2>
+                    <span className="rounded-full bg-cyan-950 px-2 py-0.5 text-xs text-cyan-300">
+                      {selectedRange.label}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {byPlatformBreakdown.map((platform) => (
+                      <div
+                        key={platform.key}
+                        className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+                      >
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-base font-bold text-white">{platform.label}</p>
+                            <p className="text-xs text-slate-500">
+                              {platform.workMiles.toLocaleString()} mi / {platform.hours.toFixed(2)} hrs
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-slate-400">True net</p>
+                            <p className="text-lg font-bold text-emerald-400">{fmtDollar(platform.trueNet)}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Gross</span>
+                            <span className="text-white">{fmtDollar(platform.grossPay)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Deliveries</span>
+                            <span className="text-white">{platform.deliveries.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Fuel</span>
+                            <span className="text-white">{fuelCostNeedsMpg ? "Pending" : fmtDollar(platform.fuelCost)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Service</span>
+                            <span className="text-white">{fmtDollar(platform.serviceCost)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Net/hr</span>
+                            <span className="text-white">{fmtDollar(platform.netPerHour)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Net/mi</span>
+                            <span className="text-white">{fmtDollar(platform.netPerMile)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {byDayBreakdown.length > 0 && (
+              <div className="relative mt-6">
+                <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-indigo-500" />
+                <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-bold">By Day</h2>
+                    <span className="rounded-full bg-indigo-950 px-2 py-0.5 text-xs text-indigo-300">
+                      {selectedPlatformLabel}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {byDayBreakdown.map((day) => (
+                      <div
+                        key={day.key}
+                        className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+                      >
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-base font-bold text-white">{day.label}</p>
+                            <p className="text-xs text-slate-500">{day.platformLabel}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-slate-400">True net</p>
+                            <p className="text-lg font-bold text-emerald-400">{fmtDollar(day.trueNet)}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Gross</span>
+                            <span className="text-white">{fmtDollar(day.grossPay)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Deliveries</span>
+                            <span className="text-white">{day.deliveries.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Hours</span>
+                            <span className="text-white">{day.hours.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Miles</span>
+                            <span className="text-white">{day.workMiles.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Fuel</span>
+                            <span className="text-white">{fuelCostNeedsMpg ? "Pending" : fmtDollar(day.fuelCost)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Service</span>
+                            <span className="text-white">{fmtDollar(day.serviceCost)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Net/hr</span>
+                            <span className="text-white">{fmtDollar(day.netPerHour)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            )}
 
             {/* ── SECTION 2: RETENTION BAR ── */}
             <div className="relative mt-6">

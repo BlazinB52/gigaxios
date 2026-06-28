@@ -617,6 +617,7 @@ export default function SettingsPage() {
                   <option value="Amazon Flex">Amazon Flex</option>
                   <option value="Shipt">Shipt</option>
                   <option value="Uber Eats">Uber Eats</option>
+                  <option value="Veho">Veho</option>
                   <option value="Other">Other</option>
                 </select>
               </div>

@@ -9,6 +9,7 @@ export const COMMON_PLATFORMS = [
   "Uber Eats",
   "DoorDash",
   "Shipt",
+  "Veho",
   "Other",
 ];
 

@@ -1,7 +1,7 @@
 export type ShiftRecord = {
   id: string;
   date: string;
-  platform: "GoPuff" | "Amazon Flex" | "Other";
+  platform: "GoPuff" | "Amazon Flex" | "Uber Eats" | "DoorDash" | "Shipt" | "Veho" | "Other";
   beginningMileage: number;
   endingMileage: number | null;
   status: "open" | "closed";
@@ -24,7 +24,7 @@ export type WeeklyPayRecord = {
   id: string;
   weekStartDate: string;
   weekEndDate: string;
-  platform: "GoPuff" | "Amazon Flex" | "Other";
+  platform: "GoPuff" | "Amazon Flex" | "Uber Eats" | "DoorDash" | "Shipt" | "Veho" | "Other";
   basePay: number;
   tips: number;
   adjustments: number;

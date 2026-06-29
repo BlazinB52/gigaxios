@@ -106,6 +106,7 @@ type ChartPoint = {
 };
 
 const ALL_PLATFORMS_VALUE = "__all__";
+const RECENT_PRIOR_FUEL_CYCLE_LIMIT = 3;
 
 const WEEK_START_STORAGE_KEYS = [
   "gigaxios-week-start",
@@ -357,6 +358,14 @@ function getShiftMiles(shift: SavedShift): number {
   return begin > 0 && end > begin ? end - begin : 0;
 }
 
+function isUsableFuelCycle(cycle: {
+  cycleMiles: number;
+  gallons: number;
+  fuelCost: number;
+}): boolean {
+  return cycle.cycleMiles > 0 && cycle.gallons > 0 && cycle.fuelCost > 0;
+}
+
 /* =========================================================
    METRICS PAGE COMPONENT
    ========================================================= */
@@ -558,6 +567,11 @@ export default function MetricsPage() {
     const totalShiftMiles = completedPeriodShifts.reduce((sum, s) => {
       return sum + getShiftMiles(s);
     }, 0);
+    const workMilesByVehicle = completedPeriodShifts.reduce((totals, shift) => {
+      const vehicleKey = getShiftVehicleKey(shift);
+      totals.set(vehicleKey, (totals.get(vehicleKey) ?? 0) + getShiftMiles(shift));
+      return totals;
+    }, new Map<string, number>());
 
     const completedFuelCycles = selectedVehicleKeys.flatMap((vehicleKey) => {
       const fullFillUps = scopedAllFuel
@@ -594,15 +608,75 @@ export default function MetricsPage() {
     const selectedRangeFuelCycles = completedFuelCycles.filter((cycle) =>
       isDateInRange(cycle.endDate, selectedRange.rangeStart, selectedRange.rangeEnd)
     );
+    const selectedRangeUsableFuelCycles = selectedRangeFuelCycles.filter(isUsableFuelCycle);
+    const priorFuelCycles = completedFuelCycles
+      .filter((cycle) => toISODate(cycle.endDate) < selectedRange.rangeStart)
+      .filter(isUsableFuelCycle)
+      .sort((a, b) => parseShiftDate(b.endDate).getTime() - parseShiftDate(a.endDate).getTime());
+
+    const vehicleFuelCostResults = selectedVehicleKeys.map((vehicleKey) => {
+      const vehicleSelectedRangeFuelCycles = selectedRangeUsableFuelCycles.filter(
+        (cycle) => cycle.vehicleKey === vehicleKey
+      );
+      const vehiclePriorFuelCycles = priorFuelCycles
+        .filter((cycle) => cycle.vehicleKey === vehicleKey)
+        .slice(0, RECENT_PRIOR_FUEL_CYCLE_LIMIT);
+      const fuelCyclesForCost = vehicleSelectedRangeFuelCycles.length > 0
+        ? vehicleSelectedRangeFuelCycles
+        : vehiclePriorFuelCycles;
+      const source = vehicleSelectedRangeFuelCycles.length > 0
+        ? "selected_range"
+        : vehiclePriorFuelCycles.length > 0
+          ? "prior_history"
+          : "unavailable";
+
+      return {
+        vehicleKey,
+        source,
+        fuelCyclesForCost,
+        result: calculateSimpleWorkFuelCost({
+          workMiles: workMilesByVehicle.get(vehicleKey) ?? 0,
+          completedFuelCycles: fuelCyclesForCost,
+        }),
+      };
+    });
+    const fuelCostNeedsMpg = vehicleFuelCostResults.some(
+      ({ vehicleKey, result }) => (workMilesByVehicle.get(vehicleKey) ?? 0) > 0 && result.needsMpg
+    );
+    const fuelCostUsesPriorHistory = !fuelCostNeedsMpg && vehicleFuelCostResults.some(
+      ({ vehicleKey, source }) => (workMilesByVehicle.get(vehicleKey) ?? 0) > 0 && source === "prior_history"
+    );
+    const fuelCostSubtext = fuelCostNeedsMpg
+      ? "Add full-fill history"
+      : fuelCostUsesPriorHistory
+        ? "Estimated from recent fuel history"
+        : "MPG x fuel price";
+    const vehicleFuelCostByKey = new Map(
+      vehicleFuelCostResults.map(({ vehicleKey, result }) => [vehicleKey, result])
+    );
 
     const fuelCostResult = calculateSimpleWorkFuelCost({
       workMiles: totalShiftMiles,
-      completedFuelCycles: selectedRangeFuelCycles,
+      completedFuelCycles: vehicleFuelCostResults.flatMap(
+        ({ fuelCyclesForCost }) => fuelCyclesForCost
+      ),
     });
 
-    const fuelCostNeedsMpg = totalShiftMiles > 0 && fuelCostResult.needsMpg;
-    const workFuelCost = fuelCostResult.workFuelCost;
-    const fuelCostPerMile = fuelCostResult.effectiveCostPerMile;
+    const workFuelCost = fuelCostNeedsMpg
+      ? 0
+      : vehicleFuelCostResults.reduce(
+        (sum, { result }) => sum + result.workFuelCost,
+        0
+      );
+    const fuelCostPerMile = totalShiftMiles > 0 ? workFuelCost / totalShiftMiles : 0;
+    const calculateFuelCostForShifts = (bucketShifts: SavedShift[]) => {
+      if (fuelCostNeedsMpg) return 0;
+
+      return bucketShifts.reduce((sum, shift) => {
+        const vehicleFuelCostResult = vehicleFuelCostByKey.get(getShiftVehicleKey(shift));
+        return sum + getShiftMiles(shift) * (vehicleFuelCostResult?.effectiveCostPerMile ?? 0);
+      }, 0);
+    };
 
     /* Profitability */
     const fuelOnlyProfit = totalGrossPay - workFuelCost;
@@ -706,12 +780,7 @@ export default function MetricsPage() {
         : 0;
       const bucketGrossPay = bucketShiftGrossPay + bucketAdjustments;
 
-      const bucketFuelCost = bucketShifts.reduce((sum, shift) => {
-        const begin = Number(shift.beginningMileage);
-        const end = Number(shift.endingMileage);
-        const miles = begin > 0 && end > begin ? end - begin : 0;
-        return sum + miles * fuelCostPerMile;
-      }, 0);
+      const bucketFuelCost = calculateFuelCostForShifts(bucketShifts);
 
       const bucketServiceCost = assignedVehicleServices.reduce((sum, service) => {
         const serviceCost = Number(service.cost || 0);
@@ -925,7 +994,7 @@ export default function MetricsPage() {
       const hours = bucketShifts.reduce((sum, shift) => sum + Number(shift.hoursWorked || 0), 0);
       const shiftGross = bucketShifts.reduce((sum, shift) => sum + Number(shift.grossPay || 0), 0);
       const workMiles = bucketShifts.reduce((sum, shift) => sum + getShiftMiles(shift), 0);
-      const fuelCost = workMiles * fuelCostPerMile;
+      const fuelCost = calculateFuelCostForShifts(bucketShifts);
       const serviceCost = calculateAllocatedServiceCost(bucketShifts);
       const grossPay = shiftGross + bucketAdjustments;
       const trueNet = grossPay - fuelCost - serviceCost;
@@ -991,6 +1060,8 @@ export default function MetricsPage() {
       shiftGrossPay, totalShiftMiles,
       workFuelCost, netProfit: trueNetProfit, netProfitPct: trueNetPct, fuelPct,
       fuelCostPerMile,
+      fuelCostSubtext,
+      fuelCostUsesPriorHistory,
       avgFuelPrice,
       estimatedGallonsUsed,
       fuelCostNeedsMpg,
@@ -1018,7 +1089,7 @@ if (!isLoaded) {
     totalDeliveries, totalHours, totalGrossPay, totalAdjustments,
     shiftGrossPay, totalShiftMiles,
     workFuelCost, netProfit, netProfitPct, fuelPct, fuelCostNeedsMpg,
-    avgFuelPrice, estimatedGallonsUsed,
+    avgFuelPrice, estimatedGallonsUsed, fuelCostSubtext, fuelCostUsesPriorHistory,
     profitPerDelivery,
     yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct,
     bestDayData, bestDayBucket, lowestDayBucket, avgNetPerHour, bestDaysInsight,
@@ -1178,7 +1249,7 @@ if (!isLoaded) {
                     {
                       label: "Work Fuel Cost",
                       value: fuelCostNeedsMpg ? "Pending" : fmtDollar(workFuelCost),
-                      sub: fuelCostNeedsMpg ? "Add full-fill history" : "MPG x fuel price",
+                      sub: fuelCostSubtext,
                     },
                     {
                       label: "Service Cost",
@@ -1635,7 +1706,9 @@ if (!isLoaded) {
                         <span>{fmtDollar(workFuelCost)}</span>
                       </div>
                       <p className="mt-2 text-slate-500">
-                        Fuel cost = work miles ÷ average MPG × average fuel price.
+                        {fuelCostUsesPriorHistory
+                          ? "Estimated from recent fuel history before this range."
+                          : "Fuel cost = work miles ÷ average MPG × average fuel price."}
                       </p>
                     </div>
 

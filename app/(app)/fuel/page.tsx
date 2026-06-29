@@ -55,6 +55,19 @@ type FuelOcrResult =
     };
 
 const OCR_TIMEOUT_MS = 45_000;
+const OCR_SCAN_ERROR_MESSAGES: Record<FuelOcrKind, string> = {
+  odometer:
+    "Could not read the odometer image. Please enter the mileage manually or try another photo.",
+  receipt:
+    "Could not process the fuel receipt. Please enter the fuel details manually or try another photo.",
+};
+const GENERIC_OCR_ERROR_MESSAGES = new Set([
+  "Could not process the fuel image.",
+  "OpenAI could not read the image.",
+  "OpenAI returned an empty OCR response.",
+  "OpenAI returned unreadable JSON.",
+  "OpenAI returned an unexpected OCR shape.",
+]);
 
 function numberToInput(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
@@ -82,6 +95,14 @@ function mergeNotes(currentNotes: string, nextNotes: string[]) {
     .filter((note) => note.length > 0 && !currentNotes.includes(note));
 
   return [currentNotes, ...additions].filter(Boolean).join("\n");
+}
+
+function getFuelOcrErrorMessage(kind: FuelOcrKind, error: string | undefined) {
+  if (!error || GENERIC_OCR_ERROR_MESSAGES.has(error)) {
+    return OCR_SCAN_ERROR_MESSAGES[kind];
+  }
+
+  return error;
 }
 
 export default function FuelPage() {
@@ -308,7 +329,7 @@ export default function FuelPage() {
       };
 
       if (!response.ok || !data.result) {
-        setOcrError(data.error || "OpenAI could not read this image.");
+        setOcrError(getFuelOcrErrorMessage(kind, data.error));
         return;
       }
 
@@ -319,8 +340,10 @@ export default function FuelPage() {
     } catch (error) {
       setOcrError(
         abortController.signal.aborted
-          ? "OCR took too long. Please try again."
-          : `OCR failed. ${getImportDayConversionErrorMessage(error)}`
+          ? OCR_SCAN_ERROR_MESSAGES[kind]
+          : getImportDayConversionErrorMessage(error) === "Could not process this image."
+            ? OCR_SCAN_ERROR_MESSAGES[kind]
+            : `OCR failed. ${getImportDayConversionErrorMessage(error)}`
       );
     } finally {
       window.clearTimeout(timeoutId);

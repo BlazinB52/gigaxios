@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { extractOdometerMileageFromText } from "@/app/lib/fuelOdometerOcr";
 import { calculateSubscriptionAccess } from "@/app/lib/subscriptionAccess";
 
 type FuelOcrKind = "odometer" | "receipt";
@@ -142,7 +143,9 @@ function getPrompt(kind: FuelOcrKind) {
   if (kind === "odometer") {
     return [
       "Read only the main vehicle odometer mileage from this image.",
+      "Prefer numbers near labels like ODO, odometer, mileage, mile, mi, or miles.",
       "Ignore trip mileage, range, MPG, temperature, clock, fuel economy, and warning lights.",
+      "If the display says ODO 86034 mi, return 86034.",
       "Return null if there is no clear odometer mileage. Do not guess.",
     ].join(" ");
   }
@@ -207,6 +210,8 @@ function getSchema(kind: FuelOcrKind) {
 }
 
 export async function POST(request: Request) {
+  let requestedKind: FuelOcrKind | null = null;
+
   try {
     const context = await getCurrentUserContext();
 
@@ -246,6 +251,7 @@ export async function POST(request: Request) {
     if (!isFuelOcrKind(kindValue)) {
       return NextResponse.json({ error: "Invalid fuel OCR image kind." }, { status: 400 });
     }
+    requestedKind = kindValue;
 
     if (!image || typeof image === "string") {
       return NextResponse.json({ error: "Select one image first." }, { status: 400 });
@@ -346,26 +352,41 @@ export async function POST(request: Request) {
       );
     }
 
+    const result =
+      parsed.kind === "odometer"
+        ? {
+            ...parsed,
+            mileage:
+              parsed.mileage ??
+              extractOdometerMileageFromText(parsed.notes),
+          }
+        : parsed;
+
     const warning =
-      parsed.kind === "odometer" && parsed.mileage === null
+      result.kind === "odometer" && result.mileage === null
         ? "No clear odometer mileage was detected."
-        : parsed.kind === "receipt" &&
-            parsed.date === null &&
-            parsed.gallons === null &&
-            parsed.pricePerGallon === null &&
-            parsed.stationName === null
+        : result.kind === "receipt" &&
+            result.date === null &&
+            result.gallons === null &&
+            result.pricePerGallon === null &&
+            result.stationName === null
           ? "No clear fuel receipt values were detected."
           : null;
 
     return NextResponse.json({
-      result: parsed,
+      result,
       raw: parsed,
       warning,
     });
   } catch (error) {
     console.error("Fuel OCR error:", error);
     return NextResponse.json(
-      { error: "Could not process the fuel image." },
+      {
+        error:
+          requestedKind === "odometer"
+            ? "Could not read the odometer image. Please enter the mileage manually or try another photo."
+            : "Could not process the fuel receipt. Please enter the fuel details manually or try another photo.",
+      },
       { status: 500 }
     );
   }

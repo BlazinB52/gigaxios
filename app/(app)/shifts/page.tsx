@@ -23,12 +23,7 @@ import {
 
 
 export default function ShiftsPage() {
-    const [platform, setPlatform] = useState(() => {
-      if (typeof window !== "undefined") {
-        return localStorage.getItem("gigaxios-default-platform") || "GoPuff";
-      }
-      return "GoPuff";
-    });
+    const [platform, setPlatform] = useState("");
     const [shiftDate, setShiftDate] = useState("");
     const [beginningMileage, setBeginningMileage] = useState("");
     const [endingMileage, setEndingMileage] = useState("");
@@ -159,6 +154,11 @@ export default function ShiftsPage() {
         }
 
         const trimmedPlatform = platform.trim();
+        if (!trimmedPlatform) {
+            alert("Platform is required.");
+            return;
+        }
+
         const previousShiftMileage = await loadPreviousShiftMileageReading({
             userId: user.id,
             vehicleId: selectedVehicleId || undefined,
@@ -442,6 +442,7 @@ export default function ShiftsPage() {
                                 value={platform}
                                 onChange={setPlatform}
                                 label="Platform"
+                                placeholder="Select or enter platform"
                             />
                             <div className="relative">
                                 <input

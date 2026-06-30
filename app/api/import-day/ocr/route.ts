@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { isImportDayKind, isImportDayOcrResult } from "@/app/lib/importDayParsing";
-import { ImportDayImageKind } from "@/app/lib/importDayTypes";
+import { ImportDayEarningsResult, ImportDayImageKind } from "@/app/lib/importDayTypes";
 import { calculateSubscriptionAccess } from "@/app/lib/subscriptionAccess";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -82,6 +82,12 @@ function getPrompt(kind: ImportDayImageKind) {
       "Do not infer platform from colors, layout, dollar amounts, wording style, or common app patterns.",
       "If platform is not clearly visible, return platform: null and explain that the platform was not visible in notes.",
       "Extract deliveries, hours worked, base pay, tips, bonuses or other pay, and gross pay.",
+      "Never treat negative amounts as earnings. Base pay, tips, other pay, and gross pay must be positive amounts or null.",
+      "Lines containing insurance, occupational accident, deduction, fee, withholding, tax, adjustment, charge, or a negative amount are fees or deductions, not earnings.",
+      "Extract fees and deductions into deductions using positive amounts. For example Occupational Accident Insurance -$0.43 becomes deductionType Occupational Accident Insurance and amount 0.43.",
+      "Use gross earnings labels in this preference order: Gross Total, Daily Earnings, Total Earnings, Total Pay, Payout, Available Balance.",
+      "Prefer Gross Total or Daily Earnings over Available Balance. Use Available Balance only when no gross earnings label is visible, set grossPaySource to available_balance, use low confidence, and warn in notes.",
+      "If gross earnings are not clearly visible, return grossPay: null.",
       "Extract date only when visible. Preserve the visible year; if only a two-digit year is visible, treat it as a modern 2000s year. Do not guess a year.",
       "If the screenshot appears to show weekly totals instead of one-day totals, say so in notes and use low confidence.",
       "Return null for fields that are not clearly visible. Do not guess.",
@@ -106,6 +112,22 @@ function getSchema(kind: ImportDayImageKind) {
   const nullableString = {
     anyOf: [{ type: "string" }, { type: "null" }],
   };
+  const grossPaySource = {
+    anyOf: [
+      {
+        type: "string",
+        enum: [
+          "gross_total",
+          "daily_earnings",
+          "total_earnings",
+          "total_pay",
+          "payout",
+          "available_balance",
+        ],
+      },
+      { type: "null" },
+    ],
+  };
 
   if (kind === "earnings") {
     return {
@@ -121,6 +143,20 @@ function getSchema(kind: ImportDayImageKind) {
         tips: nullableNumber,
         otherPay: nullableNumber,
         grossPay: nullableNumber,
+        grossPaySource,
+        deductions: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              deductionType: { type: "string" },
+              amount: { type: "number" },
+              notes: nullableString,
+            },
+            required: ["deductionType", "amount", "notes"],
+          },
+        },
         confidence,
         notes: { type: "string" },
       },
@@ -134,6 +170,8 @@ function getSchema(kind: ImportDayImageKind) {
         "tips",
         "otherPay",
         "grossPay",
+        "grossPaySource",
+        "deductions",
         "confidence",
         "notes",
       ],
@@ -150,6 +188,28 @@ function getSchema(kind: ImportDayImageKind) {
       notes: { type: "string" },
     },
     required: ["kind", "mileage", "confidence", "notes"],
+  };
+}
+
+function normalizeEarningsResult(result: ImportDayEarningsResult): ImportDayEarningsResult {
+  const deductions = result.deductions
+    .map((deduction) => ({
+      ...deduction,
+      deductionType: deduction.deductionType.trim(),
+      amount: Math.abs(deduction.amount),
+      notes: deduction.notes?.trim() || null,
+    }))
+    .filter((deduction) => deduction.deductionType && deduction.amount > 0);
+
+  return {
+    ...result,
+    basePay: result.basePay !== null && result.basePay >= 0 ? result.basePay : null,
+    tips: result.tips !== null && result.tips >= 0 ? result.tips : null,
+    otherPay: result.otherPay !== null && result.otherPay >= 0 ? result.otherPay : null,
+    grossPay: result.grossPay !== null && result.grossPay >= 0 ? result.grossPay : null,
+    deductions,
+    confidence:
+      result.grossPaySource === "available_balance" ? "low" : result.confidence,
   };
 }
 
@@ -293,13 +353,21 @@ export async function POST(request: Request) {
       );
     }
 
+    const result =
+      parsed.kind === "earnings" ? normalizeEarningsResult(parsed) : parsed;
     const warning =
-      "mileage" in parsed && parsed.mileage === null
+      result.kind === "earnings" && result.grossPay === null
+        ? "Scan could not confirm gross earnings. Please enter pay manually."
+        : result.kind === "earnings" && result.deductions.length > 0
+          ? "Deduction found. Review Fees & Deductions before saving."
+          : result.kind === "earnings" && result.grossPaySource === "available_balance"
+            ? "Partial scan applied. Available Balance was used as a low-confidence payout value."
+            : "mileage" in result && result.mileage === null
         ? "No clear odometer mileage was detected."
         : null;
 
     return NextResponse.json({
-      result: parsed,
+      result,
       raw: parsed,
       warning,
     });

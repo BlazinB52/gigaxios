@@ -17,6 +17,7 @@ type PlatformFieldProps = {
   value: string;
   onChange: (value: string) => void;
   label?: string;
+  placeholder?: string;
   className?: string;
   inputClassName?: string;
 };
@@ -25,6 +26,7 @@ export default function PlatformField({
   value,
   onChange,
   label = "Platform",
+  placeholder = "Select or enter platform",
   className = "",
   inputClassName = "bg-slate-900",
 }: PlatformFieldProps) {
@@ -43,6 +45,7 @@ export default function PlatformField({
           type="text"
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
           onFocus={() => setSuggestionsOpen(true)}
           onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
           className={`w-full rounded-xl border border-slate-700 p-3 pr-10 text-white placeholder:text-slate-500 ${inputClassName}`}

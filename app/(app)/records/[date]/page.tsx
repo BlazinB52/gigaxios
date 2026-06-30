@@ -15,6 +15,10 @@ import {
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
 import { SavedShift } from "@/app/lib/types";
 import {
+  getShiftDeductionsTotal,
+  getShiftsDeductionsTotal,
+} from "@/app/lib/shiftDeductions";
+import {
   DUPLICATE_SHIFT_MESSAGE,
   hasDuplicateClosedShift,
 } from "@/app/lib/shiftDuplicateValidation";
@@ -86,6 +90,7 @@ export default function DayDetailPage() {
   const [editBasePay, setEditBasePay] = useState("");
   const [editTips, setEditTips] = useState("");
   const [editOtherPay, setEditOtherPay] = useState("");
+  const [editGrossPay, setEditGrossPay] = useState("");
 
   // Edit fuel state
   const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
@@ -138,6 +143,8 @@ export default function DayDetailPage() {
   const totalTips = shifts.reduce((sum, s) => sum + Number(s.tips || 0), 0);
   const totalOtherPay = shifts.reduce((sum, s) => sum + Number(s.otherPay || 0), 0);
   const totalGross = shifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
+  const totalFeesAndDeductions = getShiftsDeductionsTotal(shifts);
+  const totalNetPayout = totalGross - totalFeesAndDeductions;
   const fuelCostResult = calculateWorkFuelCost({
     workMiles: totalMileage,
     fuelEntries: allFuelEntries,
@@ -169,6 +176,7 @@ export default function DayDetailPage() {
     setEditBasePay(shift.basePay);
     setEditTips(shift.tips);
     setEditOtherPay(shift.otherPay);
+    setEditGrossPay(shift.grossPay);
     const primaryId = vehicles.find((v) => v.is_primary)?.id || vehicles[0]?.id || "";
     setEditShiftVehicleId(shift.vehicleId || primaryId);
   }
@@ -179,11 +187,13 @@ export default function DayDetailPage() {
       return;
     }
 
-    const grossPay = (
-      Number(editBasePay || 0) +
-      Number(editTips || 0) +
-      Number(editOtherPay || 0)
-    ).toFixed(2);
+    const grossPay = editGrossPay.trim()
+      ? Number(editGrossPay || 0).toFixed(2)
+      : (
+        Number(editBasePay || 0) +
+        Number(editTips || 0) +
+        Number(editOtherPay || 0)
+      ).toFixed(2);
 
     const trimmedPlatform = editPlatform.trim();
     const updated: SavedShift = {
@@ -359,6 +369,11 @@ export default function DayDetailPage() {
               <div className="mt-4 border-t border-slate-800 pt-4">
                 <p className="text-sm text-slate-400">Gross Earnings</p>
                 <p className="text-4xl font-bold text-white">{formatCurrency(totalGross)}</p>
+                {totalFeesAndDeductions > 0 && (
+                  <p className="mt-2 text-sm text-slate-400">
+                    Net payout {formatCurrency(totalNetPayout)} after {formatCurrency(totalFeesAndDeductions)} fees & deductions
+                  </p>
+                )}
               </div>
             </section>
 
@@ -368,6 +383,12 @@ export default function DayDetailPage() {
                 { label: "Base Pay", value: totalBasePay, color: "text-white" },
                 { label: "Tips", value: totalTips, color: "text-emerald-400" },
                 { label: "Other Pay", value: totalOtherPay, color: "text-blue-400" },
+                {
+                  label: "Fees & Deductions",
+                  value: totalFeesAndDeductions,
+                  color: "text-red-400",
+                  negative: true,
+                },
                 {
                   label: "Fuel Cost",
                   value: workFuelCost,
@@ -398,6 +419,12 @@ export default function DayDetailPage() {
                 <span className="font-bold text-white">Gross Earnings</span>
                 <span className="text-lg font-bold text-white">{formatCurrency(totalGross)}</span>
               </div>
+              {totalFeesAndDeductions > 0 && (
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="font-bold text-white">Net Payout</span>
+                  <span className="text-lg font-bold text-emerald-400">{formatCurrency(totalNetPayout)}</span>
+                </div>
+              )}
             </section>
 
             {/* ── Shifts ── */}
@@ -417,6 +444,8 @@ export default function DayDetailPage() {
                 {shifts.map((shift) => {
                   const miles = Number(shift.endingMileage || 0) - Number(shift.beginningMileage || 0);
                   const isEditing = editingShiftId === shift.id;
+                  const shiftDeductionsTotal = getShiftDeductionsTotal(shift);
+                  const shiftNetPayout = Number(shift.grossPay || 0) - shiftDeductionsTotal;
 
                   return (
                     <div key={shift.id} className="rounded-3xl border border-slate-700/60 bg-slate-900/80 p-5">
@@ -443,6 +472,23 @@ export default function DayDetailPage() {
                           </div>
                         ))}
                       </div>
+                      {shiftDeductionsTotal > 0 && (
+                        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-sm">
+                          <div className="flex items-center justify-between text-slate-300">
+                            <span>Fees & Deductions</span>
+                            <span className="text-red-400">−{formatCurrency(shiftDeductionsTotal)}</span>
+                          </div>
+                          <div className="mt-1 flex items-center justify-between text-slate-300">
+                            <span>Net Payout</span>
+                            <span className="font-semibold text-emerald-400">{formatCurrency(shiftNetPayout)}</span>
+                          </div>
+                          {(shift.deductions ?? []).map((deduction) => (
+                            <p key={deduction.id} className="mt-1 text-xs text-slate-500">
+                              {deduction.deductionType}: {formatCurrency(deduction.amount)}
+                            </p>
+                          ))}
+                        </div>
+                      )}
 
                       {isEditing ? (
                         <div className="mt-4 space-y-3 rounded-2xl border border-blue-500/30 bg-slate-950 p-4">
@@ -491,6 +537,7 @@ export default function DayDetailPage() {
                             { label: "Base Pay", val: editBasePay, set: setEditBasePay },
                             { label: "Tips", val: editTips, set: setEditTips },
                             { label: "Other Pay", val: editOtherPay, set: setEditOtherPay },
+                            { label: "Gross Pay", val: editGrossPay, set: setEditGrossPay },
                           ].map((field) => (
                             <div key={field.label}>
                               <label className="mb-1 block text-xs font-semibold text-slate-400">

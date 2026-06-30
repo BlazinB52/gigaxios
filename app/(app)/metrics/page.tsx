@@ -27,6 +27,7 @@ import {
 import { supabase } from "@/app/lib/supabaseClient";
 import { useRefreshOnFocus } from "@/app/lib/useRefreshOnFocus";
 import { SavedShift } from "@/app/lib/types";
+import { getShiftsDeductionsTotal } from "@/app/lib/shiftDeductions";
 import {
   FuelEntry,
   getFuelEntryTotalCost,
@@ -80,6 +81,7 @@ type BestDayBucket = {
   hours: number;
   grossPay: number;
   fuelCost: number;
+  platformFees: number;
   serviceCost: number;
   netProfit: number;
   netPerHour: number;
@@ -94,6 +96,7 @@ type BreakdownBucket = {
   grossPay: number;
   workMiles: number;
   fuelCost: number;
+  platformFees: number;
   serviceCost: number;
   trueNet: number;
   netPerHour: number;
@@ -358,6 +361,14 @@ function getShiftMiles(shift: SavedShift): number {
   return begin > 0 && end > begin ? end - begin : 0;
 }
 
+function hasRecordedHours(shift: SavedShift): boolean {
+  return shift.hoursWorked.trim().length > 0 && Number.isFinite(Number(shift.hoursWorked));
+}
+
+function hasRecordedDeliveries(shift: SavedShift): boolean {
+  return shift.deliveries.trim().length > 0 && Number.isFinite(Number(shift.deliveries));
+}
+
 function isUsableFuelCycle(cycle: {
   cycleMiles: number;
   gallons: number;
@@ -552,10 +563,24 @@ export default function MetricsPage() {
       : periodAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0);
 
     /* Basic shift totals */
-    const totalDeliveries = completedPeriodShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
-    const totalHours = completedPeriodShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
+    const hourlyMetricShifts = completedPeriodShifts.filter(hasRecordedHours);
+    const deliveryMetricShifts = completedPeriodShifts.filter(hasRecordedDeliveries);
+    const shiftsMissingHoursCount = completedPeriodShifts.length - hourlyMetricShifts.length;
+    const shiftsMissingDeliveriesCount = completedPeriodShifts.length - deliveryMetricShifts.length;
+    const hourlyMetricsIncomplete =
+      completedPeriodShifts.length > 0 && hourlyMetricShifts.length === 0;
+    const hourlyMetricsPartial =
+      shiftsMissingHoursCount > 0 && hourlyMetricShifts.length > 0;
+    const deliveryMetricsIncomplete =
+      completedPeriodShifts.length > 0 && deliveryMetricShifts.length === 0;
+    const deliveryMetricsPartial =
+      shiftsMissingDeliveriesCount > 0 && deliveryMetricShifts.length > 0;
+    const totalDeliveries = deliveryMetricShifts.reduce((s, x) => s + Number(x.deliveries || 0), 0);
+    const totalHours = hourlyMetricShifts.reduce((s, x) => s + Number(x.hoursWorked || 0), 0);
     const shiftGrossPay = completedPeriodShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0);
+    const hourlyMetricShiftGrossPay = hourlyMetricShifts.reduce((s, x) => s + Number(x.grossPay || 0), 0);
     const totalGrossPay = shiftGrossPay + totalAdjustments;
+    const platformFeesAndDeductions = getShiftsDeductionsTotal(completedPeriodShifts);
     const shiftsMissingBeginningMileage = completedPeriodShifts.filter(
       (shift) => !(Number(shift.beginningMileage) > 0)
     );
@@ -679,7 +704,7 @@ export default function MetricsPage() {
     };
 
     /* Profitability */
-    const fuelOnlyProfit = totalGrossPay - workFuelCost;
+    const fuelOnlyProfit = totalGrossPay - platformFeesAndDeductions - workFuelCost;
     const fuelOnlyProfitPct = totalGrossPay > 0 ? fuelOnlyProfit / totalGrossPay : 0;
     const fuelPct = totalGrossPay > 0 ? workFuelCost / totalGrossPay : 0;
 
@@ -759,177 +784,6 @@ export default function MetricsPage() {
     const businessServiceCost = serviceAllocation.businessServiceCost;
     const unallocatedServiceCost = serviceAllocation.unallocatedServiceCost;
     const serviceDetails = serviceAllocation.serviceDetails;
-    const trueNetProfit = totalGrossPay - workFuelCost - businessServiceCost;
-    const trueNetPct = totalGrossPay > 0 ? trueNetProfit / totalGrossPay : 0;
-    const serviceCostPct = totalGrossPay > 0 ? businessServiceCost / totalGrossPay : 0;
-
-    let bestDayData: BestDayBucket[] = WEEKDAY_BUCKETS.map((weekday) => {
-      const bucketShifts = completedPeriodShifts.filter(
-        (shift) => parseShiftDate(shift.date).getDay() === weekday.dayIndex
-      );
-      const bucketShiftGrossPay = bucketShifts.reduce(
-        (sum, shift) => sum + Number(shift.grossPay || 0),
-        0
-      );
-      const bucketHours = bucketShifts.reduce(
-        (sum, shift) => sum + Number(shift.hoursWorked || 0),
-        0
-      );
-      const bucketAdjustments = totalHours > 0
-        ? totalAdjustments * (bucketHours / totalHours)
-        : 0;
-      const bucketGrossPay = bucketShiftGrossPay + bucketAdjustments;
-
-      const bucketFuelCost = calculateFuelCostForShifts(bucketShifts);
-
-      const bucketServiceCost = assignedVehicleServices.reduce((sum, service) => {
-        const serviceCost = Number(service.cost || 0);
-        const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
-        if (!(serviceCost > 0) || !intervalMileage) return sum;
-
-        const serviceStartOdometer = Number(service.odometer || 0);
-        const serviceEndOdometer = serviceStartOdometer + intervalMileage;
-        const serviceVehicleKey = service.vehicleId || "unassigned";
-        const costPerMile = serviceCost / intervalMileage;
-        const periodWorkMilesSinceService = completedPeriodShifts
-          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
-          .reduce((miles, shift) => {
-            const shiftStart = Number(shift.beginningMileage);
-            const shiftEnd = Number(shift.endingMileage);
-            return miles + getMileageRangeOverlapMiles(
-              shiftStart,
-              shiftEnd,
-              serviceStartOdometer,
-              serviceEndOdometer
-            );
-          }, 0);
-        if (!(periodWorkMilesSinceService > 0)) return sum;
-
-        const periodAllocatedServiceCost = Math.min(
-          serviceCost,
-          periodWorkMilesSinceService * costPerMile
-        );
-        const bucketWorkMilesSinceService = bucketShifts
-          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
-          .reduce((miles, shift) => {
-            const shiftStart = Number(shift.beginningMileage);
-            const shiftEnd = Number(shift.endingMileage);
-            return miles + getMileageRangeOverlapMiles(
-              shiftStart,
-              shiftEnd,
-              serviceStartOdometer,
-              serviceEndOdometer
-            );
-          }, 0);
-
-        return sum + (
-          bucketWorkMilesSinceService / periodWorkMilesSinceService
-        ) * periodAllocatedServiceCost;
-      }, 0);
-
-      const bucketNetProfit = bucketGrossPay - bucketFuelCost - bucketServiceCost;
-
-      return {
-        label: weekday.label,
-        fullLabel: weekday.fullLabel,
-        dayIndex: weekday.dayIndex,
-        hours: roundCurrency(bucketHours),
-        grossPay: roundCurrency(bucketGrossPay),
-        fuelCost: roundCurrency(bucketFuelCost),
-        serviceCost: roundCurrency(bucketServiceCost),
-        netProfit: roundCurrency(bucketNetProfit),
-        netPerHour: bucketHours > 0 ? bucketNetProfit / bucketHours : 0,
-      };
-    });
-    const bestDayGrossDiff = roundCurrency(
-      roundCurrency(totalGrossPay) -
-      roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.grossPay, 0))
-    );
-    const bestDayNetDiff = roundCurrency(
-      roundCurrency(trueNetProfit) -
-      roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.netProfit, 0))
-    );
-    const reconciliationTolerance = 0.005;
-
-    if (
-      bestDayData.length > 0 &&
-      (Math.abs(bestDayGrossDiff) > reconciliationTolerance ||
-        Math.abs(bestDayNetDiff) > reconciliationTolerance)
-    ) {
-      let reconciliationIndex = bestDayData.length - 1;
-
-      for (let index = bestDayData.length - 1; index >= 0; index -= 1) {
-        if (bestDayData[index].hours > 0) {
-          reconciliationIndex = index;
-          break;
-        }
-      }
-
-      bestDayData = bestDayData.map((bucket, index) => {
-        if (index !== reconciliationIndex) return bucket;
-
-        const grossPay = roundCurrency(bucket.grossPay + bestDayGrossDiff);
-        const netProfit = roundCurrency(bucket.netProfit + bestDayNetDiff);
-
-        return {
-          ...bucket,
-          grossPay,
-          netProfit,
-          netPerHour: bucket.hours > 0 ? netProfit / bucket.hours : 0,
-        };
-      });
-    }
-
-    const activeBestDayData = bestDayData.filter((bucket) => bucket.hours > 0);
-    const sortedBestDayData = [...activeBestDayData].sort(
-      (a, b) => b.netPerHour - a.netPerHour
-    );
-    const bestDayBucket = sortedBestDayData[0] ?? bestDayData[0];
-    const lowestDayBucket = [...activeBestDayData].sort(
-      (a, b) => a.netPerHour - b.netPerHour
-    )[0] ?? bestDayData[0];
-    const avgNetPerHour = totalHours > 0 ? trueNetProfit / totalHours : 0;
-    const hasEnoughBestDayData = activeBestDayData.length >= 2 && completedPeriodShifts.length >= 3;
-    const closeBestThreshold = Math.max(2, Math.abs(bestDayBucket.netPerHour) * 0.1);
-    const closeBestDays = sortedBestDayData.filter(
-      (bucket) => bestDayBucket.netPerHour - bucket.netPerHour <= closeBestThreshold
-    );
-    const bestDaysInsight = !hasEnoughBestDayData
-      ? "Add more completed shifts to reveal your best days to work."
-      : closeBestDays.length >= 2
-        ? `Your strongest days are ${closeBestDays[0].fullLabel} and ${closeBestDays[1].fullLabel}.`
-        : `You earn the most when you work on ${bestDayBucket.fullLabel}.`;
-
-    const avgMpg = fuelCostResult.averageMpg;
-    const avgFuelPrice = fuelCostResult.averageFuelPricePerGallon;
-    const estimatedGallonsUsed = fuelCostResult.estimatedGallonsUsed;
-    const warnings: Array<{ title: string; description: string }> = [];
-
-    if (unassignedServiceRecords.length > 0) {
-      warnings.push({
-        title: "Unassigned service records excluded",
-        description: `${unassignedServiceRecords.length} service record${unassignedServiceRecords.length === 1 ? "" : "s"} without a vehicle are excluded from service cost allocation.`,
-      });
-    }
-    if (fuelCostNeedsMpg) {
-      warnings.push({
-        title: "Fuel cost history needed",
-        description: "Work miles exist, but there is not enough completed full-fill history to calculate average MPG and fuel price.",
-      });
-    }
-    if (shiftsMissingBeginningMileage.length > 0) {
-      warnings.push({
-        title: "Beginning mileage missing",
-        description: `${shiftsMissingBeginningMileage.length} completed shift${shiftsMissingBeginningMileage.length === 1 ? "" : "s"} missing beginning mileage were excluded from work miles.`,
-      });
-    }
-    if (shiftsMissingEndingMileage.length > 0) {
-      warnings.push({
-        title: "Ending mileage missing",
-        description: `${shiftsMissingEndingMileage.length} completed shift${shiftsMissingEndingMileage.length === 1 ? "" : "s"} missing ending mileage were excluded from work miles.`,
-      });
-    }
-
     const calculateAllocatedServiceCost = (bucketShifts: SavedShift[]) => {
       return assignedVehicleServices.reduce((sum, service) => {
         const serviceCost = Number(service.cost || 0);
@@ -976,6 +830,222 @@ export default function MetricsPage() {
         ) * periodAllocatedServiceCost;
       }, 0);
     };
+    const trueNetProfit = totalGrossPay - platformFeesAndDeductions - workFuelCost - businessServiceCost;
+    const trueNetPct = totalGrossPay > 0 ? trueNetProfit / totalGrossPay : 0;
+    const serviceCostPct = totalGrossPay > 0 ? businessServiceCost / totalGrossPay : 0;
+    const calculateNetProfitForShifts = (bucketShifts: SavedShift[]) => {
+      const bucketShiftGrossPay = bucketShifts.reduce(
+        (sum, shift) => sum + Number(shift.grossPay || 0),
+        0
+      );
+      const bucketAdjustments = shiftGrossPay > 0
+        ? totalAdjustments * (bucketShiftGrossPay / shiftGrossPay)
+        : 0;
+      const bucketGrossPay = bucketShiftGrossPay + bucketAdjustments;
+      const bucketPlatformFees = getShiftsDeductionsTotal(bucketShifts);
+      const bucketFuelCost = calculateFuelCostForShifts(bucketShifts);
+      const bucketServiceCost = calculateAllocatedServiceCost(bucketShifts);
+
+      return bucketGrossPay - bucketPlatformFees - bucketFuelCost - bucketServiceCost;
+    };
+    const hourlyMetricNetProfit = calculateNetProfitForShifts(hourlyMetricShifts);
+    const deliveryMetricNetProfit = calculateNetProfitForShifts(deliveryMetricShifts);
+    const hourlyMetricAdjustments = shiftGrossPay > 0
+      ? totalAdjustments * (hourlyMetricShiftGrossPay / shiftGrossPay)
+      : 0;
+    const hourlyMetricGrossPay = hourlyMetricShiftGrossPay + hourlyMetricAdjustments;
+
+    let bestDayData: BestDayBucket[] = WEEKDAY_BUCKETS.map((weekday) => {
+      const bucketShifts = completedPeriodShifts.filter(
+        (shift) => parseShiftDate(shift.date).getDay() === weekday.dayIndex
+      );
+      const bucketHourlyShifts = bucketShifts.filter(hasRecordedHours);
+      const bucketShiftGrossPay = bucketHourlyShifts.reduce(
+        (sum, shift) => sum + Number(shift.grossPay || 0),
+        0
+      );
+      const bucketHours = bucketHourlyShifts.reduce(
+        (sum, shift) => sum + Number(shift.hoursWorked || 0),
+        0
+      );
+      const bucketAdjustments = totalHours > 0
+        ? hourlyMetricAdjustments * (bucketHours / totalHours)
+        : 0;
+      const bucketGrossPay = bucketShiftGrossPay + bucketAdjustments;
+      const bucketPlatformFees = getShiftsDeductionsTotal(bucketHourlyShifts);
+
+      const bucketFuelCost = calculateFuelCostForShifts(bucketHourlyShifts);
+
+      const bucketServiceCost = assignedVehicleServices.reduce((sum, service) => {
+        const serviceCost = Number(service.cost || 0);
+        const intervalMileage = getServiceIntervalMileage(service, serviceIntervals);
+        if (!(serviceCost > 0) || !intervalMileage) return sum;
+
+        const serviceStartOdometer = Number(service.odometer || 0);
+        const serviceEndOdometer = serviceStartOdometer + intervalMileage;
+        const serviceVehicleKey = service.vehicleId || "unassigned";
+        const costPerMile = serviceCost / intervalMileage;
+        const periodWorkMilesSinceService = completedPeriodShifts
+          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+          .reduce((miles, shift) => {
+            const shiftStart = Number(shift.beginningMileage);
+            const shiftEnd = Number(shift.endingMileage);
+            return miles + getMileageRangeOverlapMiles(
+              shiftStart,
+              shiftEnd,
+              serviceStartOdometer,
+              serviceEndOdometer
+            );
+          }, 0);
+        if (!(periodWorkMilesSinceService > 0)) return sum;
+
+        const periodAllocatedServiceCost = Math.min(
+          serviceCost,
+          periodWorkMilesSinceService * costPerMile
+        );
+        const bucketWorkMilesSinceService = bucketHourlyShifts
+          .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+          .reduce((miles, shift) => {
+            const shiftStart = Number(shift.beginningMileage);
+            const shiftEnd = Number(shift.endingMileage);
+            return miles + getMileageRangeOverlapMiles(
+              shiftStart,
+              shiftEnd,
+              serviceStartOdometer,
+              serviceEndOdometer
+            );
+          }, 0);
+
+        return sum + (
+          bucketWorkMilesSinceService / periodWorkMilesSinceService
+        ) * periodAllocatedServiceCost;
+      }, 0);
+
+      const bucketNetProfit = bucketGrossPay - bucketPlatformFees - bucketFuelCost - bucketServiceCost;
+
+      return {
+        label: weekday.label,
+        fullLabel: weekday.fullLabel,
+        dayIndex: weekday.dayIndex,
+        hours: roundCurrency(bucketHours),
+        grossPay: roundCurrency(bucketGrossPay),
+        fuelCost: roundCurrency(bucketFuelCost),
+        platformFees: roundCurrency(bucketPlatformFees),
+        serviceCost: roundCurrency(bucketServiceCost),
+        netProfit: roundCurrency(bucketNetProfit),
+        netPerHour: bucketHours > 0 ? bucketNetProfit / bucketHours : 0,
+      };
+    });
+    const bestDayGrossDiff = roundCurrency(
+      roundCurrency(hourlyMetricGrossPay) -
+      roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.grossPay, 0))
+    );
+    const bestDayNetDiff = roundCurrency(
+      roundCurrency(hourlyMetricNetProfit) -
+      roundCurrency(bestDayData.reduce((sum, bucket) => sum + bucket.netProfit, 0))
+    );
+    const reconciliationTolerance = 0.005;
+
+    if (
+      bestDayData.length > 0 &&
+      (Math.abs(bestDayGrossDiff) > reconciliationTolerance ||
+        Math.abs(bestDayNetDiff) > reconciliationTolerance)
+    ) {
+      let reconciliationIndex = bestDayData.length - 1;
+
+      for (let index = bestDayData.length - 1; index >= 0; index -= 1) {
+        if (bestDayData[index].hours > 0) {
+          reconciliationIndex = index;
+          break;
+        }
+      }
+
+      bestDayData = bestDayData.map((bucket, index) => {
+        if (index !== reconciliationIndex) return bucket;
+
+        const grossPay = roundCurrency(bucket.grossPay + bestDayGrossDiff);
+        const netProfit = roundCurrency(bucket.netProfit + bestDayNetDiff);
+
+        return {
+          ...bucket,
+          grossPay,
+          netProfit,
+          netPerHour: bucket.hours > 0 ? netProfit / bucket.hours : 0,
+        };
+      });
+    }
+
+    const activeBestDayData = bestDayData.filter((bucket) => bucket.hours > 0);
+    const sortedBestDayData = [...activeBestDayData].sort(
+      (a, b) => b.netPerHour - a.netPerHour
+    );
+    const bestDayBucket = sortedBestDayData[0] ?? bestDayData[0];
+    const lowestDayBucket = [...activeBestDayData].sort(
+      (a, b) => a.netPerHour - b.netPerHour
+    )[0] ?? bestDayData[0];
+    const avgNetPerHour = totalHours > 0 ? hourlyMetricNetProfit / totalHours : 0;
+    const hasEnoughBestDayData = activeBestDayData.length >= 2 && completedPeriodShifts.length >= 3;
+    const closeBestThreshold = Math.max(2, Math.abs(bestDayBucket.netPerHour) * 0.1);
+    const closeBestDays = sortedBestDayData.filter(
+      (bucket) => bestDayBucket.netPerHour - bucket.netPerHour <= closeBestThreshold
+    );
+    const bestDaysInsight = !hasEnoughBestDayData
+      ? "Add more completed shifts to reveal your best days to work."
+      : closeBestDays.length >= 2
+        ? `Your strongest days are ${closeBestDays[0].fullLabel} and ${closeBestDays[1].fullLabel}.`
+        : `You earn the most when you work on ${bestDayBucket.fullLabel}.`;
+
+    const avgMpg = fuelCostResult.averageMpg;
+    const avgFuelPrice = fuelCostResult.averageFuelPricePerGallon;
+    const estimatedGallonsUsed = fuelCostResult.estimatedGallonsUsed;
+    const warnings: Array<{ title: string; description: string }> = [];
+
+    if (unassignedServiceRecords.length > 0) {
+      warnings.push({
+        title: "Unassigned service records excluded",
+        description: `${unassignedServiceRecords.length} service record${unassignedServiceRecords.length === 1 ? "" : "s"} without a vehicle are excluded from service cost allocation.`,
+      });
+    }
+    if (fuelCostNeedsMpg) {
+      warnings.push({
+        title: "Fuel cost history needed",
+        description: "Work miles exist, but there is not enough completed full-fill history to calculate average MPG and fuel price.",
+      });
+    }
+    if (hourlyMetricsIncomplete) {
+      warnings.push({
+        title: "Hourly metrics incomplete",
+        description: "No completed shifts have recorded hours. Total profit still includes all completed shifts.",
+      });
+    } else if (hourlyMetricsPartial) {
+      warnings.push({
+        title: "Hourly metrics partial",
+        description: `Based on ${hourlyMetricShifts.length} of ${completedPeriodShifts.length} completed shifts. ${shiftsMissingHoursCount} shift${shiftsMissingHoursCount === 1 ? "" : "s"} missing hours. Total profit still includes all completed shifts.`,
+      });
+    }
+    if (deliveryMetricsIncomplete) {
+      warnings.push({
+        title: "Delivery metrics incomplete",
+        description: "No completed shifts have recorded deliveries. Total profit still includes all completed shifts.",
+      });
+    } else if (deliveryMetricsPartial) {
+      warnings.push({
+        title: "Delivery metrics partial",
+        description: `Based on ${deliveryMetricShifts.length} of ${completedPeriodShifts.length} completed shifts. ${shiftsMissingDeliveriesCount} shift${shiftsMissingDeliveriesCount === 1 ? "" : "s"} missing deliveries. Total profit still includes all completed shifts.`,
+      });
+    }
+    if (shiftsMissingBeginningMileage.length > 0) {
+      warnings.push({
+        title: "Beginning mileage missing",
+        description: `${shiftsMissingBeginningMileage.length} completed shift${shiftsMissingBeginningMileage.length === 1 ? "" : "s"} missing beginning mileage were excluded from work miles.`,
+      });
+    }
+    if (shiftsMissingEndingMileage.length > 0) {
+      warnings.push({
+        title: "Ending mileage missing",
+        description: `${shiftsMissingEndingMileage.length} completed shift${shiftsMissingEndingMileage.length === 1 ? "" : "s"} missing ending mileage were excluded from work miles.`,
+      });
+    }
 
     const buildBreakdownBucket = ({
       key,
@@ -990,14 +1060,26 @@ export default function MetricsPage() {
       bucketShifts: SavedShift[];
       bucketAdjustments: number;
     }): BreakdownBucket => {
-      const deliveries = bucketShifts.reduce((sum, shift) => sum + Number(shift.deliveries || 0), 0);
-      const hours = bucketShifts.reduce((sum, shift) => sum + Number(shift.hoursWorked || 0), 0);
+      const hourlyBucketShifts = bucketShifts.filter(hasRecordedHours);
+      const deliveryBucketShifts = bucketShifts.filter(hasRecordedDeliveries);
+      const deliveries = deliveryBucketShifts.reduce((sum, shift) => sum + Number(shift.deliveries || 0), 0);
+      const hours = hourlyBucketShifts.reduce((sum, shift) => sum + Number(shift.hoursWorked || 0), 0);
       const shiftGross = bucketShifts.reduce((sum, shift) => sum + Number(shift.grossPay || 0), 0);
+      const hourlyShiftGross = hourlyBucketShifts.reduce((sum, shift) => sum + Number(shift.grossPay || 0), 0);
       const workMiles = bucketShifts.reduce((sum, shift) => sum + getShiftMiles(shift), 0);
       const fuelCost = calculateFuelCostForShifts(bucketShifts);
+      const platformFees = getShiftsDeductionsTotal(bucketShifts);
       const serviceCost = calculateAllocatedServiceCost(bucketShifts);
       const grossPay = shiftGross + bucketAdjustments;
-      const trueNet = grossPay - fuelCost - serviceCost;
+      const trueNet = grossPay - platformFees - fuelCost - serviceCost;
+      const hourlyAdjustments = shiftGross > 0
+        ? bucketAdjustments * (hourlyShiftGross / shiftGross)
+        : 0;
+      const hourlyGrossPay = hourlyShiftGross + hourlyAdjustments;
+      const hourlyFuelCost = calculateFuelCostForShifts(hourlyBucketShifts);
+      const hourlyPlatformFees = getShiftsDeductionsTotal(hourlyBucketShifts);
+      const hourlyServiceCost = calculateAllocatedServiceCost(hourlyBucketShifts);
+      const hourlyTrueNet = hourlyGrossPay - hourlyPlatformFees - hourlyFuelCost - hourlyServiceCost;
 
       return {
         key,
@@ -1008,9 +1090,10 @@ export default function MetricsPage() {
         grossPay: roundCurrency(grossPay),
         workMiles: roundCurrency(workMiles),
         fuelCost: roundCurrency(fuelCost),
+        platformFees: roundCurrency(platformFees),
         serviceCost: roundCurrency(serviceCost),
         trueNet: roundCurrency(trueNet),
-        netPerHour: hours > 0 ? trueNet / hours : 0,
+        netPerHour: hours > 0 ? hourlyTrueNet / hours : 0,
         netPerMile: workMiles > 0 ? trueNet / workMiles : 0,
       };
     };
@@ -1043,8 +1126,10 @@ export default function MetricsPage() {
 
     const byDayBreakdown = sortedDayKeys.map((dayKey) => {
       const bucketShifts = completedPeriodShifts.filter((shift) => toISODate(shift.date) === dayKey);
-      const bucketHours = bucketShifts.reduce((sum, shift) => sum + Number(shift.hoursWorked || 0), 0);
-      const bucketAdjustments = totalHours > 0 ? totalAdjustments * (bucketHours / totalHours) : 0;
+      const bucketShiftGrossPay = bucketShifts.reduce((sum, shift) => sum + Number(shift.grossPay || 0), 0);
+      const bucketAdjustments = shiftGrossPay > 0
+        ? totalAdjustments * (bucketShiftGrossPay / shiftGrossPay)
+        : 0;
 
       return buildBreakdownBucket({
         key: dayKey,
@@ -1060,17 +1145,25 @@ export default function MetricsPage() {
       shiftGrossPay, totalShiftMiles,
       workFuelCost, netProfit: trueNetProfit, netProfitPct: trueNetPct, fuelPct,
       fuelCostPerMile,
+      platformFeesAndDeductions,
       fuelCostSubtext,
       fuelCostUsesPriorHistory,
       avgFuelPrice,
       estimatedGallonsUsed,
       fuelCostNeedsMpg,
-      hourlyRate: totalHours > 0 ? trueNetProfit / totalHours : 0,
-      profitPerDelivery: totalDeliveries > 0 ? trueNetProfit / totalDeliveries : 0,
+      hourlyRate: totalHours > 0 ? hourlyMetricNetProfit / totalHours : 0,
+      profitPerDelivery: totalDeliveries > 0 ? deliveryMetricNetProfit / totalDeliveries : 0,
       yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct, serviceCostPct,
       bestDayData, bestDayBucket, lowestDayBucket, avgNetPerHour, bestDaysInsight,
       hasEnoughBestDayData, avgMpg, warnings, fuelOnlyProfitPct,
       byPlatformBreakdown, byDayBreakdown,
+      hourlyMetricShiftCount: hourlyMetricShifts.length,
+      deliveryMetricShiftCount: deliveryMetricShifts.length,
+      completedShiftCount: completedPeriodShifts.length,
+      hourlyMetricsIncomplete,
+      hourlyMetricsPartial,
+      deliveryMetricsIncomplete,
+      deliveryMetricsPartial,
       hasData: completedPeriodShifts.length > 0 || totalAdjustments > 0,
     };
   }, [shifts, fuelEntries, serviceEntries, serviceIntervals, adjustments, selectedRange, selectedVehicleId, selectedPlatform]);
@@ -1089,12 +1182,16 @@ if (!isLoaded) {
     totalDeliveries, totalHours, totalGrossPay, totalAdjustments,
     shiftGrossPay, totalShiftMiles,
     workFuelCost, netProfit, netProfitPct, fuelPct, fuelCostNeedsMpg,
+    platformFeesAndDeductions,
     avgFuelPrice, estimatedGallonsUsed, fuelCostSubtext, fuelCostUsesPriorHistory,
     profitPerDelivery,
     yearServiceCost, businessServiceCost, unallocatedServiceCost, serviceDetails, trueNetProfit, trueNetPct,
     bestDayData, bestDayBucket, lowestDayBucket, avgNetPerHour, bestDaysInsight,
     hasEnoughBestDayData, avgMpg, warnings, fuelOnlyProfitPct,
     byPlatformBreakdown, byDayBreakdown,
+    hourlyMetricShiftCount, deliveryMetricShiftCount, completedShiftCount,
+    hourlyMetricsIncomplete, hourlyMetricsPartial,
+    deliveryMetricsIncomplete, deliveryMetricsPartial,
     hasData,
   } = metrics;
   const visibleServiceDetails = serviceDetails.filter(
@@ -1240,8 +1337,28 @@ if (!isLoaded) {
 
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: "Deliveries", value: totalDeliveries.toLocaleString(), sub: "Total" },
-                    { label: "Hours Worked", value: totalHours.toFixed(2), sub: "Total" },
+                    {
+                      label: "Deliveries",
+                      value: deliveryMetricsIncomplete
+                        ? "Not tracked"
+                        : totalDeliveries.toLocaleString(),
+                      sub: deliveryMetricsIncomplete
+                        ? "No recorded deliveries"
+                        : deliveryMetricsPartial
+                          ? `Based on ${deliveryMetricShiftCount} of ${completedShiftCount} shifts`
+                          : "Total",
+                    },
+                    {
+                      label: "Hours Worked",
+                      value: hourlyMetricsIncomplete
+                        ? "Not tracked"
+                        : totalHours.toFixed(2),
+                      sub: hourlyMetricsIncomplete
+                        ? "No recorded hours"
+                        : hourlyMetricsPartial
+                          ? `Based on ${hourlyMetricShiftCount} of ${completedShiftCount} shifts`
+                          : "Total",
+                    },
                     { label: "Total Income", value: fmtDollar(totalGrossPay), sub: "Shift gross + adjustments" },
                     ...(totalAdjustments !== 0
                       ? [{ label: "Pay Adjustments", value: fmtDollar(totalAdjustments), sub: "Pay records" }]
@@ -1251,6 +1368,13 @@ if (!isLoaded) {
                       value: fuelCostNeedsMpg ? "Pending" : fmtDollar(workFuelCost),
                       sub: fuelCostSubtext,
                     },
+                    ...(platformFeesAndDeductions > 0
+                      ? [{
+                        label: "Fees & Deductions",
+                        value: fmtDollar(platformFeesAndDeductions),
+                        sub: "Platform deductions",
+                      }]
+                      : []),
                     {
                       label: "Service Cost",
                       value: fmtDollar(businessServiceCost),
@@ -1259,10 +1383,18 @@ if (!isLoaded) {
                     {
                       label: "True Net Profit",
                       value: fmtDollar(netProfit),
-                      sub: fuelCostNeedsMpg ? "Fuel cost pending" : "After fuel + service",
+                      sub: fuelCostNeedsMpg ? "Fuel cost pending" : "After fees + fuel + service",
                       emerald: true,
                     },
-                    { label: "Per Delivery", value: fmtDollar(profitPerDelivery), sub: "Average" },
+                    {
+                      label: "Per Delivery",
+                      value: deliveryMetricsIncomplete ? "Not tracked" : fmtDollar(profitPerDelivery),
+                      sub: deliveryMetricsIncomplete
+                        ? "No recorded deliveries"
+                        : deliveryMetricsPartial
+                          ? `Based on ${deliveryMetricShiftCount} of ${completedShiftCount} shifts`
+                          : "Average",
+                    },
                   ].map(({ label, value, sub, emerald }) => (
                     <div
                       key={label}
@@ -1321,6 +1453,10 @@ if (!isLoaded) {
                           <div className="flex justify-between gap-2 text-slate-400">
                             <span>Fuel</span>
                             <span className="text-white">{fuelCostNeedsMpg ? "Pending" : fmtDollar(platform.fuelCost)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Fees</span>
+                            <span className="text-white">{fmtDollar(platform.platformFees)}</span>
                           </div>
                           <div className="flex justify-between gap-2 text-slate-400">
                             <span>Service</span>
@@ -1392,6 +1528,10 @@ if (!isLoaded) {
                             <span className="text-white">{fuelCostNeedsMpg ? "Pending" : fmtDollar(day.fuelCost)}</span>
                           </div>
                           <div className="flex justify-between gap-2 text-slate-400">
+                            <span>Fees</span>
+                            <span className="text-white">{fmtDollar(day.platformFees)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2 text-slate-400">
                             <span>Service</span>
                             <span className="text-white">{fmtDollar(day.serviceCost)}</span>
                           </div>
@@ -1423,7 +1563,7 @@ if (!isLoaded) {
                   <>
                     <p className="text-sm text-slate-400">You truly keep</p>
                     <p className="text-4xl font-bold text-emerald-400">{fmtPct(netProfitPct)}</p>
-                    <p className="mt-0.5 text-sm text-slate-400">of what you earn (after fuel + service)</p>
+                    <p className="mt-0.5 text-sm text-slate-400">of what you earn (after fees + fuel + service)</p>
                   </>
                 )}
 
@@ -1592,8 +1732,16 @@ if (!isLoaded) {
                   {[
                     {
                       label: "Best Day",
-                      value: hasEnoughBestDayData ? bestDayBucket.fullLabel : "Need data",
-                      sub: hasEnoughBestDayData ? fmtDollarPerHour(bestDayBucket.netPerHour) : "$0/hr",
+                      value: hourlyMetricsIncomplete
+                        ? "Not tracked"
+                        : hasEnoughBestDayData
+                          ? bestDayBucket.fullLabel
+                          : "Need data",
+                      sub: hourlyMetricsIncomplete
+                        ? "No hours"
+                        : hasEnoughBestDayData
+                          ? fmtDollarPerHour(bestDayBucket.netPerHour)
+                          : "$0/hr",
                       Icon: TrendingUp,
                       tone: "text-emerald-400",
                       iconBg: "bg-emerald-500/10",
@@ -1601,8 +1749,16 @@ if (!isLoaded) {
                     },
                     {
                       label: "Lowest Day",
-                      value: hasEnoughBestDayData ? lowestDayBucket.fullLabel : "Need data",
-                      sub: hasEnoughBestDayData ? fmtDollarPerHour(lowestDayBucket.netPerHour) : "$0/hr",
+                      value: hourlyMetricsIncomplete
+                        ? "Not tracked"
+                        : hasEnoughBestDayData
+                          ? lowestDayBucket.fullLabel
+                          : "Need data",
+                      sub: hourlyMetricsIncomplete
+                        ? "No hours"
+                        : hasEnoughBestDayData
+                          ? fmtDollarPerHour(lowestDayBucket.netPerHour)
+                          : "$0/hr",
                       Icon: TrendingDown,
                       tone: "text-amber-400",
                       iconBg: "bg-amber-500/10",
@@ -1610,8 +1766,12 @@ if (!isLoaded) {
                     },
                     {
                       label: "Total Hours",
-                      value: fmtCompactHours(totalHours),
-                      sub: "hrs",
+                      value: hourlyMetricsIncomplete ? "Not tracked" : fmtCompactHours(totalHours),
+                      sub: hourlyMetricsIncomplete
+                        ? "No hours"
+                        : hourlyMetricsPartial
+                          ? `Based on ${hourlyMetricShiftCount}/${completedShiftCount}`
+                          : "hrs",
                       Icon: Clock,
                       tone: "text-blue-400",
                       iconBg: "bg-blue-500/10",
@@ -1619,8 +1779,12 @@ if (!isLoaded) {
                     },
                     {
                       label: "Avg Net / Hr",
-                      value: fmtDollarPerHour(avgNetPerHour),
-                      sub: "per hour",
+                      value: hourlyMetricsIncomplete ? "Not tracked" : fmtDollarPerHour(avgNetPerHour),
+                      sub: hourlyMetricsIncomplete
+                        ? "No hours"
+                        : hourlyMetricsPartial
+                          ? `Based on ${hourlyMetricShiftCount}/${completedShiftCount}`
+                          : "per hour",
                       Icon: DollarSign,
                       tone: "text-emerald-400",
                       iconBg: "bg-emerald-500/10",
@@ -1729,6 +1893,14 @@ if (!isLoaded) {
                           <div className="flex items-center justify-between border-t border-slate-800 pt-3">
                             <span className="text-sm text-slate-300">Total Income</span>
                             <span className="text-sm text-white">{fmtDollar(totalGrossPay)}</span>
+                          </div>
+                        )}
+                        {platformFeesAndDeductions > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-slate-300">− Platform Fees & Deductions</span>
+                            <span className="text-sm text-red-400">
+                              −{fmtDollar(platformFeesAndDeductions)}
+                            </span>
                           </div>
                         )}
                         <div className="flex items-center justify-between">

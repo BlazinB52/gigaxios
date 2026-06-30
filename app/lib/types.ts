@@ -28,8 +28,21 @@ export type SavedShift = {
   tips: string;
   otherPay: string;
   grossPay: string;
+  deductions?: ShiftDeduction[];
 
   status: "open" | "closed";
+};
+
+export type ShiftDeduction = {
+  id: string;
+  userId: string;
+  shiftId: string;
+  date: string;
+  platform: string;
+  deductionType: string;
+  amount: number;
+  notes?: string;
+  createdAt?: string;
 };
 
 // ======================================================

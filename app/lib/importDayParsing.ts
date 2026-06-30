@@ -1,5 +1,7 @@
 import {
+  ImportDayDeductionResult,
   ImportDayEarningsResult,
+  ImportDayGrossPaySource,
   ImportDayImageKind,
   ImportDayOcrResult,
   ImportDayOdometerResult,
@@ -23,6 +25,31 @@ function isNullableNumber(value: unknown) {
 
 function isNullableString(value: unknown) {
   return value === null || typeof value === "string";
+}
+
+function isGrossPaySource(value: unknown): value is ImportDayGrossPaySource | null {
+  return (
+    value === null ||
+    value === "gross_total" ||
+    value === "daily_earnings" ||
+    value === "total_earnings" ||
+    value === "total_pay" ||
+    value === "payout" ||
+    value === "available_balance"
+  );
+}
+
+function isDeductionResult(value: unknown): value is ImportDayDeductionResult {
+  if (!value || typeof value !== "object") return false;
+  const result = value as Partial<ImportDayDeductionResult>;
+
+  return (
+    typeof result.deductionType === "string" &&
+    typeof result.amount === "number" &&
+    Number.isFinite(result.amount) &&
+    result.amount >= 0 &&
+    isNullableString(result.notes)
+  );
 }
 
 export function isImportDayOdometerResult(
@@ -61,6 +88,9 @@ export function isImportDayEarningsResult(
     isNullableNumber(result.tips) &&
     isNullableNumber(result.otherPay) &&
     isNullableNumber(result.grossPay) &&
+    isGrossPaySource(result.grossPaySource) &&
+    Array.isArray(result.deductions) &&
+    result.deductions.every(isDeductionResult) &&
     isConfidence(result.confidence) &&
     typeof result.notes === "string"
   );
@@ -73,4 +103,3 @@ export function isImportDayOcrResult(
   if (kind === "earnings") return isImportDayEarningsResult(value);
   return isImportDayOdometerResult(value, kind);
 }
-

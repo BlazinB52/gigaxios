@@ -1,5 +1,6 @@
 import { SavedShift } from "./types";
 import { supabase } from "@/app/lib/supabaseClient";
+import { loadShiftDeductionsFromSupabase } from "@/app/lib/shiftDeductions";
 
 export function loadRecords<T>(key: string): T[] {
   if (typeof window === "undefined") return [];
@@ -44,6 +45,14 @@ export async function loadShiftsFromSupabase(userId?: string) {
     return [];
   }
 
+  const deductions = userId ? await loadShiftDeductionsFromSupabase(userId) : [];
+  const deductionsByShiftId = deductions.reduce((groups, deduction) => {
+    const current = groups.get(deduction.shiftId) ?? [];
+    current.push(deduction);
+    groups.set(deduction.shiftId, current);
+    return groups;
+  }, new Map<string, typeof deductions>());
+
   return data.map((shift) => ({
     id: shift.id,
     userId: shift.user_id ?? "",
@@ -62,6 +71,7 @@ export async function loadShiftsFromSupabase(userId?: string) {
     tips: shift.tips ?? "",
     otherPay: shift.other_pay ?? "",
     grossPay: shift.gross_pay ?? "",
+    deductions: deductionsByShiftId.get(shift.id) ?? [],
     status: shift.status,
     notes: shift.notes ?? "",
   }));

@@ -14,6 +14,7 @@ import {
     loadServiceEntriesFromSupabase,
 } from "@/app/lib/garageStorage";
 import { calculateWorkFuelCost } from "@/app/lib/fuelCost";
+import { getShiftsDeductionsTotal } from "@/app/lib/shiftDeductions";
 import { SavedShift, PayPeriod, PayAdjustment } from "@/app/lib/types";
 import { useRefreshOnFocus } from "@/app/lib/useRefreshOnFocus";
 
@@ -202,6 +203,7 @@ export default function RecordsPage() {
     const shiftGross = weekShifts.reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
     const shiftBasePay = weekShifts.reduce((sum, s) => sum + Number(s.basePay || 0), 0);
     const shiftTips = weekShifts.reduce((sum, s) => sum + Number(s.tips || 0), 0);
+    const platformFeesAndDeductions = getShiftsDeductionsTotal(weekShifts);
 
     // Settlement layer (pay period overrides if exists)
     const displayBasePay = payPeriod ? payPeriod.basePay : shiftBasePay;
@@ -397,6 +399,7 @@ export default function RecordsPage() {
                                 { label: "Adjustments", value: displayAdjustments, color: "text-blue-400" },
                                 { label: "Bonuses", value: displayBonuses, color: "text-yellow-400" },
                                 { label: "Reimbursements", value: displayReimbursements, color: "text-purple-400" },
+                                { label: "Fees & Deductions", value: -platformFeesAndDeductions, color: "text-red-400" },
                                 {
                                     label: "Fuel Cost",
                                     value: -workFuelCost,
@@ -411,7 +414,7 @@ export default function RecordsPage() {
                                         <span className={`text-sm font-semibold ${row.color}`}>
                                             {row.valueText ?? (
                                                 <>
-                                                    {row.label === "Fuel Cost" && workFuelCost > 0 ? "−" : ""}
+                                                    {row.value < 0 ? "-" : ""}
                                                     {formatCurrency(Math.abs(row.value))}
                                                 </>
                                             )}

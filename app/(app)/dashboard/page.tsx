@@ -26,6 +26,7 @@ import { useRefreshOnFocus } from "@/app/lib/useRefreshOnFocus";
 
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { SavedShift } from "@/app/lib/types";
+import { getShiftsDeductionsTotal } from "@/app/lib/shiftDeductions";
 import {
   FuelEntry,
   getFuelEntryTotalCost,
@@ -76,6 +77,17 @@ function getFuelVehicleKey(entry: FuelEntry) {
   return entry.vehicleId || "unassigned";
 }
 
+function getShiftMiles(shift: SavedShift) {
+  const beginning = Number(shift.beginningMileage);
+  const ending = Number(shift.endingMileage);
+
+  if (!beginning || !ending || ending < beginning) {
+    return 0;
+  }
+
+  return ending - beginning;
+}
+
 function getMatchingServiceInterval(
   service: ServiceEntry,
   intervals: ServiceInterval[]
@@ -121,6 +133,20 @@ function getMileageRangeOverlapMiles(
   }
 
   return Math.max(0, Math.min(rangeEnd, windowEnd) - Math.max(rangeStart, windowStart));
+}
+
+function hasRecordedHours(shift: SavedShift) {
+  return shift.hoursWorked.trim().length > 0 && Number.isFinite(Number(shift.hoursWorked));
+}
+
+function hasRecordedDeliveries(shift: SavedShift) {
+  return shift.deliveries.trim().length > 0 && Number.isFinite(Number(shift.deliveries));
+}
+
+function formatHoursAndMinutes(hours: number) {
+  const wholeHours = Math.floor(hours);
+  const minutes = Math.round((hours - wholeHours) * 60);
+  return `${wholeHours}h ${minutes.toString().padStart(2, "0")}m`;
 }
 
 /* =========================================================
@@ -283,14 +309,7 @@ export default function Home() {
      ========================================================= */
 
   const totalWorkMiles = closedShifts.reduce((total, shift) => {
-    const beginning = Number(shift.beginningMileage);
-    const ending = Number(shift.endingMileage);
-
-    if (!beginning || !ending || ending < beginning) {
-      return total;
-    }
-
-    return total + (ending - beginning);
+    return total + getShiftMiles(shift);
   }, 0);
 
   /* =========================================================
@@ -316,6 +335,7 @@ export default function Home() {
           0
         );
   const totalGrossPay = shiftGrossPay + totalAdjustments;
+  const platformFeesAndDeductions = getShiftsDeductionsTotal(closedShifts);
 
   /* =========================================================
      NET_PROFIT_CALCULATIONS
@@ -370,7 +390,7 @@ export default function Home() {
     (service) =>
       !!service.vehicleId && selectedVehicleIds.includes(service.vehicleId)
   );
-  const serviceCostUsed = assignedVehicleServices.reduce((total, service) => {
+  const calculateServiceCostForShifts = (bucketShifts: SavedShift[]) => assignedVehicleServices.reduce((total, service) => {
     const serviceCost = Number(service.cost || 0);
     if (!(serviceCost > 0)) return total;
 
@@ -381,7 +401,28 @@ export default function Home() {
     const serviceEndOdometer = serviceStartOdometer + intervalMileage;
     const serviceVehicleKey = service.vehicleId || "unassigned";
     const costPerMile = serviceCost / intervalMileage;
-    const workMilesSinceService = closedShifts
+    const periodWorkMilesSinceService = closedShifts
+      .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
+      .reduce((sum, shift) => {
+        const shiftStart = Number(shift.beginningMileage);
+        const shiftEnd = Number(shift.endingMileage);
+        return (
+          sum +
+          getMileageRangeOverlapMiles(
+            shiftStart,
+            shiftEnd,
+            serviceStartOdometer,
+            serviceEndOdometer
+          )
+        );
+      }, 0);
+    if (!(periodWorkMilesSinceService > 0)) return total;
+
+    const periodAllocatedServiceCost = Math.min(
+      serviceCost,
+      periodWorkMilesSinceService * costPerMile
+    );
+    const bucketWorkMilesSinceService = bucketShifts
       .filter((shift) => getShiftVehicleKey(shift) === serviceVehicleKey)
       .reduce((sum, shift) => {
         const shiftStart = Number(shift.beginningMileage);
@@ -397,21 +438,44 @@ export default function Home() {
         );
       }, 0);
 
-    return total + Math.min(serviceCost, workMilesSinceService * costPerMile);
+    return total + (bucketWorkMilesSinceService / periodWorkMilesSinceService) * periodAllocatedServiceCost;
   }, 0);
+  const serviceCostUsed = calculateServiceCostForShifts(closedShifts);
 
-  const netProfit = totalGrossPay - workFuelCost - serviceCostUsed;
+  const netProfit = totalGrossPay - platformFeesAndDeductions - workFuelCost - serviceCostUsed;
+  const calculateNetProfitForShifts = (bucketShifts: SavedShift[]) => {
+    const bucketShiftGrossPay = bucketShifts.reduce((total, shift) => {
+      return total + Number(shift.grossPay || 0);
+    }, 0);
+    const bucketAdjustments =
+      shiftGrossPay > 0
+        ? totalAdjustments * (bucketShiftGrossPay / shiftGrossPay)
+        : 0;
+    const bucketGrossPay = bucketShiftGrossPay + bucketAdjustments;
+    const bucketPlatformFees = getShiftsDeductionsTotal(bucketShifts);
+    const bucketFuelCost = bucketShifts.reduce((total, shift) => {
+      return total + getShiftMiles(shift) * fuelCostResult.effectiveCostPerMile;
+    }, 0);
+    const bucketServiceCost = calculateServiceCostForShifts(bucketShifts);
+
+    return bucketGrossPay - bucketPlatformFees - bucketFuelCost - bucketServiceCost;
+  };
 
   /* =========================================================
      HOURS_WORKED_CALCULATIONS
      ========================================================= */
 
-  const totalHoursWorked = currentWeekShifts.reduce((total, shift) => {
+  const shiftsWithRecordedHours = closedShifts.filter(hasRecordedHours);
+  const shiftsWithMissingHoursCount = closedShifts.length - shiftsWithRecordedHours.length;
+  const totalHoursWorked = shiftsWithRecordedHours.reduce((total, shift) => {
     return total + Number(shift.hoursWorked || 0);
   }, 0);
-
-  const activeHours = Math.floor(totalHoursWorked);
-  const activeMinutes = Math.round((totalHoursWorked - activeHours) * 60);
+  const hasClosedShifts = closedShifts.length > 0;
+  const allClosedShiftsMissingHours =
+    hasClosedShifts && shiftsWithRecordedHours.length === 0;
+  const someClosedShiftsMissingHours =
+    shiftsWithMissingHoursCount > 0 && shiftsWithRecordedHours.length > 0;
+  const hoursCoverageText = `Based on ${shiftsWithRecordedHours.length} of ${closedShifts.length} shifts`;
 
   /* =========================================================
      REVENUE_PER_MILE totalWorkMiles > 0 ? totalGrossPay / totalWorkMiles : 0;
@@ -420,19 +484,30 @@ export default function Home() {
      REAL_HOURLY_RATE
      ========================================================= */
 
+  const hourlyMetricNetProfit = calculateNetProfitForShifts(shiftsWithRecordedHours);
   const realHourlyRate =
-    totalHoursWorked > 0 ? netProfit / totalHoursWorked : 0;
+    totalHoursWorked > 0 ? hourlyMetricNetProfit / totalHoursWorked : 0;
+  const hourlyRateIncomplete =
+    shiftsWithMissingHoursCount > 0 && totalHoursWorked <= 0;
 
   /* =========================================================
      DELIVERY_METRICS
      ========================================================= */
 
-  const totalDeliveries = currentWeekShifts.reduce((total, shift) => {
+  const shiftsWithRecordedDeliveries = closedShifts.filter(hasRecordedDeliveries);
+  const shiftsWithMissingDeliveriesCount =
+    closedShifts.length - shiftsWithRecordedDeliveries.length;
+  const someClosedShiftsMissingDeliveries =
+    shiftsWithMissingDeliveriesCount > 0 && shiftsWithRecordedDeliveries.length > 0;
+  const deliveriesCoverageText = `Based on ${shiftsWithRecordedDeliveries.length} of ${closedShifts.length} shifts`;
+  const totalDeliveries = shiftsWithRecordedDeliveries.reduce((total, shift) => {
     return total + Number(shift.deliveries || 0);
   }, 0);
-
+  const deliveryMetricNetProfit = calculateNetProfitForShifts(shiftsWithRecordedDeliveries);
   const netPerDelivery =
-    totalDeliveries > 0 ? netProfit / totalDeliveries : 0;
+    totalDeliveries > 0 ? deliveryMetricNetProfit / totalDeliveries : 0;
+  const perDeliveryIncomplete =
+    shiftsWithMissingDeliveriesCount > 0 && totalDeliveries <= 0;
 
   const isSubscribed = accessState?.isSubscribed ?? false;
   const trialRequired = accessState?.trialRequired ?? false;
@@ -517,8 +592,13 @@ export default function Home() {
           </p>
 
           <p className="mt-1 text-sm text-amber-300">
-            After fuel + service
+            After fees + fuel + service
           </p>
+          {platformFeesAndDeductions > 0 && (
+            <p className="mt-2 text-xs text-slate-400">
+              Platform fees & deductions: -${platformFeesAndDeductions.toFixed(2)}
+            </p>
+          )}
 
           {/* MAIN_CARD_METRICS */}
 
@@ -526,9 +606,18 @@ export default function Home() {
 
             <div>
               <p className="text-lg font-semibold">
-                {activeHours}h {activeMinutes.toString().padStart(2, "0")}m
+                {allClosedShiftsMissingHours
+                  ? "Not tracked"
+                  : formatHoursAndMinutes(totalHoursWorked)}
               </p>
               <p className="text-xs text-slate-400">Active Time</p>
+              {allClosedShiftsMissingHours ? (
+                <p className="mt-0.5 text-[11px] text-amber-300">Not tracked</p>
+              ) : someClosedShiftsMissingHours ? (
+                <p className="mt-0.5 text-[11px] text-amber-300">
+                  Partial - {shiftsWithRecordedHours.length} of {closedShifts.length} shifts
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -594,11 +683,15 @@ export default function Home() {
             </p>
 
             <p className="mt-3 text-3xl font-bold">
-              ${realHourlyRate.toFixed(2)}/hr
+              {hourlyRateIncomplete ? "Not tracked" : `$${realHourlyRate.toFixed(2)}/hr`}
             </p>
 
             <p className="mt-1 text-sm text-slate-400">
-              Net / Active Hour
+              {hourlyRateIncomplete
+                ? "No recorded hours"
+                : someClosedShiftsMissingHours
+                  ? hoursCoverageText
+                  : "Net / Active Hour"}
             </p>
 
           </div>
@@ -612,11 +705,15 @@ export default function Home() {
             </p>
 
             <p className="mt-3 text-3xl font-bold">
-              ${netPerDelivery.toFixed(2)}
+              {perDeliveryIncomplete ? "Not tracked" : `$${netPerDelivery.toFixed(2)}`}
             </p>
 
             <p className="mt-1 text-sm text-slate-400">
-              Net / Delivery
+              {perDeliveryIncomplete
+                ? "No recorded deliveries"
+                : someClosedShiftsMissingDeliveries
+                  ? deliveriesCoverageText
+                  : "Net / Delivery"}
             </p>
 
           </div>

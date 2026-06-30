@@ -5,6 +5,7 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import PlatformField from "@/app/components/PlatformField";
 import { supabase } from "@/app/lib/supabaseClient";
+import { saveShiftDeductionsToSupabase } from "@/app/lib/shiftDeductions";
 import {
   loadPreviousShiftMileageReading,
   needsMileageException,
@@ -59,6 +60,9 @@ type ReviewForm = {
   tips: string;
   otherPay: string;
   grossPay: string;
+  deductionType: string;
+  deductionAmount: string;
+  deductionNotes: string;
   notes: string;
 };
 
@@ -116,11 +120,6 @@ function todayIsoDate() {
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const day = String(today.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function getDefaultPlatform() {
-  if (typeof window === "undefined") return "GoPuff";
-  return localStorage.getItem("gigaxios-default-platform") || "GoPuff";
 }
 
 function numberToInput(value: number | null | undefined) {
@@ -297,11 +296,14 @@ function calculateGrossPay({
   basePay,
   tips,
   otherPay,
+  grossPay,
 }: {
   basePay: string;
   tips: string;
   otherPay: string;
+  grossPay: string;
 }) {
+  if (grossPay.trim().length > 0) return toPayNumber(grossPay);
   return toPayNumber(basePay) + toPayNumber(tips) + toPayNumber(otherPay);
 }
 
@@ -418,7 +420,7 @@ export default function ImportDayPage() {
   });
   const [form, setForm] = useState<ReviewForm>({
     vehicleId: "",
-    platform: getDefaultPlatform(),
+    platform: "",
     date: todayIsoDate(),
     startMileage: "",
     endMileage: "",
@@ -428,6 +430,9 @@ export default function ImportDayPage() {
     tips: "",
     otherPay: "",
     grossPay: "",
+    deductionType: "",
+    deductionAmount: "",
+    deductionNotes: "",
     notes: "",
   });
   const [saveError, setSaveError] = useState("");
@@ -444,6 +449,7 @@ export default function ImportDayPage() {
   const [earningsCautionAcknowledged, setEarningsCautionAcknowledged] =
     useState(false);
   const [payChangeAcknowledged, setPayChangeAcknowledged] = useState(false);
+  const [showMissingMetricsPrompt, setShowMissingMetricsPrompt] = useState(false);
   const [existingShiftsForDate, setExistingShiftsForDate] = useState<ExistingShift[]>([]);
   const [isLoadingShiftsForDate, setIsLoadingShiftsForDate] = useState(false);
   const [ocrReportedGrossPay, setOcrReportedGrossPay] = useState<number | null>(null);
@@ -453,13 +459,16 @@ export default function ImportDayPage() {
   const calculatedGrossPay = useMemo(
     () =>
       calculateGrossPay({
-        basePay: form.basePay,
-        tips: form.tips,
-        otherPay: form.otherPay,
-      }),
-    [form.basePay, form.otherPay, form.tips]
+          basePay: form.basePay,
+          tips: form.tips,
+          otherPay: form.otherPay,
+          grossPay: form.grossPay,
+        }),
+    [form.basePay, form.grossPay, form.otherPay, form.tips]
   );
   const calculatedGrossPayInput = calculatedGrossPay.toFixed(2);
+  const feesAndDeductionsTotal = toPayNumber(form.deductionAmount);
+  const calculatedNetPayout = calculatedGrossPay - feesAndDeductionsTotal;
   const payChangeCaution =
     ocrReportedGrossPay !== null &&
     Math.abs(calculatedGrossPay - ocrReportedGrossPay) > 0.01
@@ -551,7 +560,6 @@ export default function ImportDayPage() {
     setForm((current) => {
       const nextForm = {
         ...current,
-        platform: getDefaultPlatform(),
         date: current.date || todayIsoDate(),
       };
       initialFormRef.current = nextForm;
@@ -748,19 +756,25 @@ export default function ImportDayPage() {
     if (
       field === "date" ||
       field === "platform" ||
+      field === "vehicleId" ||
       field === "startMileage" ||
       field === "endMileage" ||
-      field === "grossPay"
+      field === "deliveries" ||
+      field === "hoursWorked" ||
+      field === "grossPay" ||
+      field === "deductionAmount"
     ) {
       setWarningsAcknowledged(false);
       setEarningsCautionAcknowledged(false);
       setSaveError("");
+      setShowMissingMetricsPrompt(false);
     }
 
-    if (field === "basePay" || field === "tips" || field === "otherPay") {
+    if (field === "basePay" || field === "tips" || field === "otherPay" || field === "grossPay") {
       setPayChangeAcknowledged(false);
       setEarningsCautionAcknowledged(false);
       setSaveError("");
+      setShowMissingMetricsPrompt(false);
     }
 
     setForm((current) => ({ ...current, [field]: value }));
@@ -913,15 +927,21 @@ export default function ImportDayPage() {
           result.date,
           current.date
         ).date;
+        const primaryDeduction = result.deductions[0] ?? null;
 
         return {
           ...current,
           date: normalizedOcrDate || current.date,
+          platform: result.platform?.trim() || current.platform,
           deliveries: numberToInput(result.deliveries) || current.deliveries,
           hoursWorked: numberToInput(result.hoursWorked) || current.hoursWorked,
           basePay: numberToInput(result.basePay) || current.basePay,
           tips: numberToInput(result.tips) || current.tips,
           otherPay: numberToInput(result.otherPay) || current.otherPay,
+          grossPay: numberToInput(result.grossPay) || current.grossPay,
+          deductionType: primaryDeduction?.deductionType || current.deductionType,
+          deductionAmount: numberToInput(primaryDeduction?.amount) || current.deductionAmount,
+          deductionNotes: primaryDeduction?.notes || current.deductionNotes,
           notes: [current.notes, result.notes].filter(Boolean).join("\n"),
         };
       }
@@ -1000,13 +1020,17 @@ export default function ImportDayPage() {
         data.result.kind === "earnings"
           ? normalizeOcrDateInput(data.result.date, form.date).warning
           : "";
+      const platformWarning =
+        data.result.kind === "earnings" && !data.result.platform
+          ? "Platform not detected. Select or enter platform before saving."
+          : "";
 
       if (ocrRequestIdsRef.current[kind] !== requestId) return;
       patchUpload(kind, {
         ocrStatus: "done",
         result: data.result,
         rawJson: data.raw ?? data,
-        warning: [data.warning, ocrDateWarning].filter(Boolean).join(" "),
+        warning: [data.warning, ocrDateWarning, platformWarning].filter(Boolean).join(" "),
       });
       applyOcrToForm(data.result);
     } catch {
@@ -1025,9 +1049,10 @@ export default function ImportDayPage() {
     }
   }
 
-  async function handleImport() {
+  async function handleImport(options: { allowMissingMetrics?: boolean } = {}) {
     setSaveError("");
     setSaveSuccess("");
+    setShowMissingMetricsPrompt(false);
 
     if (trialRequired) {
       setSaveError("Your free preview has ended. Start your free trial to save a shift.");
@@ -1054,6 +1079,34 @@ export default function ImportDayPage() {
 
     if (!form.date) {
       setSaveError("Date is required.");
+      return;
+    }
+
+    if (!form.vehicleId) {
+      setSaveError("Vehicle is required.");
+      return;
+    }
+
+    if (!form.platform.trim()) {
+      setSaveError("Platform is required.");
+      return;
+    }
+
+    if (!(calculatedGrossPay > 0)) {
+      setSaveError("Gross Pay is required.");
+      return;
+    }
+
+    if (toPayNumber(form.deductionAmount) > 0 && !form.deductionType.trim()) {
+      setSaveError("Fee/Deduction Type is required when a deduction amount is entered.");
+      return;
+    }
+
+    if (
+      (!form.deliveries.trim() || !form.hoursWorked.trim()) &&
+      !options.allowMissingMetrics
+    ) {
+      setShowMissingMetricsPrompt(true);
       return;
     }
 
@@ -1120,8 +1173,9 @@ export default function ImportDayPage() {
           ? "Record Shift reviewed mileage exception."
           : null;
 
+      const shiftId = crypto.randomUUID();
       const { error } = await supabase.from("shifts").insert({
-        id: crypto.randomUUID(),
+        id: shiftId,
         user_id: userId,
         vehicle_id: form.vehicleId || null,
         date: form.date,
@@ -1145,6 +1199,30 @@ export default function ImportDayPage() {
       if (error) {
         setSaveError(error.message || "Could not save the shift.");
         return;
+      }
+
+      const deductionAmount = toPayNumber(form.deductionAmount);
+      if (deductionAmount > 0 && form.deductionType.trim()) {
+        try {
+          await saveShiftDeductionsToSupabase([
+            {
+              userId,
+              shiftId,
+              date: form.date,
+              platform: form.platform.trim(),
+              deductionType: form.deductionType,
+              amount: deductionAmount,
+              notes: form.deductionNotes,
+            },
+          ]);
+        } catch (deductionError) {
+          setSaveError(
+            deductionError instanceof Error
+              ? deductionError.message
+              : "Shift saved, but the deduction could not be saved."
+          );
+          return;
+        }
       }
 
       setSaveSuccess("Saved one closed shift into GigAxios.");
@@ -1225,6 +1303,7 @@ export default function ImportDayPage() {
             <PlatformField
               value={form.platform}
               onChange={(value) => updateForm("platform", value)}
+              placeholder="Select or enter platform"
               inputClassName="bg-slate-950"
             />
 
@@ -1328,11 +1407,68 @@ export default function ImportDayPage() {
                   />
                 </label>
               ))}
-              <div className="block">
-                <span className="text-sm text-slate-400">Gross Pay (calculated)</span>
-                <div className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white">
-                  {formatCurrency(calculatedGrossPay)}
-                </div>
+              <label className="block">
+                <span className="text-sm text-slate-400">Gross Pay</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.grossPay}
+                  onChange={(event) => updateForm("grossPay", event.target.value)}
+                  placeholder={calculatedGrossPay > 0 ? calculatedGrossPayInput : "0.00"}
+                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-600"
+                />
+              </label>
+            </div>
+
+            <details
+              open={Boolean(form.deductionType || form.deductionAmount || form.deductionNotes)}
+              className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4"
+            >
+              <summary className="cursor-pointer text-sm font-bold text-slate-200">
+                Fees & Deductions
+              </summary>
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="text-sm text-slate-400">Fee/Deduction Type</span>
+                  <input
+                    type="text"
+                    value={form.deductionType}
+                    onChange={(event) => updateForm("deductionType", event.target.value)}
+                    placeholder="Occupational Accident Insurance"
+                    className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white placeholder:text-slate-600"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-slate-400">Amount</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.deductionAmount}
+                    onChange={(event) => updateForm("deductionAmount", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-slate-400">Notes</span>
+                  <input
+                    type="text"
+                    value={form.deductionNotes}
+                    onChange={(event) => updateForm("deductionNotes", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                  />
+                </label>
+              </div>
+            </details>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                <p className="text-xs text-slate-500">Gross Pay</p>
+                <p className="text-lg font-bold text-white">{formatCurrency(calculatedGrossPay)}</p>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                <p className="text-xs text-slate-500">Net Payout</p>
+                <p className="text-lg font-bold text-emerald-400">{formatCurrency(calculatedNetPayout)}</p>
               </div>
             </div>
 
@@ -1455,6 +1591,35 @@ export default function ImportDayPage() {
             </p>
           )}
 
+          {showMissingMetricsPrompt && (
+            <div className="mt-4 rounded-2xl border border-amber-400/40 bg-amber-950/30 p-4 text-sm leading-6 text-amber-100">
+              <p>
+                Deliveries and/or hours are missing. Some hourly or delivery-based metrics will be incomplete. Save anyway?
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMissingMetricsPrompt(false);
+                    void handleImport({ allowMissingMetrics: true });
+                  }}
+                  disabled={isSaving}
+                  className="rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  Save Anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMissingMetricsPrompt(false)}
+                  disabled={isSaving}
+                  className="rounded-full border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-bold text-slate-200 disabled:opacity-60"
+                >
+                  Go Back
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="mt-5 grid grid-cols-2 gap-3">
             <button
               type="button"
@@ -1466,7 +1631,7 @@ export default function ImportDayPage() {
             </button>
             <button
               type="button"
-              onClick={handleImport}
+              onClick={() => void handleImport()}
               disabled={importDisabled}
               className="rounded-full bg-emerald-500 px-4 py-3 text-base font-bold text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
             >

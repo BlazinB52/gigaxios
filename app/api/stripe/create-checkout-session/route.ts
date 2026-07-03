@@ -54,7 +54,6 @@ export async function POST() {
 
     const appUrl = getEnv("NEXT_PUBLIC_APP_URL");
     const priceId = getEnv("STRIPE_PRICE_ID");
-    const couponId = getEnv("STRIPE_COUPON_ID");
     const stripe = getStripe();
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -103,11 +102,7 @@ export async function POST() {
           quantity: 1,
         },
       ],
-      discounts: [
-        {
-          coupon: couponId,
-        },
-      ],
+      allow_promotion_codes: true,
       subscription_data: {
         trial_period_days: 7,
         metadata: {

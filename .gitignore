@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+backup-gigaxios*.ps1
 
 # debug
 npm-debug.log*

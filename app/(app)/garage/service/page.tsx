@@ -154,22 +154,28 @@ function ServicePageInner() {
     );
     if (!confirmed) return;
 
-    await deleteServiceEntryFromSupabase(id);
+    try {
+      await deleteServiceEntryFromSupabase(id);
 
-    const deletedVehicleId = deletedEntry?.vehicleId || selectedVehicleId;
-    if (deletedEntry && deletedVehicleId && deletedEntry.serviceType !== "Other") {
-      await recalculateIntervalLastDoneFromServices(
-        userId,
-        deletedEntry.serviceType,
-        deletedVehicleId
-      );
-    }
+      const deletedVehicleId = deletedEntry?.vehicleId || selectedVehicleId;
+      if (deletedEntry && deletedVehicleId && deletedEntry.serviceType !== "Other") {
+        await recalculateIntervalLastDoneFromServices(
+          userId,
+          deletedEntry.serviceType,
+          deletedVehicleId
+        );
+      }
 
-    const updated = await loadServiceEntriesFromSupabase(userId, vehicleId || undefined);
-    setServiceEntries(updated);
-    if (editingEntryId === id) {
-      resetServiceForm();
-      setShowForm(false);
+      const updated = await loadServiceEntriesFromSupabase(userId, vehicleId || undefined);
+      setServiceEntries(updated);
+      if (editingEntryId === id) {
+        resetServiceForm();
+        setShowForm(false);
+      }
+    } catch (error) {
+      console.error("Service delete failed:", error);
+      const message = error instanceof Error ? error.message : "Please try again.";
+      alert(`Could not delete this service record. ${message}`);
     }
   }
 
@@ -178,69 +184,79 @@ function ServicePageInner() {
     if (!serviceType || !userId) return;
     setSaving(true);
 
-    const highestMileage = await loadHighestMileageReading({
-      userId,
-      vehicleId: selectedVehicleId || undefined,
-    });
-    const mileageIsLower = needsMileageException({
-      mileage: serviceOdometer,
-      highestMileage,
-    });
-
-    if (
-      mileageIsLower &&
-      (!allowMileageException || mileageExceptionReason.trim().length === 0)
-    ) {
-      setShowMileageException(true);
-      setSaving(false);
-      return;
-    }
-
-    setShowMileageException(false);
-
-    const previousEntry = editingEntryId
-      ? serviceEntries.find((entry) => entry.id === editingEntryId) ?? null
-      : null;
-    const entryVehicleId = selectedVehicleId || previousEntry?.vehicleId || vehicleId || undefined;
-    const entry: ServiceEntry = {
-      id: editingEntryId ?? crypto.randomUUID(),
-      userId,
-      vehicleId: entryVehicleId,
-      date: serviceDate,
-      odometer: serviceOdometer,
-      serviceType,
-      cost: serviceCost,
-      notes: serviceNotes,
-      overrideMileageValidation: mileageIsLower && allowMileageException,
-      overrideMileageReason:
-        mileageIsLower && allowMileageException
-          ? mileageExceptionReason.trim()
-          : null,
-    };
-
-    if (isEditing) {
-      await updateServiceEntryInSupabase(entry);
-    } else {
-      await saveServiceEntryToSupabase(entry);
-    }
-
-    if (previousEntry?.vehicleId && previousEntry.serviceType !== "Other") {
-      await recalculateIntervalLastDoneFromServices(
+    try {
+      const highestMileage = await loadHighestMileageReading({
         userId,
-        previousEntry.serviceType,
-        previousEntry.vehicleId
-      );
-    }
-    if (entry.vehicleId && serviceType !== "Other") {
-      await recalculateIntervalLastDoneFromServices(userId, serviceType, entry.vehicleId);
-    }
+        vehicleId: selectedVehicleId || undefined,
+      });
+      const mileageIsLower = needsMileageException({
+        mileage: serviceOdometer,
+        highestMileage,
+      });
+      const reason = mileageExceptionReason.trim();
 
-    const updated = await loadServiceEntriesFromSupabase(userId, vehicleId || undefined);
-    setServiceEntries(updated);
+      if (mileageIsLower && !allowMileageException) {
+        setShowMileageException(true);
+        return;
+      }
 
-    resetServiceForm();
-    setShowForm(false);
-    setSaving(false);
+      if (mileageIsLower && allowMileageException && reason.length === 0) {
+        setShowMileageException(true);
+        alert("Please enter a reason for the mileage exception before saving.");
+        return;
+      }
+
+      setShowMileageException(false);
+
+      const previousEntry = editingEntryId
+        ? serviceEntries.find((entry) => entry.id === editingEntryId) ?? null
+        : null;
+      const entryVehicleId = selectedVehicleId || previousEntry?.vehicleId || vehicleId || undefined;
+      const entry: ServiceEntry = {
+        id: editingEntryId ?? crypto.randomUUID(),
+        userId,
+        vehicleId: entryVehicleId,
+        date: serviceDate,
+        odometer: serviceOdometer,
+        serviceType,
+        cost: serviceCost,
+        notes: serviceNotes,
+        overrideMileageValidation: mileageIsLower && allowMileageException,
+        overrideMileageReason:
+          mileageIsLower && allowMileageException
+            ? reason
+            : null,
+      };
+
+      if (isEditing) {
+        await updateServiceEntryInSupabase(entry);
+      } else {
+        await saveServiceEntryToSupabase(entry);
+      }
+
+      if (previousEntry?.vehicleId && previousEntry.serviceType !== "Other") {
+        await recalculateIntervalLastDoneFromServices(
+          userId,
+          previousEntry.serviceType,
+          previousEntry.vehicleId
+        );
+      }
+      if (entry.vehicleId && serviceType !== "Other") {
+        await recalculateIntervalLastDoneFromServices(userId, serviceType, entry.vehicleId);
+      }
+
+      const updated = await loadServiceEntriesFromSupabase(userId, vehicleId || undefined);
+      setServiceEntries(updated);
+
+      resetServiceForm();
+      setShowForm(false);
+    } catch (error) {
+      console.error("Service save failed:", error);
+      const message = error instanceof Error ? error.message : "Please try again.";
+      alert(`Could not save this service record. ${message}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleStartTrial() {

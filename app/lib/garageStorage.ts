@@ -72,6 +72,7 @@ export async function deleteServiceEntryFromSupabase(id: string) {
 
   if (error) {
     console.error("Supabase service delete error:", error.message);
+    throw new Error(error.message);
   }
 }
 
@@ -127,6 +128,7 @@ export async function saveServiceEntryToSupabase(entry: ServiceEntry) {
 
   if (error) {
     console.error("Supabase service save error:", error.message);
+    throw new Error(error.message);
   }
 }
 
@@ -150,6 +152,7 @@ export async function updateServiceEntryInSupabase(entry: ServiceEntry) {
 
   if (error) {
     console.error("Supabase service update error:", error.message);
+    throw new Error(error.message);
   }
 }
 

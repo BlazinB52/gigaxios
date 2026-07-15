@@ -314,6 +314,9 @@ export default function FuelPage() {
       const formData = new FormData();
       formData.append("image", readyFile);
       formData.append("kind", kind);
+      if (kind === "receipt" && isValidFuelDate(date)) {
+        formData.append("referenceDate", date);
+      }
 
       patchOcrStatus(kind, "reading");
 

@@ -139,7 +139,114 @@ function getOutputText(responseBody: unknown) {
   );
 }
 
-function getPrompt(kind: FuelOcrKind) {
+function isValidDateParts(year: number, month: number, day: number) {
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
+function isValidFuelDate(value: string | null | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+  const [yearText, monthText, dayText] = value.split("-");
+  return isValidDateParts(Number(yearText), Number(monthText), Number(dayText));
+}
+
+function normalizeYear(yearText: string) {
+  if (yearText.length === 2) {
+    return 2000 + Number(yearText);
+  }
+
+  return Number(yearText);
+}
+
+function getReferenceYear(referenceDate: string | null | undefined) {
+  if (isValidFuelDate(referenceDate)) {
+    return Number(referenceDate.slice(0, 4));
+  }
+
+  return new Date().getFullYear();
+}
+
+function toIsoFuelDate(year: number, month: number, day: number) {
+  if (!isValidDateParts(year, month, day)) return null;
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function normalizeFuelReceiptDate(
+  value: string | null | undefined,
+  referenceDate?: string
+) {
+  if (!value) return null;
+
+  const trimmedValue = value
+    .trim()
+    .replace(
+      /^(mon|monday|tue|tues|tuesday|wed|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday|sun|sunday),?\s+/i,
+      ""
+    );
+  const monthNames: Record<string, number> = {
+    jan: 1,
+    january: 1,
+    feb: 2,
+    february: 2,
+    mar: 3,
+    march: 3,
+    apr: 4,
+    april: 4,
+    may: 5,
+    jun: 6,
+    june: 6,
+    jul: 7,
+    july: 7,
+    aug: 8,
+    august: 8,
+    sep: 9,
+    sept: 9,
+    september: 9,
+    oct: 10,
+    october: 10,
+    nov: 11,
+    november: 11,
+    dec: 12,
+    december: 12,
+  };
+
+  const isoMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return isValidFuelDate(trimmedValue) ? trimmedValue : null;
+  }
+
+  const numericMatch = trimmedValue.match(
+    /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2}|\d{4}))?/
+  );
+  if (numericMatch) {
+    const [, monthText, dayText, yearText] = numericMatch;
+    const year = yearText ? normalizeYear(yearText) : getReferenceYear(referenceDate);
+
+    return toIsoFuelDate(year, Number(monthText), Number(dayText));
+  }
+
+  const monthNameMatch = trimmedValue.match(
+    /^([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{2}|\d{4}))?(?:\s+(?:at\s+)?.*)?$/i
+  );
+  if (monthNameMatch) {
+    const [, monthName, dayText, yearText] = monthNameMatch;
+    const month = monthNames[monthName.toLowerCase()];
+    if (!month) return null;
+
+    const year = yearText ? normalizeYear(yearText) : getReferenceYear(referenceDate);
+    return toIsoFuelDate(year, month, Number(dayText));
+  }
+
+  return null;
+}
+
+function getPrompt(kind: FuelOcrKind, referenceDate?: string) {
   if (kind === "odometer") {
     return [
       "Read only the main vehicle odometer mileage from this image.",
@@ -152,7 +259,12 @@ function getPrompt(kind: FuelOcrKind) {
 
   return [
     "Extract fuel receipt details only when clearly visible.",
-    "Return the transaction date as YYYY-MM-DD when visible. Do not guess a missing year.",
+    referenceDate
+      ? `Use ${referenceDate} as the reference form date for year context.`
+      : "Use the current year as the reference year when needed.",
+    "Return the transaction date as YYYY-MM-DD when visible.",
+    "If the receipt shows a month and day but no year, infer the year from the reference date year.",
+    "Do not default to today's date when the receipt shows a different month or day.",
     "Extract gallons and price per gallon. Ignore total cost unless it helps identify price per gallon.",
     "Extract station name when visible.",
     "Return null for fields that are not clearly visible. Do not guess.",
@@ -247,6 +359,11 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const image = formData.get("image");
     const kindValue = formData.get("kind");
+    const referenceDateValue = formData.get("referenceDate");
+    const referenceDate =
+      typeof referenceDateValue === "string" && isValidFuelDate(referenceDateValue)
+        ? referenceDateValue
+        : undefined;
 
     if (!isFuelOcrKind(kindValue)) {
       return NextResponse.json({ error: "Invalid fuel OCR image kind." }, { status: 400 });
@@ -292,7 +409,7 @@ export async function POST(request: Request) {
             content: [
               {
                 type: "input_text",
-                text: getPrompt(kindValue),
+                text: getPrompt(kindValue, referenceDate),
               },
               {
                 type: "input_image",
@@ -360,7 +477,10 @@ export async function POST(request: Request) {
               parsed.mileage ??
               extractOdometerMileageFromText(parsed.notes),
           }
-        : parsed;
+        : {
+            ...parsed,
+            date: normalizeFuelReceiptDate(parsed.date, referenceDate),
+          };
 
     const warning =
       result.kind === "odometer" && result.mileage === null

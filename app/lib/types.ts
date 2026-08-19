@@ -13,6 +13,8 @@ export type SavedShift = {
   vehicleId?: string;
   platform: string;
   date: string;
+  startTime?: string;
+  endTime?: string;
 
   beginningMileage: string;
   endingMileage: string;

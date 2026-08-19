@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar } from "lucide-react";
 import ActiveShiftCard from "@/app/components/ActiveShiftCard";
@@ -20,13 +20,96 @@ import {
     DUPLICATE_SHIFT_MESSAGE,
     hasDuplicateClosedShift,
 } from "@/app/lib/shiftDuplicateValidation";
+import { saveShiftDeductionsToSupabase } from "@/app/lib/shiftDeductions";
+import {
+    convertImportDayHeicToJpeg,
+    detectImportDayHeic,
+    getImportDayConversionErrorMessage,
+    ImportDayConversionStatus,
+    ImportDayHeicDetection,
+    isImportDayAcceptedImage,
+} from "@/app/lib/importDayImage";
+import {
+    ImportDayImageKind,
+    ImportDayOcrResult,
+} from "@/app/lib/importDayTypes";
+
+function getLocalDateValue(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+        date.getDate()
+    ).padStart(2, "0")}`;
+}
+
+function getLocalTimeValue(date = new Date()) {
+    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function calculateHoursBetween({
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+}: {
+    startDate: string;
+    startTime?: string;
+    endDate: string;
+    endTime: string;
+}) {
+    if (!startDate || !startTime || !endDate || !endTime) return "";
+
+    const start = new Date(`${startDate}T${startTime}:00`);
+    let end = new Date(`${endDate}T${endTime}:00`);
+
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+        return "";
+    }
+
+    if (end < start) {
+        end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    return ((end.getTime() - start.getTime()) / (60 * 60 * 1000)).toFixed(2);
+}
+
+type ShiftOcrState = {
+    selectedFile: File | null;
+    processedFile: File | null;
+    heicDetection: ImportDayHeicDetection;
+    conversionStatus: ImportDayConversionStatus;
+    ocrStatus: "idle" | "preparing" | "reading" | "done" | "failed";
+    result: ImportDayOcrResult | null;
+    error: string;
+    warning: string;
+};
+
+const shiftOcrKinds: ImportDayImageKind[] = ["start_odometer", "end_odometer", "earnings"];
+const OCR_TIMEOUT_MS = 45_000;
+
+function createShiftOcrState(): ShiftOcrState {
+    return {
+        selectedFile: null,
+        processedFile: null,
+        heicDetection: { isHeic: false, reason: "No file selected" },
+        conversionStatus: "pending",
+        ocrStatus: "idle",
+        result: null,
+        error: "",
+        warning: "",
+    };
+}
+
+function numberToInput(value: number | null | undefined) {
+    return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
 
 
 export default function ShiftsPage() {
     const [platform, setPlatform] = useState("");
-    const [shiftDate, setShiftDate] = useState("");
+    const [shiftDate, setShiftDate] = useState(() => getLocalDateValue());
+    const [startTime, setStartTime] = useState(() => getLocalTimeValue());
     const [beginningMileage, setBeginningMileage] = useState("");
     const [endingMileage, setEndingMileage] = useState("");
+    const [endTime, setEndTime] = useState(() => getLocalTimeValue());
     const [allowStartMileageException, setAllowStartMileageException] = useState(false);
     const [startMileageExceptionReason, setStartMileageExceptionReason] = useState("");
     const [showStartMileageException, setShowStartMileageException] = useState(false);
@@ -35,10 +118,14 @@ export default function ShiftsPage() {
     const [showEndMileageException, setShowEndMileageException] = useState(false);
 
     const [deliveries, setDeliveries] = useState("");
-    const [hoursWorked, setHoursWorked] = useState("");
     const [basePay, setBasePay] = useState("");
     const [tips, setTips] = useState("");
     const [otherPay, setOtherPay] = useState("");
+    const [grossPay, setGrossPay] = useState("");
+    const [deductionType, setDeductionType] = useState("");
+    const [deductionAmount, setDeductionAmount] = useState("");
+    const [deductionNotes, setDeductionNotes] = useState("");
+    const [notes, setNotes] = useState("");
 
     const [savedShifts, setSavedShifts] = useState<SavedShift[]>([]);
     const [vehicles, setVehicles] = useState<Array<{
@@ -49,6 +136,22 @@ export default function ShiftsPage() {
         useState<SubscriptionAccessState | null>(null);
     const [startingCheckout, setStartingCheckout] = useState(false);
     const router = useRouter();
+    const fileInputRefs = useRef<Record<ImportDayImageKind, HTMLInputElement | null>>({
+        start_odometer: null,
+        end_odometer: null,
+        earnings: null,
+    });
+    const ocrAbortControllersRef = useRef<Partial<Record<ImportDayImageKind, AbortController>>>({});
+    const ocrRequestIdsRef = useRef<Record<ImportDayImageKind, number>>({
+        start_odometer: 0,
+        end_odometer: 0,
+        earnings: 0,
+    });
+    const [ocrUploads, setOcrUploads] = useState<Record<ImportDayImageKind, ShiftOcrState>>({
+        start_odometer: createShiftOcrState(),
+        end_odometer: createShiftOcrState(),
+        earnings: createShiftOcrState(),
+    });
 
     useEffect(() => {  
         async function loadCloudShifts() {
@@ -89,6 +192,15 @@ export default function ShiftsPage() {
     const activeShift = savedShifts.find((shift) => shift.status === "open");
     const isSubscribed = accessState?.isSubscribed ?? false;
     const trialRequired = accessState?.trialRequired ?? false;
+    const activeShiftStartTime = activeShift?.startTime ?? startTime;
+    const calculatedHoursWorked = activeShift
+        ? calculateHoursBetween({
+            startDate: activeShift.date,
+            startTime: activeShiftStartTime,
+            endDate: activeShift.date,
+            endTime,
+        })
+        : "";
 
     function resetStartMileageException() {
         setShowStartMileageException(false);
@@ -100,6 +212,197 @@ export default function ShiftsPage() {
         setShowEndMileageException(false);
         setAllowEndMileageException(false);
         setEndMileageExceptionReason("");
+    }
+
+    function patchOcrUpload(kind: ImportDayImageKind, patch: Partial<ShiftOcrState>) {
+        setOcrUploads((current) => ({
+            ...current,
+            [kind]: {
+                ...current[kind],
+                ...patch,
+            },
+        }));
+    }
+
+    function openScanPicker(kind: ImportDayImageKind) {
+        if (trialRequired) return;
+        fileInputRefs.current[kind]?.click();
+    }
+
+    function applyOcrToShiftForm(result: ImportDayOcrResult) {
+        if (result.kind === "start_odometer") {
+            const mileage = numberToInput(result.mileage);
+            if (mileage) {
+                setBeginningMileage(mileage);
+                resetStartMileageException();
+            }
+            return;
+        }
+
+        if (result.kind === "end_odometer") {
+            const mileage = numberToInput(result.mileage);
+            if (mileage) {
+                setEndingMileage(mileage);
+                resetEndMileageException();
+            }
+            return;
+        }
+
+        if (result.kind !== "earnings") return;
+
+        const primaryDeduction = result.deductions[0] ?? null;
+        setDeliveries((current) => numberToInput(result.deliveries) || current);
+        setBasePay((current) => numberToInput(result.basePay) || current);
+        setTips((current) => numberToInput(result.tips) || current);
+        setOtherPay((current) => numberToInput(result.otherPay) || current);
+        setGrossPay((current) => numberToInput(result.grossPay) || current);
+        setDeductionType((current) => primaryDeduction?.deductionType || current);
+        setDeductionAmount((current) => numberToInput(primaryDeduction?.amount) || current);
+        setDeductionNotes((current) => primaryDeduction?.notes || current);
+        setNotes((current) => [current, result.notes].filter(Boolean).join("\n"));
+    }
+
+    async function runOcr(kind: ImportDayImageKind, imageFile?: File) {
+        const upload = ocrUploads[kind];
+        const fileToRead = imageFile ?? upload.processedFile;
+        const abortController = new AbortController();
+        const requestId = ocrRequestIdsRef.current[kind] + 1;
+        ocrRequestIdsRef.current[kind] = requestId;
+        ocrAbortControllersRef.current[kind] = abortController;
+        const timeoutId = window.setTimeout(() => {
+            abortController.abort();
+        }, OCR_TIMEOUT_MS);
+
+        if (trialRequired) {
+            window.clearTimeout(timeoutId);
+            delete ocrAbortControllersRef.current[kind];
+            patchOcrUpload(kind, {
+                error: "Your free preview has ended. Start your free trial to scan photos.",
+            });
+            return;
+        }
+
+        if (!fileToRead) {
+            window.clearTimeout(timeoutId);
+            delete ocrAbortControllersRef.current[kind];
+            patchOcrUpload(kind, {
+                error: "This photo is still being prepared or could not be read. Please retake the photo or upload a JPG/PNG.",
+            });
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("image", fileToRead);
+        formData.append("kind", kind);
+
+        patchOcrUpload(kind, {
+            ocrStatus: "reading",
+            error: "",
+            warning: "",
+        });
+
+        try {
+            const response = await fetch("/api/import-day/ocr", {
+                method: "POST",
+                body: formData,
+                signal: abortController.signal,
+            });
+            const data = (await response.json()) as {
+                result?: ImportDayOcrResult;
+                warning?: string | null;
+                error?: string;
+            };
+
+            if (ocrRequestIdsRef.current[kind] !== requestId) return;
+
+            if (!response.ok || !data.result) {
+                patchOcrUpload(kind, {
+                    ocrStatus: "failed",
+                    error: data.error || "OpenAI could not read this image.",
+                });
+                return;
+            }
+
+            const platformWarning =
+                data.result.kind === "earnings" && !data.result.platform
+                    ? "Platform not detected. Existing shift platform was kept."
+                    : "";
+
+            patchOcrUpload(kind, {
+                ocrStatus: "done",
+                result: data.result,
+                warning: [data.warning, platformWarning].filter(Boolean).join(" "),
+            });
+            applyOcrToShiftForm(data.result);
+        } catch {
+            if (ocrRequestIdsRef.current[kind] !== requestId) return;
+            patchOcrUpload(kind, {
+                ocrStatus: "failed",
+                error: abortController.signal.aborted
+                    ? "Scan took too long. Please try again."
+                    : "OpenAI request failed. Please try again.",
+            });
+        } finally {
+            window.clearTimeout(timeoutId);
+            if (ocrRequestIdsRef.current[kind] === requestId) {
+                delete ocrAbortControllersRef.current[kind];
+            }
+        }
+    }
+
+    async function handleOcrFileChange(
+        kind: ImportDayImageKind,
+        event: ChangeEvent<HTMLInputElement>
+    ) {
+        const file = event.target.files?.[0] ?? null;
+        event.target.value = "";
+        patchOcrUpload(kind, {
+            selectedFile: file,
+            processedFile: null,
+            heicDetection: {
+                isHeic: false,
+                reason: file ? "Checking file" : "No file selected",
+            },
+            conversionStatus: "pending",
+            ocrStatus: file ? "preparing" : "idle",
+            result: null,
+            error: "",
+            warning: "",
+        });
+
+        if (!file) return;
+
+        try {
+            const detectedHeic = await detectImportDayHeic(file);
+
+            if (!isImportDayAcceptedImage(file, detectedHeic)) {
+                patchOcrUpload(kind, {
+                    heicDetection: detectedHeic,
+                    conversionStatus: "failed",
+                    ocrStatus: "failed",
+                    error: "Upload a valid image file.",
+                });
+                return;
+            }
+
+            const readyFile = detectedHeic.isHeic
+                ? await convertImportDayHeicToJpeg(file)
+                : file;
+            patchOcrUpload(kind, {
+                processedFile: readyFile,
+                heicDetection: detectedHeic,
+                conversionStatus: "success",
+                ocrStatus: "idle",
+            });
+            await runOcr(kind, readyFile);
+        } catch (conversionError) {
+            patchOcrUpload(kind, {
+                processedFile: null,
+                conversionStatus: "failed",
+                ocrStatus: "failed",
+                error: `This photo format could not be read. ${getImportDayConversionErrorMessage(conversionError)}`,
+            });
+        }
     }
 
     async function handleStartTrial() {
@@ -125,8 +428,8 @@ export default function ShiftsPage() {
             return;
         }
 
-        if (!shiftDate || !beginningMileage) {
-            alert("Enter a date and beginning mileage.");
+        if (!shiftDate || !beginningMileage || !startTime) {
+            alert("Enter a date, start time, and beginning mileage.");
             return;
         }
 
@@ -189,6 +492,7 @@ export default function ShiftsPage() {
             vehicleId: selectedVehicleId || undefined,
             platform: trimmedPlatform,
             date: shiftDate,
+            startTime,
             beginningMileage,
             endingMileage: "",
             startMileageOverride: startMileageIsLower && allowStartMileageException,
@@ -208,7 +512,8 @@ export default function ShiftsPage() {
         };
 
         setSavedShifts([...existingShifts, newShift]);
-        setShiftDate("");
+        setShiftDate(getLocalDateValue());
+        setStartTime(getLocalTimeValue());
         setBeginningMileage("");
         setAllowStartMileageException(false);
         setStartMileageExceptionReason("");
@@ -218,21 +523,22 @@ export default function ShiftsPage() {
             user_id: user.id,
             vehicle_id: selectedVehicleId || null,
             date: newShift.date,
+            start_time: newShift.startTime ?? null,
             platform: newShift.platform ?? null,
             beginning_mileage: newShift.beginningMileage,
-            ending_mileage: newShift.endingMileage,
+            ending_mileage: null,
             start_mileage_override: newShift.startMileageOverride ?? false,
             start_mileage_override_reason: newShift.startMileageOverride
                 ? newShift.startMileageOverrideReason || null
                 : null,
             end_mileage_override: false,
             end_mileage_override_reason: null,
-            deliveries: newShift.deliveries ?? null,
-            hours_worked: newShift.hoursWorked ?? null,
-            base_pay: newShift.basePay ?? null,
-            tips: newShift.tips ?? null,
-            other_pay: newShift.otherPay ?? null,
-            gross_pay: newShift.grossPay ?? null,
+            deliveries: null,
+            hours_worked: null,
+            base_pay: null,
+            tips: null,
+            other_pay: null,
+            gross_pay: null,
             status: newShift.status,
             notes: null,
         });
@@ -244,6 +550,16 @@ export default function ShiftsPage() {
 
         if (!endingMileage) {
             alert("Ending mileage is required.");
+            return;
+        }
+
+        if (!endTime) {
+            alert("End time is required.");
+            return;
+        }
+
+        if (!calculatedHoursWorked) {
+            alert("Could not calculate hours worked. Check the shift start and end times.");
             return;
         }
 
@@ -279,7 +595,13 @@ export default function ShiftsPage() {
         setShowEndMileageException(false);
 
         const calculatedGrossPay =
-            Number(basePay || 0) + Number(tips || 0) + Number(otherPay || 0);
+            Number(grossPay || 0) || Number(basePay || 0) + Number(tips || 0) + Number(otherPay || 0);
+        const parsedDeductionAmount = Number(deductionAmount || 0);
+
+        if (parsedDeductionAmount > 0 && !deductionType.trim()) {
+            alert("Fee/Deduction Type is required when a deduction amount is entered.");
+            return;
+        }
 
         const duplicateShiftExists = await hasDuplicateClosedShift({
             userId: activeShift.userId,
@@ -302,11 +624,13 @@ export default function ShiftsPage() {
                     ...shift,
                     endingMileage,
                     deliveries,
-                    hoursWorked,
+                    endTime,
+                    hoursWorked: calculatedHoursWorked,
                     basePay,
                     tips,
                     otherPay,
                     grossPay: calculatedGrossPay.toFixed(2),
+                    notes,
                     endMileageOverride: endMileageIsLower && allowEndMileageException,
                     endMileageOverrideReason:
                         endMileageIsLower && allowEndMileageException
@@ -324,31 +648,67 @@ export default function ShiftsPage() {
 
         setEndingMileage("");
         setDeliveries("");
-        setHoursWorked("");
+        setEndTime(getLocalTimeValue());
         setBasePay("");
         setTips("");
         setOtherPay("");
+        setGrossPay("");
+        setDeductionType("");
+        setDeductionAmount("");
+        setDeductionNotes("");
+        setNotes("");
         setAllowEndMileageException(false);
         setEndMileageExceptionReason("");
 
-        await supabase
+        const { error } = await supabase
             .from("shifts")
             .update({
                 ending_mileage: endingMileage,
+                start_time: activeShiftStartTime ?? null,
+                end_time: endTime,
                 end_mileage_override: endMileageIsLower && allowEndMileageException,
                 end_mileage_override_reason:
                     endMileageIsLower && allowEndMileageException
                         ? endMileageExceptionReason.trim()
                         : null,
                 deliveries,
-                hours_worked: hoursWorked,
+                hours_worked: calculatedHoursWorked,
                 base_pay: basePay,
                 tips,
                 other_pay: otherPay,
                 gross_pay: calculatedGrossPay.toFixed(2),
                 status: "closed",
+                notes: notes || null,
             })
             .eq("id", activeShift.id);
+
+        if (error) {
+            alert(error.message);
+            return;
+        }
+
+        if (parsedDeductionAmount > 0 && deductionType.trim()) {
+            try {
+                await saveShiftDeductionsToSupabase([
+                    {
+                        userId: activeShift.userId,
+                        shiftId: activeShift.id,
+                        date: activeShift.date,
+                        platform: activeShift.platform,
+                        deductionType,
+                        amount: parsedDeductionAmount,
+                        notes: deductionNotes,
+                    },
+                ]);
+            } catch (deductionError) {
+                alert(
+                    deductionError instanceof Error
+                        ? deductionError.message
+                        : "Shift saved, but the deduction could not be saved."
+                );
+                return;
+            }
+        }
 
         if (isSubscribed) {
             sessionStorage.removeItem("gigaxios_shift_ended");
@@ -357,9 +717,54 @@ export default function ShiftsPage() {
         }
         router.push("/dashboard");
     }
+
+    async function handleCancelOpenShift() {
+        if (!activeShift) return;
+
+        const confirmed = confirm("Cancel this open shift? It will not create earnings or work mileage.");
+        if (!confirmed) return;
+
+        const { error } = await supabase
+            .from("shifts")
+            .delete()
+            .eq("id", activeShift.id);
+
+        if (error) {
+            alert(error.message);
+            return;
+        }
+
+        setSavedShifts((current) => current.filter((shift) => shift.id !== activeShift.id));
+        setEndingMileage("");
+        setDeliveries("");
+        setBasePay("");
+        setTips("");
+        setOtherPay("");
+        setGrossPay("");
+        setDeductionType("");
+        setDeductionAmount("");
+        setDeductionNotes("");
+        setNotes("");
+        resetEndMileageException();
+        router.push("/dashboard");
+    }
     return (
         <main className="min-h-screen bg-[#020814] text-white">
             <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 pb-24 pt-8">
+                {shiftOcrKinds.map((kind) => (
+                    <input
+                        key={kind}
+                        ref={(input) => {
+                            fileInputRefs.current[kind] = input;
+                        }}
+                        type="file"
+                        accept="image/*,.heic,.heif"
+                        capture={kind === "earnings" ? undefined : "environment"}
+                        className="hidden"
+                        onChange={(event) => handleOcrFileChange(kind, event)}
+                    />
+                ))}
+
                 <div className="mb-6">
                     <h1 className="text-3xl font-bold tracking-tight">Shifts</h1>
                     <p className="mt-1 text-sm text-slate-400">
@@ -369,25 +774,41 @@ export default function ShiftsPage() {
 
                 <ActiveShiftCard
                     activeShift={activeShift}
+                    startTime={activeShiftStartTime}
                     endingMileage={endingMileage}
                     setEndingMileage={setEndingMileage}
+                    endTime={endTime}
+                    setEndTime={setEndTime}
                     deliveries={deliveries}
                     setDeliveries={setDeliveries}
-                    hoursWorked={hoursWorked}
-                    setHoursWorked={setHoursWorked}
+                    calculatedHoursWorked={calculatedHoursWorked}
                     basePay={basePay}
                     setBasePay={setBasePay}
                     tips={tips}
                     setTips={setTips}
                     otherPay={otherPay}
                     setOtherPay={setOtherPay}
+                    grossPay={grossPay}
+                    setGrossPay={setGrossPay}
+                    deductionType={deductionType}
+                    setDeductionType={setDeductionType}
+                    deductionAmount={deductionAmount}
+                    setDeductionAmount={setDeductionAmount}
+                    deductionNotes={deductionNotes}
+                    setDeductionNotes={setDeductionNotes}
+                    notes={notes}
+                    setNotes={setNotes}
                     allowEndMileageException={allowEndMileageException}
                     setAllowEndMileageException={setAllowEndMileageException}
                     endMileageExceptionReason={endMileageExceptionReason}
                     setEndMileageExceptionReason={setEndMileageExceptionReason}
                     showEndMileageException={showEndMileageException}
                     onEndingMileageChange={resetEndMileageException}
+                    ocrUploads={ocrUploads}
+                    onScan={openScanPicker}
+                    trialRequired={trialRequired}
                     onEndShift={handleEndShift}
+                    onCancelOpenShift={handleCancelOpenShift}
                 />
 
                 {trialRequired && !activeShift && (
@@ -418,26 +839,28 @@ export default function ShiftsPage() {
                     <section className="rounded-3xl border border-slate-700/70 bg-slate-950/70 p-5">
                         <h2 className="text-lg font-bold">Start Shift</h2>
                         <p className="mt-1 text-sm text-slate-400">
-                            Enter your beginning mileage before you start driving.
+                            Enter only what you know before you start working.
                         </p>
 
                         <div className="mt-5 space-y-3">
-                            {vehicles.length > 1 && (
-                              <div>
+                            <div>
                                 <label className="text-sm text-slate-400">Vehicle</label>
                                 <select
-                                  value={selectedVehicleId}
-                                  onChange={(e) => setSelectedVehicleId(e.target.value)}
-                                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
+                                    value={selectedVehicleId}
+                                    onChange={(e) => setSelectedVehicleId(e.target.value)}
+                                    className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"
                                 >
-                                  {vehicles.map((v) => (
-                                    <option key={v.id} value={v.id}>
-                                      {v.year} {v.make} {v.model}{v.is_primary ? " (Primary)" : ""}
-                                    </option>
-                                  ))}
+                                    {vehicles.length === 0 ? (
+                                        <option value="">No active vehicles</option>
+                                    ) : (
+                                        vehicles.map((v) => (
+                                            <option key={v.id} value={v.id}>
+                                                {v.year} {v.make} {v.model}{v.is_primary ? " (Primary)" : ""}
+                                            </option>
+                                        ))
+                                    )}
                                 </select>
-                              </div>
-                            )}
+                            </div>
                             <PlatformField
                                 value={platform}
                                 onChange={setPlatform}
@@ -462,15 +885,54 @@ export default function ShiftsPage() {
                             </div>
 
                             <input
-                                type="number"
-                                value={beginningMileage}
-                                onChange={(event) => {
-                                    setBeginningMileage(event.target.value);
-                                    resetStartMileageException();
-                                }}
-                                placeholder="Beginning Mileage"
-                                className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                                type="time"
+                                value={startTime}
+                                onChange={(event) => setStartTime(event.target.value)}
+                                aria-label="Start Time"
+                                className="h-12 min-h-12 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-white [color-scheme:dark]"
                             />
+
+                            <div>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="number"
+                                        value={beginningMileage}
+                                        onChange={(event) => {
+                                            setBeginningMileage(event.target.value);
+                                            resetStartMileageException();
+                                        }}
+                                        placeholder="Beginning Mileage"
+                                        className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 p-3 text-white placeholder:text-slate-500"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => openScanPicker("start_odometer")}
+                                        disabled={
+                                            trialRequired ||
+                                            ocrUploads.start_odometer.ocrStatus === "preparing" ||
+                                            ocrUploads.start_odometer.ocrStatus === "reading"
+                                        }
+                                        className="shrink-0 rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 text-sm font-bold text-blue-200 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
+                                    >
+                                        {ocrUploads.start_odometer.ocrStatus === "reading" ? "Reading..." : "Scan"}
+                                    </button>
+                                </div>
+                                {(ocrUploads.start_odometer.error ||
+                                    ocrUploads.start_odometer.warning ||
+                                    ocrUploads.start_odometer.ocrStatus === "done") && (
+                                    <p className={`mt-2 rounded-xl border px-3 py-2 text-xs leading-5 ${
+                                        ocrUploads.start_odometer.error
+                                            ? "border-red-400/30 bg-red-950/20 text-red-100"
+                                            : ocrUploads.start_odometer.warning
+                                                ? "border-amber-400/30 bg-amber-950/20 text-amber-100"
+                                                : "border-emerald-400/30 bg-emerald-950/20 text-emerald-100"
+                                    }`}>
+                                        {ocrUploads.start_odometer.error ||
+                                            ocrUploads.start_odometer.warning ||
+                                            "Starting mileage scan applied."}
+                                    </p>
+                                )}
+                            </div>
 
                             {showStartMileageException && (
                                 <div className="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-4">

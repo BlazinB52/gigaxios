@@ -182,7 +182,9 @@ export default function RecordsPage() {
 
     // ─── Derived Data ──────────────────────────────────────────────────────────
 
-    const weekShifts = shifts.filter((s) => {
+    const closedShifts = shifts.filter((shift) => shift.status === "closed");
+
+    const weekShifts = closedShifts.filter((s) => {
         const iso = toISODate(s.date);
         return iso >= weekStart && iso <= weekEnd;
     });
@@ -223,7 +225,7 @@ export default function RecordsPage() {
     });
 
     const dailyGross = weekDates.map((date) =>
-        shifts
+        closedShifts
             .filter((s) => toISODate(s.date) === date)
             .reduce((sum, s) => sum + Number(s.grossPay || 0), 0)
     );
@@ -232,7 +234,7 @@ export default function RecordsPage() {
 
     // Daily breakdown rows
     const daySummaries: DaySummary[] = weekDates.map((date, i) => {
-        const dayShifts = shifts.filter((s) => toISODate(s.date) === date);
+        const dayShifts = closedShifts.filter((s) => toISODate(s.date) === date);
         const dayFuelEntries = fuelEntries.filter((entry) => toISODate(entry.date) === date);
         const dayServiceEntries = serviceEntries.filter((entry) => toISODate(entry.date) === date);
         const deliveries = dayShifts.reduce((sum, s) => sum + Number(s.deliveries || 0), 0);
@@ -330,7 +332,7 @@ export default function RecordsPage() {
                                     {/* Week-over-week badge — derived inline from all-shifts state */}
                                     {(() => {
                                         const { weekStart: ps, weekEnd: pe } = getWeekBounds(weekOffset - 1);
-                                        const prev = shifts
+                                        const prev = closedShifts
                                             .filter((s) => { const iso = toISODate(s.date); return iso >= ps && iso <= pe; })
                                             .reduce((sum, s) => sum + Number(s.grossPay || 0), 0);
                                         if (prev === 0) return null;

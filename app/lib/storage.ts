@@ -58,6 +58,8 @@ export async function loadShiftsFromSupabase(userId?: string) {
     userId: shift.user_id ?? "",
     vehicleId: shift.vehicle_id ?? undefined,
     date: shift.date,
+    startTime: shift.start_time ?? undefined,
+    endTime: shift.end_time ?? undefined,
     platform: shift.platform,
     beginningMileage: shift.beginning_mileage,
     endingMileage: shift.ending_mileage,
@@ -72,7 +74,7 @@ export async function loadShiftsFromSupabase(userId?: string) {
     otherPay: shift.other_pay ?? "",
     grossPay: shift.gross_pay ?? "",
     deductions: deductionsByShiftId.get(shift.id) ?? [],
-    status: shift.status,
+    status: shift.status ?? "closed",
     notes: shift.notes ?? "",
   }));
 }

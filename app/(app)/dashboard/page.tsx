@@ -294,8 +294,6 @@ export default function Home() {
      BASIC_SHIFT_METRICS
      ========================================================= */
 
-  const totalShifts = currentWeekShifts.length;
-
   const activeShiftCount = currentWeekShifts.filter(
     (shift) => shift.status === "open"
   ).length;
@@ -303,6 +301,7 @@ export default function Home() {
   const closedShifts = currentWeekShifts.filter(
     (shift) => shift.status === "closed"
   );
+  const totalShifts = closedShifts.length;
 
   /* =========================================================
      WORK_MILE_CALCULATIONS
@@ -645,23 +644,27 @@ export default function Home() {
 
         {openShift && (
 
-          <section className="mt-5 rounded-3xl border border-emerald-500/20 bg-emerald-950/20 p-5">
+          <section className="mt-5 rounded-3xl border border-emerald-400/40 bg-emerald-950/30 p-5 shadow-[0_0_30px_rgba(52,211,153,0.12)]">
 
             <p className="text-sm font-semibold text-emerald-400">
-              Active Shift
+              Shift Active
             </p>
 
             <div className="mt-3 space-y-1 text-sm text-slate-300">
 
+              <p>Platform: {openShift.platform}</p>
+
               <p>Date: {openShift.date}</p>
+
+              {openShift.startTime && <p>Started: {openShift.startTime}</p>}
 
               <p>
                 Beginning Mileage: {openShift.beginningMileage}
               </p>
 
-              <p>Status: {openShift.status}</p>
-
-              <p>Open Shifts: {activeShiftCount}</p>
+              {activeShiftCount > 1 && (
+                <p className="text-amber-300">Open shifts found: {activeShiftCount}</p>
+              )}
 
             </div>
 
@@ -828,12 +831,14 @@ export default function Home() {
           <button
             onClick={() => {
               if (importDayDisabled) return;
-              router.push("/import-day");
+              router.push("/shifts");
             }}
             disabled={importDayDisabled}
-            className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+            className={`w-full rounded-full px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 ${
+              activeShift ? "bg-emerald-500" : "bg-blue-500"
+            }`}
           >
-            {importDayDisabled ? "Trial required to record" : "→ Record Shift"}
+            {importDayDisabled ? "Trial required to start" : activeShift ? "End Shift" : "Start Shift"}
           </button>
         </div>
       </section>

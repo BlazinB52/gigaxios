@@ -114,7 +114,7 @@ export default function DayDetailPage() {
         loadFuelEntriesFromSupabase(user.id),
       ]);
 
-      setShifts(allShifts.filter((s) => toISODate(s.date) === dateStr));
+      setShifts(allShifts.filter((s) => s.status === "closed" && toISODate(s.date) === dateStr));
       setAllFuelEntries(allFuel);
       setFuelEntries(allFuel.filter((f) => toISODate(f.date) === dateStr));
 
@@ -158,7 +158,7 @@ export default function DayDetailPage() {
       loadShiftsFromSupabase(uid),
       loadFuelEntriesFromSupabase(uid),
     ]);
-    setShifts(allShifts.filter((s) => toISODate(s.date) === dateStr));
+    setShifts(allShifts.filter((s) => s.status === "closed" && toISODate(s.date) === dateStr));
     setAllFuelEntries(allFuel);
     setFuelEntries(allFuel.filter((f) => toISODate(f.date) === dateStr));
   }

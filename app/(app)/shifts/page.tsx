@@ -759,7 +759,6 @@ export default function ShiftsPage() {
                         }}
                         type="file"
                         accept="image/*,.heic,.heif"
-                        capture={kind === "earnings" ? undefined : "environment"}
                         className="hidden"
                         onChange={(event) => handleOcrFileChange(kind, event)}
                     />

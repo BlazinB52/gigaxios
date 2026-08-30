@@ -4,16 +4,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function proxy(request: NextRequest) {
   const startedAt = Date.now()
   const { pathname } = request.nextUrl
-  const hostname = request.headers.get('host')?.split(':')[0].toLowerCase()
-
-  // The prayer-group domain shares this deployment with GigAxios, but its
-  // homepage should render The Whiteboard instead of the GigAxios landing page.
-  if (
-    pathname === '/' &&
-    (hostname === 'theprayerwhiteboard.com' || hostname === 'www.theprayerwhiteboard.com')
-  ) {
-    return NextResponse.rewrite(new URL('/prayergroup', request.url))
-  }
 
   // Never block public routes — checked here as belt-and-suspenders
   // in addition to the matcher so regex edge cases can't lock users out.
@@ -27,8 +17,6 @@ export async function proxy(request: NextRequest) {
     pathname === '/landing' ||
     pathname === '/blog' ||
     pathname.startsWith('/blog/') ||
-    pathname === '/prayergroup' ||
-    pathname.startsWith('/prayergroup/') ||
     pathname === '/robots.txt' ||
     pathname === '/sitemap.xml' ||
     pathname === '/manifest.json' ||
@@ -82,6 +70,6 @@ export async function proxy(request: NextRequest) {
 // The function body also guards /login and /auth/callback explicitly as a second layer.
 export const config = {
   matcher: [
-    '/((?!login|auth/callback|api/stripe/webhook|privacy|terms|landing$|blog(?:/|$)|prayergroup(?:/|$)|robots\\.txt|sitemap\\.xml|manifest\\.json|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|pdf)$).*)',
+    '/((?!login|auth/callback|api/stripe/webhook|privacy|terms|landing$|blog(?:/|$)|robots\\.txt|sitemap\\.xml|manifest\\.json|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|pdf)$).*)',
   ],
 }

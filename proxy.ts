@@ -17,6 +17,8 @@ export async function proxy(request: NextRequest) {
     pathname === '/landing' ||
     pathname === '/blog' ||
     pathname.startsWith('/blog/') ||
+    pathname === '/prayergroup' ||
+    pathname.startsWith('/prayergroup/') ||
     pathname === '/robots.txt' ||
     pathname === '/sitemap.xml' ||
     pathname === '/manifest.json' ||
@@ -70,6 +72,6 @@ export async function proxy(request: NextRequest) {
 // The function body also guards /login and /auth/callback explicitly as a second layer.
 export const config = {
   matcher: [
-    '/((?!login|auth/callback|api/stripe/webhook|privacy|terms|landing$|blog(?:/|$)|robots\\.txt|sitemap\\.xml|manifest\\.json|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|pdf)$).*)',
+    '/((?!login|auth/callback|api/stripe/webhook|privacy|terms|landing$|blog(?:/|$)|prayergroup(?:/|$)|robots\\.txt|sitemap\\.xml|manifest\\.json|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|pdf)$).*)',
   ],
 }

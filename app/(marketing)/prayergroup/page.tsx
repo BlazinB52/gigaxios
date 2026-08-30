@@ -94,12 +94,12 @@ export default function PrayerGroupPage() {
               A place to revisit our teachings, stand together in prayer, and celebrate what God is doing among us.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <a
-                href="#latest"
+              <Link
+                href="/prayergroup/teachings/aliyah-israel-harvest-prayer"
                 className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-[#244a3a] px-6 text-base font-extrabold text-white shadow-xl shadow-[#244a3a]/20 transition hover:-translate-y-0.5 hover:bg-[#1d3d30]"
               >
-                Read the latest teaching <ArrowRight aria-hidden="true" size={19} />
-              </a>
+                Read the full teaching <ArrowRight aria-hidden="true" size={19} />
+              </Link>
               <a
                 href="#prayer"
                 className="inline-flex min-h-14 items-center justify-center rounded-2xl border border-[#284a3b]/15 bg-white px-6 text-base font-extrabold text-[#284a3b] transition hover:border-[#a85e32]/40"
@@ -139,6 +139,12 @@ export default function PrayerGroupPage() {
             <p className="mt-5 text-base leading-7 text-[#dce8e1]">
               God is gathering His people, revealing Jesus, and calling the Church to pray. This teaching follows the biblical picture of returning, ascending, and drawing nearer to God.
             </p>
+            <Link
+              href="/prayergroup/teachings/aliyah-israel-harvest-prayer"
+              className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#f1c66f] px-5 font-extrabold text-[#244a3a] transition hover:bg-[#f5d58d]"
+            >
+              Read the full teaching <ArrowRight aria-hidden="true" size={18} />
+            </Link>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -147,13 +153,25 @@ export default function PrayerGroupPage() {
               ["Aliyah in Genesis", "Joseph and his family went up from Egypt to return Jacob to the Promised Land."],
               ["Spiritual Elevation", "Prayer, praise, and the Word draw us nearer and renew our thinking."],
               ["Aliyah to Jesus", "Our prayer for spiritual awakening: ‘Call them up to Jesus.’"],
-            ].map(([title, body], index) => (
-              <article key={title} className="rounded-3xl border border-white/10 bg-white/[0.07] p-5">
-                <span className="grid size-9 place-items-center rounded-full bg-[#f1c66f] text-sm font-black text-[#244a3a]">{index + 1}</span>
-                <h3 className="mt-4 text-xl font-extrabold">{title}</h3>
-                <p className="mt-3 text-sm leading-6 text-[#dce8e1]">{body}</p>
-              </article>
-            ))}
+            ].map(([title, body], index) => {
+              const sectionIds = ["meaning", "genesis", "elevation", "jesus"];
+
+              return (
+                <Link
+                  key={title}
+                  href={`${teachingPath}#${sectionIds[index]}`}
+                  className="group rounded-3xl border border-white/10 bg-white/[0.07] p-5 transition hover:-translate-y-0.5 hover:bg-white/[0.11]"
+                >
+                  <span className="grid size-9 place-items-center rounded-full bg-[#f1c66f] text-sm font-black text-[#244a3a]">{index + 1}</span>
+                  <h3 className="mt-4 text-xl font-extrabold">{title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-[#dce8e1]">{body}</p>
+                  <span className="mt-4 inline-flex items-center gap-2 text-sm font-extrabold text-[#f0cb83]">
+                    Read this section
+                    <ArrowRight aria-hidden="true" size={16} className="transition group-hover:translate-x-1" />
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -211,10 +229,20 @@ export default function PrayerGroupPage() {
                 </div>
                 <h3 className="mt-5 text-xl font-extrabold leading-7 text-[#263e33]">{gathering.title}</h3>
                 <p className="mt-3 text-sm leading-6 text-[#66746c]">{gathering.description}</p>
-                <span className="mt-auto inline-flex items-center gap-2 pt-6 text-sm font-extrabold text-[#9d5a2f]">
-                  {gathering.current ? "Read highlights" : "Teaching coming soon"}
-                  <ArrowRight aria-hidden="true" size={17} className="transition group-hover:translate-x-1" />
-                </span>
+                {gathering.current ? (
+                  <Link
+                    href="/prayergroup/teachings/aliyah-israel-harvest-prayer"
+                    className="mt-auto inline-flex items-center gap-2 pt-6 text-sm font-extrabold text-[#9d5a2f]"
+                  >
+                    Read the full teaching
+                    <ArrowRight aria-hidden="true" size={17} className="transition group-hover:translate-x-1" />
+                  </Link>
+                ) : (
+                  <span className="mt-auto inline-flex items-center gap-2 pt-6 text-sm font-extrabold text-[#9d5a2f]">
+                    Teaching coming soon
+                    <ArrowRight aria-hidden="true" size={17} />
+                  </span>
+                )}
               </article>
             ))}
           </div>

@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 
 const pageUrl = "https://theprayerwhiteboard.com";
+const teachingPath =
+  "/prayergroup/teachings/aliyah-israel-harvest-prayer";
 
 export const metadata: Metadata = {
   title: "The Whiteboard | Prayer, Scripture & Praise",

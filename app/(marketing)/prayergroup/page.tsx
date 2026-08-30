@@ -167,7 +167,7 @@ export default function PrayerGroupPage() {
             <p className="mt-6 text-xs font-extrabold uppercase tracking-[0.18em] text-[#8e673c]">Stand together</p>
             <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-[#243d31]">Prayer Needs</h2>
             <p className="mt-4 leading-7 text-[#5b6a61]">
-              Join us in praying for salvation, healing, families, our communities, Israel, and the nations. Personal details will be shared only with permission.
+              Join us in praying for salvation, healing, families, our communities, Israel, and the nations. Prayer needs are shared only in summary form, with names and identifying details withheld to protect privacy.
             </p>
             <span className="mt-6 inline-flex items-center gap-2 font-extrabold text-[#9d5a2f]">
               Current requests coming soon <ArrowRight aria-hidden="true" size={18} />

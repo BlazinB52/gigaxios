@@ -4,6 +4,16 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function proxy(request: NextRequest) {
   const startedAt = Date.now()
   const { pathname } = request.nextUrl
+  const hostname = request.headers.get('host')?.split(':')[0].toLowerCase()
+
+  // The prayer-group domain shares this deployment with GigAxios, but its
+  // homepage should render The Whiteboard instead of the GigAxios landing page.
+  if (
+    pathname === '/' &&
+    (hostname === 'theprayerwhiteboard.com' || hostname === 'www.theprayerwhiteboard.com')
+  ) {
+    return NextResponse.rewrite(new URL('/prayergroup', request.url))
+  }
 
   // Never block public routes — checked here as belt-and-suspenders
   // in addition to the matcher so regex edge cases can't lock users out.

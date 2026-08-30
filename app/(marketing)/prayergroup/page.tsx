@@ -11,7 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const pageUrl = "https://gigaxios.com/prayergroup";
+const pageUrl = "https://theprayerwhiteboard.com";
 
 export const metadata: Metadata = {
   title: "The Whiteboard | Prayer, Scripture & Praise",

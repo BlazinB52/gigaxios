@@ -113,7 +113,7 @@ export default function PrayerGroupPage() {
             <div className="absolute -inset-3 rotate-2 rounded-[2rem] bg-[#bb7a3c]/18" />
             <div className="relative -rotate-1 rounded-[1.75rem] border border-[#284a3b]/10 bg-white p-3 shadow-2xl shadow-[#2d4639]/20 sm:p-4">
               <Image
-                src="/prayergroup/aliyah-chalkboard.png"
+                src="/prayergroup/aliyah-chalkboard.jpg"
                 alt="Chalkboard teaching about Aliyah, Israel, the harvest, and prayer"
                 width={588}
                 height={734}

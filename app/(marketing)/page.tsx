@@ -174,7 +174,6 @@ export default function LandingPage() {
 
             <div className="hidden items-center gap-8 text-sm font-semibold text-slate-200 md:flex">
               <a href="#features" className="transition hover:text-white">Features</a>
-              <a href="#pricing" className="transition hover:text-white">Pricing</a>
               <a href="#workers" className="transition hover:text-white">For Gig Workers</a>
               <Link href="/blog" className="transition hover:text-white">Blog</Link>
               <Link href="/login" className="rounded-full bg-blue-500 px-5 py-3 text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-400">
@@ -213,9 +212,6 @@ export default function LandingPage() {
                 <Link href="/login" className="rounded-2xl bg-blue-500 px-7 py-4 text-center text-base font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
                   Get started
                 </Link>
-                <a href="#pricing" className="rounded-2xl border border-white/20 px-7 py-4 text-center text-base font-bold text-slate-100 transition hover:border-sky-300 hover:text-white">
-                  View pricing
-                </a>
               </div>
 
               <p className="mt-5 text-sm font-semibold text-slate-300">
@@ -272,49 +268,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="pricing" className="bg-white px-5 py-16 text-slate-950 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
-          <div>
-            <p className="text-sm font-extrabold uppercase text-blue-600">Simple Pricing</p>
-            <h2 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">
-              GigAxios is free.
-            </h2>
-            <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
-              Free to use. No credit card required.
-            </p>
-          </div>
-
-          <div className="rounded-3xl border border-blue-100 bg-[#041227] p-6 text-white shadow-2xl shadow-blue-950/20 sm:p-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-bold text-sky-200">Free for every driver</p>
-                <p className="mt-2 text-5xl font-extrabold">$0<span className="text-lg font-bold text-slate-300">/month</span></p>
-              </div>
-              <p className="rounded-full bg-blue-500/15 px-4 py-2 text-sm font-bold text-sky-100">
-                Full access included
-              </p>
-            </div>
-
-            <div className="mt-6 space-y-2 text-sm font-bold leading-6 text-slate-200">
-              <p>Every feature is included.</p>
-              <p>No subscription and no billing.</p>
-            </div>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-2">
-              {pricingPoints.map((point) => (
-                <div key={point} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-4 text-sm font-bold">
-                  {point}
-                </div>
-              ))}
-            </div>
-
-            <Link href="/login" className="mt-8 block rounded-2xl bg-blue-500 px-7 py-4 text-center font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
-              Get started
-            </Link>
-          </div>
-        </div>
-      </section>
-
       <section id="how" className="bg-[#020814] px-5 py-16 text-white sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl rounded-3xl border border-white/10 bg-white/[0.05] p-8 shadow-2xl shadow-black/30 sm:p-10">
           <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center">
@@ -364,7 +317,6 @@ export default function LandingPage() {
             <h4 className="font-bold">Quick Links</h4>
             <div className="mt-3 grid gap-2 text-sm text-slate-300">
               <a href="#features">Features</a>
-              <a href="#pricing">Pricing</a>
               <Link href="/blog">Blog</Link>
               <Link href="/privacy">Privacy Policy</Link>
               <Link href="/terms">Terms of Service</Link>

@@ -178,7 +178,7 @@ export default function LandingPage() {
               <a href="#workers" className="transition hover:text-white">For Gig Workers</a>
               <Link href="/blog" className="transition hover:text-white">Blog</Link>
               <Link href="/login" className="rounded-full bg-blue-500 px-5 py-3 text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-400">
-                Start free
+                Get started
               </Link>
             </div>
           </nav>
@@ -211,7 +211,7 @@ export default function LandingPage() {
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
                 <Link href="/login" className="rounded-2xl bg-blue-500 px-7 py-4 text-center text-base font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
-                  Start free
+                  Get started
                 </Link>
                 <a href="#pricing" className="rounded-2xl border border-white/20 px-7 py-4 text-center text-base font-bold text-slate-100 transition hover:border-sky-300 hover:text-white">
                   View pricing
@@ -309,7 +309,7 @@ export default function LandingPage() {
             </div>
 
             <Link href="/login" className="mt-8 block rounded-2xl bg-blue-500 px-7 py-4 text-center font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
-              Start free
+              Get started
             </Link>
           </div>
         </div>

@@ -29,8 +29,10 @@ function getAccountAgeDays(createdAt: string | undefined) {
   return Math.max(0, Math.floor((Date.now() - createdTime) / 86400000));
 }
 
+// GigAxios is free: every account has full access regardless of subscription state.
 export function canAccessFullApp(status: string | null | undefined) {
-  return FULL_ACCESS_STATUSES.includes(normalizeStatus(status));
+  void status;
+  return true;
 }
 
 export function calculateSubscriptionAccess({
@@ -41,13 +43,13 @@ export function calculateSubscriptionAccess({
   userCreatedAt?: string;
 }): SubscriptionAccessState {
   const status = normalizeStatus(subscription?.status);
-  const isSubscribed = canAccessFullApp(status);
+  const isSubscribed = true;
   const accountAgeDays = getAccountAgeDays(userCreatedAt);
 
   return {
     status,
     isSubscribed,
-    trialRequired: !isSubscribed && accountAgeDays >= FREE_ACCOUNT_DAY_LIMIT,
+    trialRequired: false,
     accountAgeDays,
     trialEnd: subscription?.trial_end ?? null,
   };
@@ -81,12 +83,3 @@ export function formatTrialEndDate(trialEnd: string | null) {
     year: "numeric",
   });
 }
-
-/*
-Testing notes:
-1. A new user under 7 days old should have full preview access with no card required.
-2. During days 0-7, the user can create unlimited shifts and fuel entries.
-3. At account age 7+ days with no subscription, trial-required mode should block new data creation.
-4. A user with status "trialing" should have full write access.
-5. A user with status "active" should have full write access.
-*/

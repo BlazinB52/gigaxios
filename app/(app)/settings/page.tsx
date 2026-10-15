@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen, CreditCard, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Archive, LogOut, User, Wrench, BookOpen, Trash2, X } from "lucide-react";
 import { supabase } from "@/app/lib/supabaseClient";
 import { Vehicle, loadVehiclesFromSupabase } from "@/app/lib/garageStorage";
-import { canAccessFullApp, formatTrialEndDate } from "@/app/lib/subscriptionAccess";
 import JSZip from "jszip";
 
 function toCSV(rows: Record<string, unknown>[]): string {
@@ -42,14 +41,6 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   );
 }
 
-type BillingSubscription = {
-  status: string | null;
-  stripe_subscription_id: string | null;
-  trial_end: string | null;
-  cancel_at_period_end: boolean | null;
-  current_period_end: string | null;
-};
-
 const DELETE_ACCOUNT_REASONS = [
   "Too expensive",
   "I don't use GigAxios enough",
@@ -73,16 +64,12 @@ export default function SettingsPage() {
   const [workPaySaved, setWorkPaySaved] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [startingCheckout, setStartingCheckout] = useState(false);
-  const [openingPortal, setOpeningPortal] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteDialogStep, setDeleteDialogStep] = useState<"feedback" | "confirm">("feedback");
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState("");
-  const [billingSubscription, setBillingSubscription] =
-    useState<BillingSubscription | null>(null);
 
   async function fetchVehicles(uid: string) {
     const loaded = await loadVehiclesFromSupabase(uid);
@@ -143,14 +130,6 @@ export default function SettingsPage() {
       setUserId(user.id);
       setUserEmail(user.email ?? "");
       await fetchVehicles(user.id);
-
-      const { data: subscriptionData } = await supabase
-        .from("subscriptions")
-        .select("status, stripe_subscription_id, trial_end, cancel_at_period_end, current_period_end")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      setBillingSubscription((subscriptionData as BillingSubscription | null) ?? null);
 
       setDefaultPlatform(localStorage.getItem("gigaxios-default-platform") || "GoPuff");
       setNotifMaintenance(localStorage.getItem("gigaxios-notif-maintenance") !== "false");
@@ -324,81 +303,6 @@ export default function SettingsPage() {
       setDeletingAccount(false);
     }
   }
-
-  async function handleStartTrial() {
-    setStartingCheckout(true);
-    try {
-      const response = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        alert(data.error || "Could not start checkout. Please try again.");
-        return;
-      }
-
-      window.location.href = data.url;
-    } catch {
-      alert("Could not start checkout. Please try again.");
-    } finally {
-      setStartingCheckout(false);
-    }
-  }
-
-  async function handleManageBilling() {
-    setOpeningPortal(true);
-    try {
-      const response = await fetch("/api/stripe/customer-portal", {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        alert(data.error || "Could not open billing. Please try again.");
-        return;
-      }
-
-      window.location.href = data.url;
-    } catch {
-      alert("Could not open billing. Please try again.");
-    } finally {
-      setOpeningPortal(false);
-    }
-  }
-
-  const billingStatus = (billingSubscription?.status ?? "").trim().toLowerCase();
-  const hasStripeSubscription = Boolean(billingSubscription?.stripe_subscription_id);
-  const isCancellingAtPeriodEnd = billingSubscription?.cancel_at_period_end === true;
-  const hasFullSubscriptionAccess = canAccessFullApp(billingStatus);
-  const canManageBilling = hasStripeSubscription && hasFullSubscriptionAccess;
-  const canStartTrial =
-    (!hasStripeSubscription || !hasFullSubscriptionAccess) &&
-    (!hasStripeSubscription ||
-      ["", "none", "canceled", "incomplete", "incomplete_expired", "expired", "unpaid"].includes(
-        billingStatus
-      ));
-  const trialEndText = formatTrialEndDate(billingSubscription?.trial_end ?? null);
-  const periodEndText = formatTrialEndDate(billingSubscription?.current_period_end ?? null);
-  const accessEndText = billingStatus === "trialing"
-    ? trialEndText || periodEndText
-    : periodEndText;
-  const billingStatusLabel = isCancellingAtPeriodEnd
-    ? billingStatus === "trialing"
-      ? "Trial Cancelled"
-      : "Subscription Cancelled"
-    : billingStatus === "trialing"
-      ? "Free Trial Active"
-      : billingStatus === "past_due"
-        ? "Subscription Past Due"
-        : "Subscription Active";
-  const billingStatusDetail = isCancellingAtPeriodEnd
-    ? billingStatus === "trialing"
-      ? `Access remains available until your trial ends.${accessEndText ? ` Ends ${accessEndText}.` : ""}`
-      : `Access remains available until the current billing period ends.${accessEndText ? ` Ends ${accessEndText}.` : ""}`
-    : billingStatus === "trialing" && trialEndText
-      ? `Trial ends ${trialEndText}`
-      : "Your current plan is enabled.";
 
   return (
     <main className="min-h-screen bg-[#020814] text-white">
@@ -680,56 +584,6 @@ export default function SettingsPage() {
         {/* =====================================================
             SECTION 5 — ACCOUNT
            ===================================================== */}
-        {/* =====================================================
-            SECTION 5 - BILLING
-           ===================================================== */}
-        <div className="relative mt-6">
-          <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
-          <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-950/60">
-                <CreditCard className="h-5 w-5 text-blue-400" />
-              </div>
-              <div>
-                <p className="text-xs font-bold tracking-wider text-slate-400">BILLING</p>
-                <p className="text-sm text-slate-500">Start your trial or manage your subscription.</p>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 border-t border-slate-800 pt-4">
-              {hasStripeSubscription && hasFullSubscriptionAccess && (
-                <div className="rounded-2xl border border-emerald-400/30 bg-emerald-950/20 p-4">
-                  <p className="text-sm font-bold text-emerald-300">{billingStatusLabel}</p>
-                  <p className="mt-1 text-sm text-slate-300">
-                    {billingStatusDetail}
-                  </p>
-                  {/* Future: send 3-day and 1-day trial ending reminders. */}
-                </div>
-              )}
-
-              {canStartTrial && (
-                <button
-                  onClick={handleStartTrial}
-                  disabled={startingCheckout}
-                  className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
-                >
-                  {startingCheckout ? "Opening checkout..." : "Start Subscription"}
-                </button>
-              )}
-
-              {canManageBilling && (
-                <button
-                  onClick={handleManageBilling}
-                  disabled={openingPortal}
-                  className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
-                >
-                  {openingPortal ? "Opening subscription..." : "Manage Subscription"}
-                </button>
-              )}
-            </div>
-          </section>
-        </div>
-
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-cyan-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">

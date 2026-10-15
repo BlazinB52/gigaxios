@@ -21,10 +21,6 @@ import {
   saveFuelEntryToSupabase,
 } from "@/app/lib/fuelStorage";
 import {
-  SubscriptionAccessState,
-  loadSubscriptionAccess,
-} from "@/app/lib/subscriptionAccess";
-import {
   loadPreviousFuelMileageReading,
   needsMileageException,
 } from "@/app/lib/mileageValidation";
@@ -139,9 +135,6 @@ export default function FuelPage() {
   const [allowMileageException, setAllowMileageException] = useState(false);
   const [mileageExceptionReason, setMileageExceptionReason] = useState("");
   const [showMileageException, setShowMileageException] = useState(false);
-  const [accessState, setAccessState] =
-    useState<SubscriptionAccessState | null>(null);
-  const [startingCheckout, setStartingCheckout] = useState(false);
   const [savingFuel, setSavingFuel] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [ocrStatus, setOcrStatus] = useState<Record<FuelOcrKind, FuelOcrStatus>>({
@@ -173,12 +166,6 @@ export default function FuelPage() {
       const entries = await loadFuelEntriesFromSupabase(user.id);
       setFuelEntries(entries);
 
-      const access = await loadSubscriptionAccess({
-        userId: user.id,
-        userCreatedAt: user.created_at,
-      });
-      setAccessState(access);
-
       const { data: vehicleData } = await supabase
         .from("vehicles")
         .select("id, year, make, model, is_primary, status")
@@ -203,30 +190,11 @@ export default function FuelPage() {
     load();
   }, [refreshToken, router]);
 
-  const trialRequired = accessState?.trialRequired ?? false;
 
   function resetMileageException() {
     setShowMileageException(false);
     setAllowMileageException(false);
     setMileageExceptionReason("");
-  }
-
-  async function handleStartTrial() {
-    setStartingCheckout(true);
-    try {
-      const response = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        return;
-      }
-
-      window.location.href = data.url;
-    } finally {
-      setStartingCheckout(false);
-    }
   }
 
   function patchOcrStatus(kind: FuelOcrKind, status: FuelOcrStatus) {
@@ -288,11 +256,6 @@ export default function FuelPage() {
     setOcrMessage("");
 
     if (!file) return;
-
-    if (trialRequired) {
-      setOcrError("Your free preview has ended. Start your free trial to use OCR.");
-      return;
-    }
 
     const abortController = new AbortController();
     const timeoutId = window.setTimeout(() => {
@@ -361,7 +324,7 @@ export default function FuelPage() {
      ========================================================= */
 
   async function handleSaveFuel() {
-    if (trialRequired || saveInProgressRef.current) {
+    if (saveInProgressRef.current) {
       return;
     }
 
@@ -484,30 +447,6 @@ export default function FuelPage() {
           onChange={(event) => handleFuelOcrFileChange("receipt", event)}
         />
 
-        {trialRequired && (
-          <section className="rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
-            <h2 className="text-lg font-bold">Start your free trial to continue</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Your free GigAxios preview has ended.
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Start your 7-day free trial to continue adding shifts and fuel entries.
-            </p>
-            <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
-              <p>No charge today.</p>
-              <p>Then $3.99/month for your first year.</p>
-              <p>Cancel anytime.</p>
-            </div>
-            <button
-              onClick={handleStartTrial}
-              disabled={startingCheckout}
-              className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white disabled:opacity-60"
-            >
-              {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
-            </button>
-          </section>
-        )}
-
         {/* =====================================================
             RECENT FUEL ENTRIES 
             Shows the 2 most recent fill-ups.
@@ -582,7 +521,7 @@ export default function FuelPage() {
             <button
               type="button"
               onClick={() => openScanPicker("receipt")}
-              disabled={trialRequired || ocrStatus.receipt !== "idle"}
+              disabled={ocrStatus.receipt !== "idle"}
               className="shrink-0 rounded-full border border-blue-400/40 bg-blue-500/10 px-3.5 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
             >
               {ocrStatus.receipt === "idle" ? "Scan Receipt" : "Reading..."}
@@ -663,7 +602,7 @@ export default function FuelPage() {
               <button
                 type="button"
                 onClick={() => openScanPicker("odometer")}
-                disabled={trialRequired || ocrStatus.odometer !== "idle"}
+                disabled={ocrStatus.odometer !== "idle"}
                 className="shrink-0 border-l border-slate-700 bg-slate-800/80 px-3.5 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:text-slate-500"
               >
                 {ocrStatus.odometer === "idle" ? "Scan" : "Reading..."}
@@ -745,10 +684,10 @@ export default function FuelPage() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={handleSaveFuel}
-                disabled={trialRequired || savingFuel}
+                disabled={savingFuel}
                 className="rounded-xl bg-blue-500 py-2.5 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
-                {trialRequired ? "Start Trial" : savingFuel ? "Saving..." : "Save Fuel Entry"}
+                {savingFuel ? "Saving..." : "Save Fuel Entry"}
               </button>
 
               <button

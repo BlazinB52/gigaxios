@@ -53,7 +53,6 @@ type ActiveShiftCardProps = {
 
     ocrUploads: Record<ImportDayImageKind, OcrButtonState>;
     onScan: (kind: ImportDayImageKind) => void;
-    trialRequired: boolean;
 
     onEndShift: () => void;
     onCancelOpenShift: () => void;
@@ -93,7 +92,6 @@ export default function ActiveShiftCard({
     setNotes,
     ocrUploads,
     onScan,
-    trialRequired,
     onEndShift,
     onCancelOpenShift,
 }: ActiveShiftCardProps) {
@@ -136,7 +134,7 @@ export default function ActiveShiftCard({
                         <button
                             type="button"
                             onClick={() => onScan("end_odometer")}
-                            disabled={trialRequired || endingMileageScanBusy}
+                            disabled={endingMileageScanBusy}
                             className="shrink-0 rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 text-sm font-bold text-blue-200 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
                         >
                             {endingMileageOcr.ocrStatus === "reading" ? "Reading..." : "Scan"}
@@ -230,7 +228,7 @@ export default function ActiveShiftCard({
                 <button
                     type="button"
                     onClick={() => onScan("earnings")}
-                    disabled={trialRequired || earningsScanBusy}
+                    disabled={earningsScanBusy}
                     className="w-full rounded-xl border border-blue-500/40 bg-blue-500/10 p-3 font-bold text-blue-200 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
                 >
                     {earningsOcr.ocrStatus === "reading" ? "Reading Earnings..." : "Scan Daily Earnings"}

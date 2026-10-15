@@ -23,7 +23,6 @@ import {
   ImportDayImageKind,
   ImportDayOcrResult,
 } from "@/app/lib/importDayTypes";
-import { loadSubscriptionAccess } from "@/app/lib/subscriptionAccess";
 
 type UploadState = {
   selectedFile: File | null;
@@ -411,7 +410,6 @@ export default function ImportDayPage() {
     earnings: 0,
   });
   const [userId, setUserId] = useState("");
-  const [trialRequired, setTrialRequired] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [uploads, setUploads] = useState<Record<ImportDayImageKind, UploadState>>({
     start_odometer: createUploadState(),
@@ -578,12 +576,6 @@ export default function ImportDayPage() {
 
       setUserId(user.id);
 
-      const access = await loadSubscriptionAccess({
-        userId: user.id,
-        userCreatedAt: user.created_at,
-      });
-      setTrialRequired(access.trialRequired);
-
       const { data: vehicleData } = await supabase
         .from("vehicles")
         .select("id, year, make, model, is_primary, status")
@@ -746,7 +738,6 @@ export default function ImportDayPage() {
   const importDisabled =
     isSaving ||
     isCheckingValidation ||
-    trialRequired ||
     hardBlocks.length > 0 ||
     (validationWarnings.length > 0 && !warningsAcknowledged) ||
     (cautions.length > 0 && !earningsCautionAcknowledged) ||
@@ -962,15 +953,6 @@ export default function ImportDayPage() {
     }, OCR_TIMEOUT_MS);
     setSaveError("");
 
-    if (trialRequired) {
-      window.clearTimeout(timeoutId);
-      delete ocrAbortControllersRef.current[kind];
-      patchUpload(kind, {
-        error: "Your free preview has ended. Start your free trial to scan photos.",
-      });
-      return;
-    }
-
     if (!fileToRead) {
       window.clearTimeout(timeoutId);
       delete ocrAbortControllersRef.current[kind];
@@ -1053,11 +1035,6 @@ export default function ImportDayPage() {
     setSaveError("");
     setSaveSuccess("");
     setShowMissingMetricsPrompt(false);
-
-    if (trialRequired) {
-      setSaveError("Your free preview has ended. Start your free trial to save a shift.");
-      return;
-    }
 
     const startMileage = toNumber(form.startMileage);
     const endMileage = toNumber(form.endMileage);
@@ -1243,15 +1220,6 @@ export default function ImportDayPage() {
           </p>
         </header>
 
-        {trialRequired && (
-          <section className="mb-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
-            <h2 className="text-lg font-bold">Start your free trial to continue</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Your free preview has ended. Start your free trial to scan photos or save shifts.
-            </p>
-          </section>
-        )}
-
         {uploadKinds.map((kind) => (
           <input
             key={`inline-${kind}-${fileInputKeys[kind]}`}
@@ -1330,7 +1298,7 @@ export default function ImportDayPage() {
                   <button
                     type="button"
                     onClick={() => openScanPicker("start_odometer")}
-                    disabled={trialRequired || uploads.start_odometer.ocrStatus === "preparing" || uploads.start_odometer.ocrStatus === "reading"}
+                    disabled={uploads.start_odometer.ocrStatus === "preparing" || uploads.start_odometer.ocrStatus === "reading"}
                     className="shrink-0 border-l border-slate-700 bg-slate-800/80 px-3 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:text-slate-500"
                   >
                     {uploads.start_odometer.ocrStatus === "reading" ? "Reading..." : "Scan"}
@@ -1349,7 +1317,7 @@ export default function ImportDayPage() {
                   <button
                     type="button"
                     onClick={() => openScanPicker("end_odometer")}
-                    disabled={trialRequired || uploads.end_odometer.ocrStatus === "preparing" || uploads.end_odometer.ocrStatus === "reading"}
+                    disabled={uploads.end_odometer.ocrStatus === "preparing" || uploads.end_odometer.ocrStatus === "reading"}
                     className="shrink-0 border-l border-slate-700 bg-slate-800/80 px-3 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:text-slate-500"
                   >
                     {uploads.end_odometer.ocrStatus === "reading" ? "Reading..." : "Scan"}
@@ -1363,7 +1331,7 @@ export default function ImportDayPage() {
               <button
                 type="button"
                 onClick={() => openScanPicker("earnings")}
-                disabled={trialRequired || uploads.earnings.ocrStatus === "preparing" || uploads.earnings.ocrStatus === "reading"}
+                disabled={uploads.earnings.ocrStatus === "preparing" || uploads.earnings.ocrStatus === "reading"}
                 className="rounded-full border border-blue-400/40 bg-blue-500/10 px-3.5 py-2 text-sm font-bold text-blue-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
               >
                 {uploads.earnings.ocrStatus === "reading" ? "Reading..." : "Scan Earnings"}

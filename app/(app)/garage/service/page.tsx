@@ -13,10 +13,6 @@ import {
   recalculateIntervalLastDoneFromServices,
 } from "@/app/lib/garageStorage";
 import {
-  SubscriptionAccessState,
-  loadSubscriptionAccess,
-} from "@/app/lib/subscriptionAccess";
-import {
   loadHighestMileageReading,
   needsMileageException,
 } from "@/app/lib/mileageValidation";
@@ -89,9 +85,6 @@ function ServicePageInner() {
   const [mileageExceptionReason, setMileageExceptionReason] = useState("");
   const [showMileageException, setShowMileageException] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [accessState, setAccessState] =
-    useState<SubscriptionAccessState | null>(null);
-  const [startingCheckout, setStartingCheckout] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -105,12 +98,6 @@ function ServicePageInner() {
       }
 
       setUserId(user.id);
-
-      const access = await loadSubscriptionAccess({
-        userId: user.id,
-        userCreatedAt: user.created_at,
-      });
-      setAccessState(access);
 
       const vid = vehicleIdParam;
       setVehicleId(vid);
@@ -180,7 +167,6 @@ function ServicePageInner() {
   }
 
   async function handleSaveService() {
-    if (trialRequired) return;
     if (!serviceType || !userId) return;
     setSaving(true);
 
@@ -259,29 +245,7 @@ function ServicePageInner() {
     }
   }
 
-  async function handleStartTrial() {
-    setStartingCheckout(true);
-    try {
-      const response = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        alert(data.error || "Could not start checkout. Please try again.");
-        return;
-      }
-
-      window.location.href = data.url;
-    } catch {
-      alert("Could not start checkout. Please try again.");
-    } finally {
-      setStartingCheckout(false);
-    }
-  }
-
   const inputClass = "w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
-  const trialRequired = accessState?.trialRequired ?? false;
   const isEditing = editingEntryId !== null;
 
   function resetMileageException() {
@@ -303,7 +267,6 @@ function ServicePageInner() {
   }
 
   function handleEditEntry(entry: ServiceEntry) {
-    if (trialRequired) return;
     setEditingEntryId(entry.id);
     setSelectedVehicleId(entry.vehicleId || vehicleId || selectedVehicleId);
     setServiceDate(entry.date || getTodayLocal());
@@ -345,37 +308,12 @@ function ServicePageInner() {
           </div>
         )}
 
-        {trialRequired && (
-          <section className="mt-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
-            <h2 className="text-lg font-bold">Start your free trial to continue</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Your free GigAxios preview has ended.
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Start your 7-day free trial to continue adding service records.
-            </p>
-            <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
-              <p>No charge today.</p>
-              <p>Then $3.99/month for your first year.</p>
-              <p>Cancel anytime.</p>
-            </div>
-            <button
-              onClick={handleStartTrial}
-              disabled={startingCheckout}
-              className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white disabled:opacity-60"
-            >
-              {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
-            </button>
-          </section>
-        )}
-
         {/* ADD SERVICE FORM */}
         <div className="relative mt-6">
           <div className="absolute bottom-0 left-0 top-0 w-1 rounded-full bg-blue-500" />
           <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 shadow-lg">
             <button
               onClick={() => {
-                if (trialRequired) return;
                 if (showForm) {
                   resetServiceForm();
                   setShowForm(false);
@@ -383,14 +321,13 @@ function ServicePageInner() {
                   setShowForm(true);
                 }
               }}
-              disabled={trialRequired}
-              className="flex w-full items-center justify-between disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-between"
             >
               <p className="text-lg font-semibold text-white">
                 {isEditing ? "Edit Service" : "Add Service"}
               </p>
               <span className="text-2xl font-light text-blue-400">
-                {trialRequired ? "" : showForm ? "-" : "+"}
+                {showForm ? "-" : "+"}
               </span>
             </button>
 
@@ -484,16 +421,14 @@ function ServicePageInner() {
 
                 <button
                   onClick={handleSaveService}
-                  disabled={saving || !serviceType || trialRequired}
+                  disabled={saving || !serviceType}
                   className="w-full rounded-2xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
                 >
                   {saving
                     ? "Saving..."
-                    : trialRequired
-                      ? "Start Trial to Save Service"
-                      : isEditing
-                        ? "Save Changes"
-                        : "Save Service"}
+                    : isEditing
+                      ? "Save Changes"
+                      : "Save Service"}
                 </button>
                 <button
                   onClick={() => {
@@ -552,7 +487,6 @@ function ServicePageInner() {
                       <button
                         type="button"
                         onClick={() => handleEditEntry(entry)}
-                        disabled={trialRequired}
                         aria-label={`Edit ${entry.serviceType} service`}
                         className="rounded-full border border-slate-700 bg-slate-900 p-2 text-slate-300 transition hover:border-blue-400 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
                       >

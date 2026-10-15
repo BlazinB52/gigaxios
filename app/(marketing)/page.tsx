@@ -89,7 +89,7 @@ const structuredData = [
       "GigAxios helps gig drivers track mileage, fuel costs, vehicle expenses, and true net profit.",
     offers: {
       "@type": "Offer",
-      price: "3.99",
+      price: "0",
       priceCurrency: "USD",
     },
   },
@@ -118,7 +118,7 @@ export default function LandingPage() {
   const benefits = [
     ["Delivery driver profit tracker", "See earnings, fuel, mileage, tips, and expenses together so gross pay does not tell the whole story."],
     ["Mileage tracker for gig drivers", "Record work miles by shift and understand which days, apps, and routes are actually worth it."],
-    ["Fuel expense tracker", "Use every tracker and insight during your free preview, including fuel, service, and true profit views."],
+    ["Fuel expense tracker", "Use every tracker and insight for free, including fuel, service, and true profit views."],
   ];
 
   const features = [
@@ -149,11 +149,10 @@ export default function LandingPage() {
   ];
 
   const pricingPoints = [
-    "7-day free preview",
-    "No charge today",
-    "7-day free trial when you subscribe",
-    "$3.99/month for your first year",
-    "Cancel anytime",
+    "100% free",
+    "No credit card required",
+    "Full access to every feature",
+    "No subscription, ever",
   ];
 
   return (
@@ -175,11 +174,10 @@ export default function LandingPage() {
 
             <div className="hidden items-center gap-8 text-sm font-semibold text-slate-200 md:flex">
               <a href="#features" className="transition hover:text-white">Features</a>
-              <a href="#pricing" className="transition hover:text-white">Pricing</a>
               <a href="#workers" className="transition hover:text-white">For Gig Workers</a>
               <Link href="/blog" className="transition hover:text-white">Blog</Link>
               <Link href="/login" className="rounded-full bg-blue-500 px-5 py-3 text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-400">
-                Start free
+                Get started
               </Link>
             </div>
           </nav>
@@ -187,7 +185,7 @@ export default function LandingPage() {
           <div className="grid items-center gap-12 pb-16 pt-14 md:grid-cols-[1.05fr_0.95fr] md:pb-24 md:pt-20">
             <div>
               <p className="inline-flex rounded-full border border-sky-300/30 bg-sky-400/10 px-4 py-2 text-sm font-bold text-sky-200">
-                7-day free preview
+                100% free
               </p>
 
               <h1 className="mt-6 max-w-3xl text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
@@ -212,15 +210,12 @@ export default function LandingPage() {
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
                 <Link href="/login" className="rounded-2xl bg-blue-500 px-7 py-4 text-center text-base font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
-                  Start free
+                  Get started
                 </Link>
-                <a href="#pricing" className="rounded-2xl border border-white/20 px-7 py-4 text-center text-base font-bold text-slate-100 transition hover:border-sky-300 hover:text-white">
-                  View pricing
-                </a>
               </div>
 
               <p className="mt-5 text-sm font-semibold text-slate-300">
-                7-day free preview. No charge today. Then start a 7-day free trial before your first charge.
+                Free to use. No credit card required.
               </p>
             </div>
 
@@ -273,63 +268,16 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="pricing" className="bg-white px-5 py-16 text-slate-950 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
-          <div>
-            <p className="text-sm font-extrabold uppercase text-blue-600">Simple Pricing</p>
-            <h2 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">
-              Start free. Lock in $3.99/month.
-            </h2>
-            <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
-              7-day free preview. No charge today. Then start a 7-day free trial before your first charge.
-            </p>
-          </div>
-
-          <div className="rounded-3xl border border-blue-100 bg-[#041227] p-6 text-white shadow-2xl shadow-blue-950/20 sm:p-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-bold text-sky-200">Limited Time Offer</p>
-                <p className="mt-3 text-sm font-bold text-slate-300">
-                  Regular price <span className="line-through">$4.99/month</span>
-                </p>
-                <p className="mt-2 text-5xl font-extrabold">$3.99<span className="text-lg font-bold text-slate-300">/month</span></p>
-              </div>
-              <p className="rounded-full bg-blue-500/15 px-4 py-2 text-sm font-bold text-sky-100">
-                Full access included
-              </p>
-            </div>
-
-            <div className="mt-6 space-y-2 text-sm font-bold leading-6 text-slate-200">
-              <p>Try GigAxios free first.</p>
-              <p>Lock in the discounted rate when you subscribe.</p>
-              <p>Cancel anytime.</p>
-            </div>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-2">
-              {pricingPoints.map((point) => (
-                <div key={point} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-4 text-sm font-bold">
-                  {point}
-                </div>
-              ))}
-            </div>
-
-            <Link href="/login" className="mt-8 block rounded-2xl bg-blue-500 px-7 py-4 text-center font-extrabold text-white shadow-xl shadow-blue-500/30 transition hover:bg-blue-400">
-              Start free
-            </Link>
-          </div>
-        </div>
-      </section>
-
       <section id="how" className="bg-[#020814] px-5 py-16 text-white sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl rounded-3xl border border-white/10 bg-white/[0.05] p-8 shadow-2xl shadow-black/30 sm:p-10">
           <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center">
             <div>
-              <p className="text-sm font-extrabold uppercase text-sky-200">Full access during preview</p>
+              <p className="text-sm font-extrabold uppercase text-sky-200">Full access, free</p>
               <h2 className="mt-3 max-w-3xl text-3xl font-extrabold tracking-tight sm:text-5xl">
-                Know what you make before you pay a dollar.
+                Know what you make without paying a dollar.
               </h2>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-200">
-                Track every shift free first. After your preview and trial, continue with the limited-time discounted rate of $3.99/month. Regular price is $4.99/month. Cancel anytime.
+                Track every shift, fuel purchase, and expense for free. No subscription, no credit card.
               </p>
             </div>
 
@@ -369,7 +317,6 @@ export default function LandingPage() {
             <h4 className="font-bold">Quick Links</h4>
             <div className="mt-3 grid gap-2 text-sm text-slate-300">
               <a href="#features">Features</a>
-              <a href="#pricing">Pricing</a>
               <Link href="/blog">Blog</Link>
               <Link href="/privacy">Privacy Policy</Link>
               <Link href="/terms">Terms of Service</Link>

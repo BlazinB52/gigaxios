@@ -39,10 +39,6 @@ import {
   loadServiceEntriesFromSupabase,
   loadServiceIntervalsFromSupabase,
 } from "@/app/lib/garageStorage";
-import {
-  SubscriptionAccessState,
-  loadSubscriptionAccess,
-} from "@/app/lib/subscriptionAccess";
 
 type PayAdjustment = {
   amount: number;
@@ -174,11 +170,7 @@ export default function Home() {
   const [serviceEntries, setServiceEntries] = useState<ServiceEntry[]>([]);
   const [serviceIntervals, setServiceIntervals] = useState<ServiceInterval[]>([]);
   const [payAdjustments, setPayAdjustments] = useState<PayAdjustment[]>([]);
-  const [accessState, setAccessState] =
-    useState<SubscriptionAccessState | null>(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
-  const [startingCheckout, setStartingCheckout] = useState(false);
-  const [hasPostShiftSignal, setHasPostShiftSignal] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
 
   useRefreshOnFocus(() => setRefreshToken((current) => current + 1));
@@ -204,7 +196,7 @@ export default function Home() {
       }
 
       try {
-        const [shifts, fuel, service, intervals, adjustmentsResult, access] = await Promise.all([
+        const [shifts, fuel, service, intervals, adjustmentsResult] = await Promise.all([
           loadShiftsFromSupabase(user.id),
           loadFuelEntriesFromSupabase(user.id),
           loadServiceEntriesFromSupabase(user.id),
@@ -213,10 +205,6 @@ export default function Home() {
             .from("pay_adjustments")
             .select("amount, week_start")
             .eq("user_id", user.id),
-          loadSubscriptionAccess({
-            userId: user.id,
-            userCreatedAt: user.created_at,
-          }),
         ]);
 
         if (!isMounted) return;
@@ -226,16 +214,6 @@ export default function Home() {
         setServiceEntries(service);
         setServiceIntervals(intervals);
         setPayAdjustments((adjustmentsResult.data ?? []) as PayAdjustment[]);
-        setAccessState(access);
-
-        const shiftEnded = sessionStorage.getItem("gigaxios_shift_ended") === "1";
-        if (shiftEnded) {
-          sessionStorage.removeItem("gigaxios_shift_ended");
-          setHasPostShiftSignal(!access.isSubscribed);
-        } else if (access.isSubscribed) {
-          sessionStorage.removeItem("gigaxios_shift_ended");
-          setHasPostShiftSignal(false);
-        }
       } finally {
         if (isMounted) {
           setIsLoadingDashboard(false);
@@ -508,39 +486,6 @@ export default function Home() {
   const perDeliveryIncomplete =
     shiftsWithMissingDeliveriesCount > 0 && totalDeliveries <= 0;
 
-  const isSubscribed = accessState?.isSubscribed ?? false;
-  const trialRequired = accessState?.trialRequired ?? false;
-  const importDayDisabled = trialRequired && !activeShift;
-  const showPostShiftCtaModal =
-    !isSubscribed &&
-    !trialRequired &&
-    hasPostShiftSignal;
-
-  function dismissPostShiftModal() {
-    setHasPostShiftSignal(false);
-    sessionStorage.removeItem("gigaxios_shift_ended");
-  }
-
-  async function handleStartTrial() {
-    setStartingCheckout(true);
-    try {
-      const response = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        alert(data.error || "Could not start checkout. Please try again.");
-        return;
-      }
-
-      window.location.href = data.url;
-    } catch {
-      alert("Could not start checkout. Please try again.");
-    } finally {
-      setStartingCheckout(false);
-    }
-  }
   /* =========================================================
      MAIN_PAGE_RENDER
      ========================================================= */
@@ -746,99 +691,18 @@ export default function Home() {
 
       </div>
 
-      {showPostShiftCtaModal && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 px-5 pb-24 pt-8 sm:items-center sm:pb-8">
-          <section className="w-full max-w-md rounded-3xl border border-blue-500/30 bg-slate-950 p-5 text-white shadow-2xl shadow-black/40">
-            <div className="flex items-start justify-between gap-4">
-              <h2 className="text-2xl font-bold leading-tight">
-                See what you actually made today
-              </h2>
-              <button
-                type="button"
-                onClick={dismissPostShiftModal}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-700 text-xl text-slate-400"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-slate-300">
-              GigAxios has started turning your shift data into real profit insight.
-            </p>
-
-            <p className="mt-3 text-sm leading-6 text-slate-300">
-              Start your free 7-day trial to continue after your preview period.
-            </p>
-
-            <div className="mt-4 space-y-1 text-sm font-semibold text-slate-200">
-              <p>No charge today.</p>
-              <p>Then $3.99/month for your first year.</p>
-              <p>Cancel anytime.</p>
-            </div>
-
-            <div className="mt-5 grid gap-3">
-              <button
-                type="button"
-                onClick={dismissPostShiftModal}
-                className="w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white"
-              >
-                View My Results
-              </button>
-
-              <button
-                type="button"
-                onClick={handleStartTrial}
-                disabled={startingCheckout}
-                className="w-full rounded-full border border-slate-700 bg-slate-900 px-4 py-3 text-base font-bold text-slate-200 disabled:opacity-60"
-              >
-                {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
-
       {/* =====================================================
          HOME_ACTION_PANEL
        ===================================================== */}
       <section className="pointer-events-none fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-0 right-0 z-30 mx-auto max-w-md px-5">
         <div className="pointer-events-auto space-y-3 rounded-3xl border border-slate-700 bg-slate-950/95 p-3 shadow-2xl">
-          {trialRequired && !activeShift && (
-            <div className="rounded-2xl border border-blue-500/30 bg-blue-950/30 p-4">
-              <h2 className="text-lg font-bold">Start your free trial to continue</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-300">
-                Your free GigAxios preview has ended.
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-300">
-                Start your 7-day free trial to continue adding shifts and fuel entries.
-              </p>
-              <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
-                <p>No charge today.</p>
-                <p>Then $3.99/month for your first year.</p>
-                <p>Cancel anytime.</p>
-              </div>
-              <button
-                onClick={handleStartTrial}
-                disabled={startingCheckout}
-                className="mt-4 w-full rounded-full bg-blue-500 px-4 py-3 text-base font-bold text-white disabled:opacity-60"
-              >
-                {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
-              </button>
-            </div>
-          )}
-
           <button
-            onClick={() => {
-              if (importDayDisabled) return;
-              router.push("/shifts");
-            }}
-            disabled={importDayDisabled}
-            className={`w-full rounded-full px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 ${
+            onClick={() => router.push("/shifts")}
+            className={`w-full rounded-full px-4 py-3 text-base font-bold text-white ${
               activeShift ? "bg-emerald-500" : "bg-blue-500"
             }`}
           >
-            {importDayDisabled ? "Trial required to start" : activeShift ? "End Shift" : "Start Shift"}
+            {activeShift ? "End Shift" : "Start Shift"}
           </button>
         </div>
       </section>

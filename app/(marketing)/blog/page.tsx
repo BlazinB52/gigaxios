@@ -86,7 +86,7 @@ export default function BlogIndexPage() {
                   href="/login"
                   className="rounded-full bg-blue-500 px-5 py-3 text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-400"
                 >
-                  Start free
+                  Get started
                 </Link>
               </div>
             </nav>

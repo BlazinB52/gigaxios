@@ -2,7 +2,6 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { extractOdometerMileageFromText } from "@/app/lib/fuelOdometerOcr";
-import { calculateSubscriptionAccess } from "@/app/lib/subscriptionAccess";
 
 type FuelOcrKind = "odometer" | "receipt";
 type FuelOcrConfidence = "high" | "medium" | "low";
@@ -329,23 +328,6 @@ export async function POST(request: Request) {
 
     if (!context) {
       return NextResponse.json({ error: "Please log in first." }, { status: 401 });
-    }
-
-    const { data: subscriptionData } = await context.supabase
-      .from("subscriptions")
-      .select("status, trial_end")
-      .eq("user_id", context.user.id)
-      .maybeSingle();
-    const access = calculateSubscriptionAccess({
-      subscription: subscriptionData ?? null,
-      userCreatedAt: context.user.created_at,
-    });
-
-    if (access.trialRequired) {
-      return NextResponse.json(
-        { error: "Your free preview has ended. Start your free trial to use OCR." },
-        { status: 402 }
-      );
     }
 
     const apiKey = process.env.OPENAI_API_KEY;

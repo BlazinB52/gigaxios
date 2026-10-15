@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { isImportDayKind, isImportDayOcrResult } from "@/app/lib/importDayParsing";
 import { ImportDayEarningsResult, ImportDayImageKind } from "@/app/lib/importDayTypes";
-import { calculateSubscriptionAccess } from "@/app/lib/subscriptionAccess";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -219,23 +218,6 @@ export async function POST(request: Request) {
 
     if (!context) {
       return NextResponse.json({ error: "Please log in first." }, { status: 401 });
-    }
-
-    const { data: subscriptionData } = await context.supabase
-      .from("subscriptions")
-      .select("status, trial_end")
-      .eq("user_id", context.user.id)
-      .maybeSingle();
-    const access = calculateSubscriptionAccess({
-      subscription: subscriptionData ?? null,
-      userCreatedAt: context.user.created_at,
-    });
-
-    if (access.trialRequired) {
-      return NextResponse.json(
-        { error: "Your free preview has ended. Start your free trial to use OCR." },
-        { status: 402 }
-      );
     }
 
     const apiKey = process.env.OPENAI_API_KEY;

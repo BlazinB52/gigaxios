@@ -9,10 +9,6 @@ import { SavedShift } from "@/app/lib/types";
 import { loadShiftsFromSupabase } from "@/app/lib/storage";
 import { supabase } from "@/app/lib/supabaseClient";
 import {
-    SubscriptionAccessState,
-    loadSubscriptionAccess,
-} from "@/app/lib/subscriptionAccess";
-import {
     loadPreviousShiftMileageReading,
     needsMileageException,
 } from "@/app/lib/mileageValidation";
@@ -132,9 +128,6 @@ export default function ShiftsPage() {
       id: string; year: string; make: string; model: string; is_primary: boolean;
     }>>([]);
     const [selectedVehicleId, setSelectedVehicleId] = useState("");
-    const [accessState, setAccessState] =
-        useState<SubscriptionAccessState | null>(null);
-    const [startingCheckout, setStartingCheckout] = useState(false);
     const router = useRouter();
     const fileInputRefs = useRef<Record<ImportDayImageKind, HTMLInputElement | null>>({
         start_odometer: null,
@@ -167,12 +160,6 @@ export default function ShiftsPage() {
             const shifts = await loadShiftsFromSupabase(user.id);
             setSavedShifts(shifts);
 
-            const access = await loadSubscriptionAccess({
-                userId: user.id,
-                userCreatedAt: user.created_at,
-            });
-            setAccessState(access);
-
             const { data: vehicleData } = await supabase
               .from("vehicles")
               .select("id, year, make, model, is_primary, status")
@@ -190,8 +177,6 @@ export default function ShiftsPage() {
     }, [router]);
 
     const activeShift = savedShifts.find((shift) => shift.status === "open");
-    const isSubscribed = accessState?.isSubscribed ?? false;
-    const trialRequired = accessState?.trialRequired ?? false;
     const activeShiftStartTime = activeShift?.startTime ?? startTime;
     const calculatedHoursWorked = activeShift
         ? calculateHoursBetween({
@@ -225,7 +210,6 @@ export default function ShiftsPage() {
     }
 
     function openScanPicker(kind: ImportDayImageKind) {
-        if (trialRequired) return;
         fileInputRefs.current[kind]?.click();
     }
 
@@ -272,15 +256,6 @@ export default function ShiftsPage() {
         const timeoutId = window.setTimeout(() => {
             abortController.abort();
         }, OCR_TIMEOUT_MS);
-
-        if (trialRequired) {
-            window.clearTimeout(timeoutId);
-            delete ocrAbortControllersRef.current[kind];
-            patchOcrUpload(kind, {
-                error: "Your free preview has ended. Start your free trial to scan photos.",
-            });
-            return;
-        }
 
         if (!fileToRead) {
             window.clearTimeout(timeoutId);
@@ -405,29 +380,7 @@ export default function ShiftsPage() {
         }
     }
 
-    async function handleStartTrial() {
-        setStartingCheckout(true);
-        try {
-            const response = await fetch("/api/stripe/create-checkout-session", {
-                method: "POST",
-            });
-            const data = await response.json();
-
-            if (!response.ok || !data.url) {
-                return;
-            }
-
-            window.location.href = data.url;
-        } finally {
-            setStartingCheckout(false);
-        }
-    }
-
     async function handleStartShift() {
-        if (trialRequired) {
-            return;
-        }
-
         if (!shiftDate || !beginningMileage || !startTime) {
             alert("Enter a date, start time, and beginning mileage.");
             return;
@@ -710,11 +663,6 @@ export default function ShiftsPage() {
             }
         }
 
-        if (isSubscribed) {
-            sessionStorage.removeItem("gigaxios_shift_ended");
-        } else {
-            sessionStorage.setItem("gigaxios_shift_ended", "1");
-        }
         router.push("/dashboard");
     }
 
@@ -805,34 +753,9 @@ export default function ShiftsPage() {
                     onEndingMileageChange={resetEndMileageException}
                     ocrUploads={ocrUploads}
                     onScan={openScanPicker}
-                    trialRequired={trialRequired}
                     onEndShift={handleEndShift}
                     onCancelOpenShift={handleCancelOpenShift}
                 />
-
-                {trialRequired && !activeShift && (
-                    <section className="mb-5 rounded-3xl border border-blue-500/30 bg-blue-950/30 p-5">
-                        <h2 className="text-lg font-bold">Start your free trial to continue</h2>
-                        <p className="mt-2 text-sm leading-6 text-slate-300">
-                            Your free GigAxios preview has ended.
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-slate-300">
-                            Start your 7-day free trial to continue adding shifts and fuel entries.
-                        </p>
-                        <div className="mt-3 space-y-1 text-sm font-semibold text-slate-200">
-                            <p>No charge today.</p>
-                            <p>Then $3.99/month for your first year.</p>
-                            <p>Cancel anytime.</p>
-                        </div>
-                        <button
-                            onClick={handleStartTrial}
-                            disabled={startingCheckout}
-                            className="mt-4 w-full rounded-xl bg-blue-500 p-3 font-bold text-white disabled:opacity-60"
-                        >
-                            {startingCheckout ? "Opening checkout..." : "Start Free Trial"}
-                        </button>
-                    </section>
-                )}
 
                 {!activeShift && (
                     <section className="rounded-3xl border border-slate-700/70 bg-slate-950/70 p-5">
@@ -907,7 +830,6 @@ export default function ShiftsPage() {
                                         type="button"
                                         onClick={() => openScanPicker("start_odometer")}
                                         disabled={
-                                            trialRequired ||
                                             ocrUploads.start_odometer.ocrStatus === "preparing" ||
                                             ocrUploads.start_odometer.ocrStatus === "reading"
                                         }
@@ -960,10 +882,9 @@ export default function ShiftsPage() {
 
                             <button
                                 onClick={handleStartShift}
-                                disabled={trialRequired}
-                                className="w-full rounded-xl bg-emerald-500/90 p-3 font-bold text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+                                className="w-full rounded-xl bg-emerald-500/90 p-3 font-bold text-white shadow-lg shadow-emerald-500/20"
                             >
-                                {trialRequired ? "Start Trial to Continue" : "Start Shift"}
+                                Start Shift
                             </button>
                             <button
                                 type="button"
